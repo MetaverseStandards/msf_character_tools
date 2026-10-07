@@ -26,10 +26,10 @@ The engineering, math adversary and SDK maintenance roles were applied in one im
 9. Inspection missed binary animation semantics: validate available core channel type/count/times/rotation keys; keep unavailable external inventory.
 10. Hierarchy cycle validation repeated ancestor walks: use a completed-node set to bound traversal across all chains.
 
+11. Fragment discovery could include virtualenv/CI hidden checkouts: prune generated/hidden files and directories before traversal; real fake-.venv/.git/.ci-tools tests.
+
 ## Remaining gates
 
 The reference supports positions with relative Basis morphs/four influence LBS and one explicit core clip. Non-position geometry, eight influences, DQS, compressed semantics, unsupported required extensions, simultaneous clips and embedded asset rewriting remain explicit unsupported capabilities. Resource limits may reject otherwise valid large assets.
 
 Production artist/contact acceptance, general provider calibration, external publication ownership, packaging platforms and performance requirements remain separate gates. Scalar mapping quality describes a declared operation under assumptions. No universal fidelity, community adoption, security against concurrently hostile filesystem writers or multi-file transaction guarantee is claimed.
-
-11. Fragment discovery could include virtualenv/CI hidden checkouts: prune generated/hidden files and directories before traversal; real fake-.venv/.git/.ci-tools tests.
