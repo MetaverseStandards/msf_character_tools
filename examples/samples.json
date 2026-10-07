@@ -1,0 +1,6 @@
+{
+  "samples": [
+    {"timestamp": 0.0, "values": {"input.wink": -0.5}, "validity": {"input.wink": true}},
+    {"timestamp": 0.5, "values": {"input.wink": 1.5}, "validity": {"input.wink": true}}
+  ]
+}

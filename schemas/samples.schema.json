@@ -1,0 +1,33 @@
+{
+  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "properties": {
+      "timestamp": {
+        "minimum": 0,
+        "type": "number"
+      },
+      "validity": {
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "type": "object"
+      },
+      "values": {
+        "additionalProperties": {
+          "type": "number"
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "timestamp",
+      "values",
+      "validity"
+    ],
+    "type": "object"
+  },
+  "title": "MSF samples version 1.0",
+  "type": "array"
+}

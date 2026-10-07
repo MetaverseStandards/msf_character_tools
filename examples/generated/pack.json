@@ -1,0 +1,97 @@
+{
+  "data_version": "0.1.0",
+  "evidence": [
+    {
+      "authorship": "MSF Tools contributors",
+      "claim": "Original synthetic coefficient channels share the explicitly declared fixture basis.",
+      "id": "fixture",
+      "license": "CC-BY-SA-4.0",
+      "status": "verified_current"
+    }
+  ],
+  "id": "msf.synthetic",
+  "license": "CC-BY-SA-4.0",
+  "mappings": [
+    {
+      "id": "wink",
+      "rules": [
+        {
+          "assumptions": [
+            "Both original fixture channels use the same calibration basis."
+          ],
+          "disposition": "mapped",
+          "evidence": [
+            "fixture"
+          ],
+          "evidence_status": "verified_current",
+          "id": "wink.identity",
+          "inputs": [
+            "input.wink"
+          ],
+          "loss_annotations": [],
+          "mapping_quality": "exact",
+          "operator": {
+            "id": "identity"
+          },
+          "outputs": [
+            "output.wink"
+          ]
+        }
+      ]
+    }
+  ],
+  "operator_version": "1.0",
+  "profiles": [
+    {
+      "id": "source",
+      "label": "Synthetic input profile",
+      "signal_ids": [
+        "input.wink"
+      ]
+    },
+    {
+      "id": "target",
+      "label": "Synthetic output profile",
+      "signal_ids": [
+        "output.wink"
+      ]
+    }
+  ],
+  "schema_version": "1.0",
+  "signals": [
+    {
+      "calibration": "synthetic.fixture.v1 signed relative Basis coefficient",
+      "disposition": "mapped",
+      "domain": {
+        "max": 2.0,
+        "min": -1.0
+      },
+      "evidence": [
+        "fixture"
+      ],
+      "evidence_status": "verified_current",
+      "id": "input.wink",
+      "label": "Synthetic wink input",
+      "neutral": 0.0,
+      "units": "1",
+      "value_type": "scalar"
+    },
+    {
+      "calibration": "synthetic.fixture.v1 signed relative Basis coefficient",
+      "disposition": "mapped",
+      "domain": {
+        "max": 2.0,
+        "min": -1.0
+      },
+      "evidence": [
+        "fixture"
+      ],
+      "evidence_status": "verified_current",
+      "id": "output.wink",
+      "label": "Synthetic wink target",
+      "neutral": 0.0,
+      "units": "1",
+      "value_type": "scalar"
+    }
+  ]
+}

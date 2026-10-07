@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "msf-tools"
+version = "0.1.0"
+description = "Validated signal mappings and immutable glTF reference evaluation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "MSF Tools contributors"}]
+dependencies = []
+
+[project.scripts]
+msf-tools = "msf_tools.cli:main"
+
+[tool.setuptools]
+packages = ["msf_tools"]

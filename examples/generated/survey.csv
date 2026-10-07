@@ -1,0 +1,3 @@
+id,label,value_type,units,disposition,evidence_status,source,target
+input.wink,Synthetic wink input,scalar,1,mapped,verified_current,1,
+output.wink,Synthetic wink target,scalar,1,mapped,verified_current,,1

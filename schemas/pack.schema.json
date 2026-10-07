@@ -1,0 +1,649 @@
+{
+  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints.",
+  "$defs": {
+    "evidence": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "required": [
+              "license",
+              "authorship"
+            ]
+          },
+          "if": {
+            "required": [
+              "url"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "revision"
+                ]
+              },
+              {
+                "required": [
+                  "retrieved"
+                ]
+              },
+              {
+                "required": [
+                  "sha256"
+                ]
+              }
+            ],
+            "required": [
+              "locator"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "authorship": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "claim": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "license": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "locator": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retrieved": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "verified_current",
+            "proposed",
+            "unresolved"
+          ]
+        },
+        "url": {
+          "pattern": "^https://",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "claim",
+        "status"
+      ],
+      "type": "object"
+    },
+    "loss": {
+      "additionalProperties": false,
+      "properties": {
+        "bound": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "category": {
+          "enum": [
+            "signal",
+            "geometry",
+            "binding",
+            "animation",
+            "material",
+            "metadata"
+          ]
+        },
+        "effect": {
+          "enum": [
+            "preserved",
+            "approximated",
+            "dropped",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "units": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "effect",
+        "reason",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "profile": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "signal_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "signal_ids"
+      ],
+      "type": "object"
+    },
+    "rule": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "required": [
+                "mapping_quality"
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "mapped"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mapping_quality"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operator": {
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "identity",
+                      "affine"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "inputs": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "assumptions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "coupling": {
+          "oneOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "mapped",
+            "unsupported",
+            "unresolved",
+            "excluded"
+          ]
+        },
+        "evidence": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "evidence_status": {
+          "enum": [
+            "verified_current",
+            "proposed",
+            "unresolved"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "inputs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "loss_annotations": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bound": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "category": {
+                "enum": [
+                  "signal",
+                  "geometry",
+                  "binding",
+                  "animation",
+                  "material",
+                  "metadata"
+                ]
+              },
+              "effect": {
+                "enum": [
+                  "preserved",
+                  "approximated",
+                  "dropped",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "units": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "category",
+              "effect",
+              "reason",
+              "refs"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "mapping_quality": {
+          "enum": [
+            "exact",
+            "approximate"
+          ]
+        },
+        "operator": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "identity"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "affine"
+                },
+                "offset": {
+                  "type": "number"
+                },
+                "scale": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "scale",
+                "offset"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "weighted_sum"
+                },
+                "weights": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "weights"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "outputs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "inputs",
+        "outputs",
+        "operator",
+        "disposition",
+        "assumptions",
+        "evidence",
+        "evidence_status",
+        "loss_annotations"
+      ],
+      "type": "object"
+    },
+    "signal": {
+      "additionalProperties": false,
+      "properties": {
+        "calibration": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "confidence": {
+          "oneOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ]
+        },
+        "coupling": {
+          "oneOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            }
+          ]
+        },
+        "disposition": {
+          "enum": [
+            "mapped",
+            "unsupported",
+            "unresolved",
+            "excluded"
+          ]
+        },
+        "domain": {
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "evidence": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "evidence_status": {
+          "enum": [
+            "verified_current",
+            "proposed",
+            "unresolved"
+          ]
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "native_default": {
+          "type": "number"
+        },
+        "native_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "neutral": {
+          "type": "number"
+        },
+        "region": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "side": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "surface": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "time": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "units": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "validity": {
+          "oneOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "value_type": {
+          "const": "scalar"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value_type",
+        "units",
+        "domain",
+        "calibration",
+        "disposition",
+        "evidence",
+        "evidence_status"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "data_version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$",
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/evidence"
+      },
+      "type": "array"
+    },
+    "id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "license": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "mappings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/$defs/rule"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "rules"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "operator_version": {
+      "const": "1.0"
+    },
+    "profiles": {
+      "items": {
+        "$ref": "#/$defs/profile"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "signals": {
+      "items": {
+        "$ref": "#/$defs/signal"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "data_version",
+    "operator_version",
+    "id",
+    "license",
+    "signals",
+    "profiles",
+    "mappings",
+    "evidence"
+  ],
+  "title": "MSF pack version 1.0",
+  "type": "object"
+}

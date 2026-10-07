@@ -1,0 +1,114 @@
+{
+  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "asset_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "bindings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "domain": {
+            "additionalProperties": false,
+            "properties": {
+              "max": {
+                "type": "number"
+              },
+              "min": {
+                "type": "number"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ref": {
+            "additionalProperties": false,
+            "properties": {
+              "asset_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "locator": {
+                "pattern": "^/nodes/[0-9]+/weights/[0-9]+$",
+                "type": "string"
+              },
+              "mesh": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "node": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resource_sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "target": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "asset_sha256",
+              "locator",
+              "node",
+              "mesh",
+              "target"
+            ],
+            "type": "object"
+          },
+          "units": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "value_type": {
+            "const": "scalar"
+          }
+        },
+        "required": [
+          "id",
+          "value_type",
+          "units",
+          "domain",
+          "calibration",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "resource_hashes": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "1.0"
+    }
+  },
+  "required": [
+    "schema_version",
+    "asset_sha256",
+    "resource_hashes",
+    "bindings"
+  ],
+  "title": "MSF sidecar version 1.0",
+  "type": "object"
+}

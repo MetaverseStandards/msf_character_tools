@@ -1,0 +1,30 @@
+[
+  {
+    "bytes": 182749,
+    "id": "gltf",
+    "retrieved": "2026-10-07",
+    "sha256": "c305d1b0ea93c7eb101059db09ae4687c56fe5388c6655cd9bf83d44b2932664",
+    "url": "https://raw.githubusercontent.com/KhronosGroup/glTF/8e691206fa2e981fc3b8c8bc57e671595576c971/specification/2.0/Specification.adoc"
+  },
+  {
+    "bytes": 28730,
+    "id": "cpython_json",
+    "retrieved": "2026-10-07",
+    "sha256": "b154dd5e6e61514a209bb91d9bc51909574fc8f82e5f35173d78a560817a5610",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.11.17/Doc/library/json.rst"
+  },
+  {
+    "bytes": 21490,
+    "id": "cpython_csv",
+    "retrieved": "2026-10-07",
+    "sha256": "def6ebdde2c1f7c41761d6288381b148ccae4421c4db0e752a8842c6daae1819",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.11.17/Doc/library/csv.rst"
+  },
+  {
+    "bytes": 20005,
+    "id": "cc_by_sa",
+    "retrieved": "2026-10-07",
+    "sha256": "a0bd498de6b7991f563789715e3cf9f9a77860b6bb5b2c2b072fb3bb36361008",
+    "url": "https://raw.githubusercontent.com/creativecommons/legalcode/main/by-sa_4.0.txt"
+  }
+]

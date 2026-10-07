@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: CC-BY-SA-4.0
+schema_version = "1.0"
+data_version = "0.1.0"
+operator_version = "1.0"
+id = "msf.synthetic"
+license = "CC-BY-SA-4.0"
+
+[[evidence]]
+id = "fixture"
+claim = "Original synthetic coefficient channels share the explicitly declared fixture basis."
+status = "verified_current"
+license = "CC-BY-SA-4.0"
+authorship = "MSF Tools contributors"
+
+[[signals]]
+id = "input.wink"
+label = "Synthetic wink input"
+value_type = "scalar"
+units = "1"
+domain = {min = -1.0, max = 2.0}
+calibration = "synthetic.fixture.v1 signed relative Basis coefficient"
+disposition = "mapped"
+evidence = ["fixture"]
+evidence_status = "verified_current"
+neutral = 0.0
+
+[[signals]]
+id = "output.wink"
+label = "Synthetic wink target"
+value_type = "scalar"
+units = "1"
+domain = {min = -1.0, max = 2.0}
+calibration = "synthetic.fixture.v1 signed relative Basis coefficient"
+disposition = "mapped"
+evidence = ["fixture"]
+evidence_status = "verified_current"
+neutral = 0.0
+
+[[profiles]]
+id = "source"
+label = "Synthetic input profile"
+signal_ids = ["input.wink"]
+
+[[profiles]]
+id = "target"
+label = "Synthetic output profile"
+signal_ids = ["output.wink"]
+
+[[mappings]]
+id = "wink"
+
+[[mappings.rules]]
+id = "wink.identity"
+inputs = ["input.wink"]
+outputs = ["output.wink"]
+operator = {id = "identity"}
+disposition = "mapped"
+mapping_quality = "exact"
+assumptions = ["Both original fixture channels use the same calibration basis."]
+evidence = ["fixture"]
+evidence_status = "verified_current"
+loss_annotations = []

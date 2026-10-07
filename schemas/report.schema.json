@@ -1,0 +1,109 @@
+{
+  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "diagnostics": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ref": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "remediation": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "ref",
+          "message",
+          "remediation"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "losses": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bound": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "category": {
+            "enum": [
+              "signal",
+              "geometry",
+              "binding",
+              "animation",
+              "material",
+              "metadata"
+            ]
+          },
+          "effect": {
+            "enum": [
+              "preserved",
+              "approximated",
+              "dropped",
+              "unknown"
+            ]
+          },
+          "reason": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "units": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "effect",
+          "reason",
+          "refs"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0"
+    }
+  },
+  "required": [
+    "schema_version",
+    "diagnostics",
+    "losses"
+  ],
+  "title": "MSF report version 1.0",
+  "type": "object"
+}

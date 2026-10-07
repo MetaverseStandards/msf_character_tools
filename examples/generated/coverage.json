@@ -1,0 +1,166 @@
+{
+  "disposition_counts": {
+    "excluded": 0,
+    "mapped": 2,
+    "unresolved": 0,
+    "unsupported": 0
+  },
+  "dispositions": {
+    "excluded": [],
+    "mapped": [
+      "input.wink",
+      "output.wink"
+    ],
+    "unresolved": [],
+    "unsupported": []
+  },
+  "evidence": [
+    {
+      "authorship": "MSF Tools contributors",
+      "claim": "Original synthetic coefficient channels share the explicitly declared fixture basis.",
+      "id": "fixture",
+      "license": "CC-BY-SA-4.0",
+      "profile_ids": [],
+      "rule_ids": [
+        "wink.identity"
+      ],
+      "signal_ids": [
+        "input.wink",
+        "output.wink"
+      ],
+      "status": "verified_current"
+    }
+  ],
+  "mapping_quality": {
+    "approximate": [],
+    "exact": [
+      "wink.identity"
+    ]
+  },
+  "mapping_quality_counts": {
+    "approximate": 0,
+    "exact": 1
+  },
+  "pack_sha256": "48b2af597c17610c6aafe005dab3eff49c83dc07792f35259c274f827e42d1ee",
+  "profiles": [
+    {
+      "count": 1,
+      "disposition_counts": {
+        "excluded": 0,
+        "mapped": 1,
+        "unresolved": 0,
+        "unsupported": 0
+      },
+      "dispositions": {
+        "excluded": [],
+        "mapped": [
+          "input.wink"
+        ],
+        "unresolved": [],
+        "unsupported": []
+      },
+      "id": "source",
+      "mapping_quality": {
+        "approximate": [],
+        "exact": [
+          "wink.identity"
+        ]
+      },
+      "mapping_quality_counts": {
+        "approximate": 0,
+        "exact": 1
+      },
+      "metadata": {},
+      "signal_ids": [
+        "input.wink"
+      ]
+    },
+    {
+      "count": 1,
+      "disposition_counts": {
+        "excluded": 0,
+        "mapped": 1,
+        "unresolved": 0,
+        "unsupported": 0
+      },
+      "dispositions": {
+        "excluded": [],
+        "mapped": [
+          "output.wink"
+        ],
+        "unresolved": [],
+        "unsupported": []
+      },
+      "id": "target",
+      "mapping_quality": {
+        "approximate": [],
+        "exact": [
+          "wink.identity"
+        ]
+      },
+      "mapping_quality_counts": {
+        "approximate": 0,
+        "exact": 1
+      },
+      "metadata": {},
+      "signal_ids": [
+        "output.wink"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "assumptions": [
+        "Both original fixture channels use the same calibration basis."
+      ],
+      "disposition": "mapped",
+      "evidence": [
+        "fixture"
+      ],
+      "evidence_status": "verified_current",
+      "id": "wink.identity",
+      "inputs": [
+        "input.wink"
+      ],
+      "loss_annotations": [],
+      "mapping_quality": "exact",
+      "operator": {
+        "id": "identity"
+      },
+      "outputs": [
+        "output.wink"
+      ]
+    }
+  ],
+  "schema_version": "1.0",
+  "signals": [
+    {
+      "disposition": "mapped",
+      "id": "input.wink",
+      "profiles": [
+        "source"
+      ],
+      "reason": null,
+      "rules": [
+        "wink.identity"
+      ]
+    },
+    {
+      "disposition": "mapped",
+      "id": "output.wink",
+      "profiles": [
+        "target"
+      ],
+      "reason": null,
+      "rules": [
+        "wink.identity"
+      ]
+    }
+  ],
+  "totals": {
+    "evidence": 1,
+    "profiles": 2,
+    "rules": 1,
+    "signals": 2
+  }
+}
