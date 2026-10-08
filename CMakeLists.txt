@@ -30,5 +30,8 @@ if(MSF_BUILD_NATIVE_PILOT)
     add_test(NAME msf_python_native_agreement
       COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_agreement.py
               $<TARGET_FILE_DIR:_msf_native> ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME msf_python_native_strict
+      COMMAND ${Python_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/native/tests/test_strict.py
+              $<TARGET_FILE_DIR:_msf_native> ${CMAKE_CURRENT_SOURCE_DIR})
   endif()
 endif()

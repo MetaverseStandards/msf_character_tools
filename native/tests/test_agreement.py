@@ -174,9 +174,6 @@ class Agreement(unittest.TestCase):
         doc = snapshot.document
         parents = {child: index for index, node in enumerate(doc["nodes"]) for child in node.get("children", ())}
 
-        def row_major(column_major):
-            return [column_major[column*4+row] for row in range(4) for column in range(4)]
-
         def accessor(index):
             result = decode_accessor(snapshot, index)
             self.assertTrue(result.ok, result.report.to_dict())
@@ -190,7 +187,7 @@ class Agreement(unittest.TestCase):
             def world(index):
                 if index not in worlds:
                     node = dict(doc["nodes"][index]); node.update(animation.value.get(index, {}))
-                    local = (row_major(node["matrix"]) if "matrix" in node else native.compose_trs(
+                    local = (native.from_gltf_column_major(node["matrix"]) if "matrix" in node else native.compose_trs(
                         node.get("translation", [0,0,0]), node.get("rotation", [0,0,0,1]), node.get("scale", [1,1,1])))
                     worlds[index] = native.multiply(world(parents[index]), local) if index in parents else local
                 return worlds[index]
@@ -201,7 +198,7 @@ class Agreement(unittest.TestCase):
                 index = instance["node"]; node = doc["nodes"][index]; mesh = doc["meshes"][node["mesh"]]
                 skin = doc["skins"][node["skin"]]
                 joint_worlds = [world(joint) for joint in skin["joints"]]
-                ibms = [row_major(value) for value in accessor(skin["inverseBindMatrices"])]
+                ibms = [native.from_gltf_column_major(value) for value in accessor(skin["inverseBindMatrices"])]
                 weights = animation.value.get(index, {}).get("weights", node.get("weights", mesh["weights"]))
                 for actual in instance["primitives"]:
                     primitive = mesh["primitives"][actual["primitive"]]

@@ -121,18 +121,27 @@ Package0.1.1, scalar wire/schema/operator1.0 and ordinary valid scalar/geometry
 golden bytes remain unchanged. Consumers should pin exact source/artifact hashes
 when adopting the stricter malformed/unsafe-input refusals.
 
+## Strict native numerical pilot
+
+The native pilot now validates original Python numeric/bool/index/list inputs
+before conversion, including mutable program setters. Program getters return
+detached nested Domain/Instruction copies. Every supplied scalar value remains
+finite even for a false output placeholder. Checked binary64 arithmetic follows
+the pure reference's representability policy and branch choices. Full original
+affine rows, finite normalized axes/determinants and active skin arithmetic are
+validated without widening affine/TRS1e-10 or weight1e-6 tolerances.
+
+Named native/glTF storage adapters make the row/column conversion explicit;
+multiply computes a*b (b first). C++ multiply intentionally returns Result<Mat4>,
+requiring callers to rebuild and check success. See [native contract](../native/README.md)
+for the exact surface, error codes, ownership and numerical policy. Independent
+literal binding oracles and supplemental agreement run on actual local bindings
+ON builds for macOS arm64 CPython3.11.17 and3.12.15+meta. Fresh independent review
+of this candidate remains required before root commits it.
+
 ## Remaining gates
 
-Fresh independent review of the pure numerical draft remains required. S-H2
-semantic and pure numerical work is proposed complete for its frozen scope;
-S-H2/S-H4 native numerical and strict boundary acceptance remains pending.
-Native default quaternion normalization, affine/TRS1e-10 and weights1e-6 remain
-unchanged. Native nested getters currently alias stored Domain/Instruction
-objects; detached copy/lifetime and pre-cast strict guards require the next S-H4
-commit. Plain native C++ multiply still returns Mat4; its checked Result/pilot ABI
-migration must be chosen explicitly in that contract.
-
 S-H3 accounting/resolution/graph work, S-H6 evidence policy, S-H5L packaging and
-X-CONSUMER installed review remain separate gates. Local actual bindings ON
-compatibility tests do not qualify a six-API backend, release wheel, additional
-platforms, ABI3, free-threaded Python, zero-copy/GIL behavior or production rigs.
+X-CONSUMER installed review remain separate gates. Local native builds do not
+qualify a six-API backend, release wheel, additional platforms, ABI3,
+free-threaded Python, zero-copy/GIL behavior or production rigs.

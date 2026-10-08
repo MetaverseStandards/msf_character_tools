@@ -15,7 +15,8 @@ template<class T> struct Result {
   explicit operator bool() const { return errors.empty(); }
 };
 Mat4 identity();
-Mat4 multiply(const Mat4& a, const Mat4& b);
+// Generic a*b: b acts first on column vectors. Callers must check the Result.
+Result<Mat4> multiply(const Mat4& a, const Mat4& b);
 Result<Mat4> inverse(const Mat4& a);
 Result<Vec3> transform_point(const Mat4& m, const Vec3& p);
 Result<Quat> normalize(const Quat& q);
