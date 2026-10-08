@@ -44,3 +44,39 @@ Numerical agreement covers the explicitly supported positions/curves and declare
 `tests/test_review_regressions.py` adds six independent review regressions. Work counts cover 3/30/60 independent rules and compile/export/evaluate boundaries; fresh-call mutation/copy/raw/stale negatives and literal declaration-wave order remain required. Unicode cases cover every optional description and both coupling shapes (442 documents), valid Unicode and numeric/boolean/opaque-metadata controls. Both complete schemas run through real Draft202012 validation with Python regex and with the pattern keyword delegated to local JavaScriptCore ECMAScript regex. This is not a standalone JavaScript schema-validator gate. A separate check tests all 82 nonblank pattern locations on 39 independently expected text cases in both regex engines. Runtime metadata cases execute even when the optional schema validator is absent. JavaScriptCore-dependent tests explicitly skip if that local engine is unavailable; no supported-platform guarantee is inferred.
 
 The full gate contains 57 tests (30 original,21 initial hardening,6 review regressions). Review must retain exact commands, runtime identities, counts/skips and semantic RED evidence. Run `python -B check.py` to check unchanged pack/CSV/coverage/checksum bytes. Schema parity tests require the optional local `jsonschema` test dependency; missing tools must be reported as missing or explicitly skipped, never counted as a semantic RED.
+
+## Pure numerical draft 03 gate
+
+`tests/test_numerical_boundaries.py` adds22 independent analytical tests. Literal
+matrix/storage/point and noncommuting reparent results, reflected and explicit
+zero-scale controls, huge/tiny axes, overflow/underflow, strict bool/type/shape,
+role tolerance boundaries, signed huge morphs, singular POSITION blends and
+scalar identity/cancellation are tested through helpers and public callers.
+Expected values are authored directly; fixture bytes use direct binary32 packing.
+Native/reference agreement is supplemental.
+
+Builder correction gates run126 tests on Python3.11.17 (two optional jsonschema skips) and
+Python3.12.15+meta (zero skips), plus34 targeted tests each and byte-preserving
+check.py. Fresh separate bindings ON builds pass2 CTests each: native analytical
+executable and seven agreement tests. These native gates test compatibility with
+the pure changes; strict native types, setters, nested getter ownership/lifetime
+and native intermediate safety remain pending S-H4. Independent draft review is
+pending; builder GREEN is not acceptance.
+
+`tests/test_numerical_branch_fixes.py` adds12 builder regression methods for the
+four numerical review findings. Literal unchanged `(2,3,4)` skin positions cover
+both inactive palette overflow and inactive point overflow. Tests cover STEP at
+`2**-1074`, exact LINEAR/SLERP endpoints, the declared endpoint hemisphere sign,
+constant Hermite with tiny duration and zero raw tangents, signed raw tangents,
+active ordered contributions and original unused/extra input admission. The
+saved pre-production tests produced16 semantic assertion failures on both actual
+runtimes, zero errors/skips after a fixture-name correction; original runs remain
+saved. The original22 targeted methods and all114 existing methods are retained.
+
+Fresh bindings ON compatibility builds from the numerical draft remain applicable:
+native files, exported signatures, bridge and ordinary native callers are unchanged.
+This correction adds Python branch selection only. Exact native source hashes and
+prior build/log/artifact hashes accompany the shared correction evidence. No
+native rebuild or host qualification is inferred from the Python gates. A new
+fresh independent clean process must close the exact corrected tree before
+acceptance; the earlier review's exit0 with error_event=true is not acceptance.

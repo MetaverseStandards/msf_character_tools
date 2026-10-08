@@ -11,6 +11,7 @@ from .pack import Pack
 from .snapshot import AssetSnapshot
 from .report import public, fail, Fault, Result, Report, Loss
 from .records import OwnedRecord, _admit
+from .math3d import _add, _product, _sum
 
 
 @public
@@ -221,7 +222,13 @@ def evaluate_mapping(compiled_mapping, samples):
                 try:
                     args = [values[s] for s in rule["inputs"]]
                     op = rule["operator"]
-                    value = args[0] if op["id"] == "identity" else op["scale"] * args[0] + op["offset"] if op["id"] == "affine" else sum(float(w) * x for w, x in zip(op["weights"], args))
+                    math_ref = ref + "/rules/" + rule["id"]
+                    if op["id"] == "identity":
+                        value = args[0]
+                    elif op["id"] == "affine":
+                        value = _add(_product(float(op["scale"]), args[0], math_ref), float(op["offset"]), math_ref)
+                    else:
+                        value = _sum((_product(float(w), x, math_ref) for w, x in zip(op["weights"], args)), math_ref)
                     in_domain(value, signals[output]["domain"], ref + "/rules/" + rule["id"])
                     values[output] = float(value)
                 except Fault as exc:

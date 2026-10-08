@@ -17,6 +17,7 @@ from .authoring import keys, string, domain
 from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number
 from .report import public, fail, Report, Result, Diagnostic, Fault
 from .records import OwnedRecord, _admit
+from .math3d import matrix, validate_trs, authored_quaternion
 from .gltf_semantics import (parse_document, morph_count, validate_meshes,
                              validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
 
@@ -362,13 +363,14 @@ def _validate_document(doc):
         ref = f"/nodes/{i}"
         if "matrix" in n:
             vector(n["matrix"], 16, ref)
+            validate_trs(matrix(n["matrix"]), affine_tolerance=1e-12, ref=ref)
             if any(k in n for k in ("translation", "rotation", "scale")):
                 fail("E_NODE_TRANSFORM", ref, "matrix and TRS are mutually exclusive.")
         for k, length in (("translation", 3), ("rotation", 4), ("scale", 3)):
             if k in n:
                 vector(n[k], length, ref + "/" + k)
-        if "rotation" in n and abs(sum(x * x for x in n["rotation"]) - 1) > 1e-5:
-            fail("E_QUATERNION", ref, "Authored quaternion must be unit length.")
+        if "rotation" in n:
+            authored_quaternion(n["rotation"], ref)
         for k, arr in (("mesh", meshes), ("skin", skins), ("camera", doc.get("cameras", ()))):
             if k in n:
                 index(n[k], arr, ref + "/" + k)

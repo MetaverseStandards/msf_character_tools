@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import bisect
-import math
 
 from .common import freeze, thaw, number, integer
 from .authoring import keys
 from .snapshot import AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS
-from .math3d import IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize, column_major
+from .math3d import (IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize,
+                     column_major, affine, validate_trs, authored_quaternion, linear, hermite,
+                     _add, _sub, _product, _divide, _sum)
 from .report import public, fail, Result, Report, Fault
 from .records import OwnedRecord, _admit
 from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
@@ -53,8 +54,9 @@ def _sample_channel(snapshot, animation_id, channel_id, timestamp):
         flat = tuple(x[0] for x in rows)
         rows = tuple(flat[i:i+count] for i in range(0, len(flat), count))
     values = rows[1::3] if interpolation == "CUBICSPLINE" else rows
-    if path == "rotation" and any(abs(sum(x*x for x in q) - 1) > 1e-5 for q in values):
-        fail("E_QUATERNION", "/animations", "Authored rotation keys must be unit quaternions.")
+    if path == "rotation":
+        for q in values:
+            authored_quaternion(q, "/animations")
     times = _animation_times(snapshot, sampler["input"])
     if timestamp <= times[0]:
         value = values[0]
@@ -62,15 +64,15 @@ def _sample_channel(snapshot, animation_id, channel_id, timestamp):
         value = values[-1]
     else:
         i = bisect.bisect_right(times, timestamp) - 1
-        dt = times[i+1] - times[i]
-        t = (timestamp - times[i]) / dt
         if interpolation == "STEP":
             value = values[i]
-        elif interpolation == "LINEAR":
-            value = slerp(values[i], values[i+1], t) if path == "rotation" else tuple(x + t*(y-x) for x, y in zip(values[i], values[i+1]))
         else:
-            h00, h10, h01, h11 = 2*t**3-3*t**2+1, t**3-2*t**2+t, -2*t**3+3*t**2, t**3-t**2
-            value = tuple(h00*p0 + h10*dt*m0 + h01*p1 + h11*dt*m1 for p0, m0, p1, m1 in zip(rows[3*i+1], rows[3*i+2], rows[3*(i+1)+1], rows[3*(i+1)]))
+            dt = _sub(times[i+1], times[i], "/animations")
+            t = _divide(_sub(float(timestamp), times[i], "/animations"), dt, "/animations")
+            if interpolation == "LINEAR":
+                value = slerp(values[i], values[i+1], t) if path == "rotation" else linear(values[i], values[i+1], t)
+            else:
+                value = hermite(rows[3*i+1], rows[3*i+2], rows[3*(i+1)+1], rows[3*(i+1)], t, dt)
     if path == "rotation":
         value = normalize(value)
     if not all(number(x) for x in value):
@@ -105,9 +107,9 @@ def _worlds(snapshot, overrides):
         current.update(overrides.get(i, {}))
         if "matrix" in current:
             local = matrix(current["matrix"])
-            if any(abs(local[3][j] - IDENTITY[3][j]) > 1e-12 for j in range(4)):
-                fail("E_TRANSFORM", f"/nodes/{i}", "Node matrix must be affine.")
+            validate_trs(local, affine_tolerance=1e-12, ref=f"/nodes/{i}")
         else:
+            authored_quaternion(current.get("rotation", (0,0,0,1)), f"/nodes/{i}/rotation")
             local = trs(current.get("translation", (0,0,0)), current.get("rotation", (0,0,0,1)), current.get("scale", (1,1,1)))
         locals_.append(local)
     worlds = {}
@@ -207,7 +209,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                         deltas = _accessor(snapshot, target["POSITION"], "VEC3", {5126}, count, False, ref)
                         for p, delta in zip(positions, deltas):
                             for k in range(3):
-                                p[k] += float(weight) * delta[k]
+                                p[k] = _add(p[k], _product(float(weight), delta[k], ref), ref)
                 if "skin" in node:
                     if "JOINTS_0" not in attrs or "WEIGHTS_0" not in attrs:
                         fail("E_SKIN", ref, "Skinned primitive needs JOINTS_0 and WEIGHTS_0.")
@@ -221,15 +223,22 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                         if ibm[3] != IDENTITY[3]:
                             fail("E_SKIN_TYPE", ref, "Inverse bind matrices must be affine.")
                     mesh_inverse = inverse(worlds[ni])
-                    palettes = tuple(multiply(multiply(mesh_inverse, worlds[j]), ibm) for j, ibm in zip(skin["joints"], ibms))
-                    skinned = []
-                    for p, js, ws in zip(positions, joints, skinweights):
-                        if any(j >= len(palettes) for j in js):
+                    # Admit every original row before any influence selects arithmetic.
+                    for js, ws in zip(joints, skinweights):
+                        if any(j >= len(skin["joints"]) for j in js):
                             fail("E_JOINT_BOUNDS", ref, "Joint index exceeds skin palette; unknown weighted joints are never deleted.")
-                        if any(w < 0 for w in ws) or abs(sum(ws) - 1.0) > 1e-6:
+                        if any(w < 0 for w in ws) or abs(_sub(_sum(ws, ref), 1.0, ref)) > 1e-6:
                             fail("E_SKIN_WEIGHTS", ref, "Four skin weights must be nonnegative and sum to one; no implicit normalization.")
-                        ps = [transform(palettes[j], p) for j in js]
-                        skinned.append([sum(w*q[k] for w,q in zip(ws,ps)) for k in range(3)])
+                    palettes, skinned = {}, []
+                    for p, js, ws in zip(positions, joints, skinweights):
+                        contributions = []
+                        for j, w in zip(js, ws):
+                            if w == 0:
+                                continue
+                            if j not in palettes:
+                                palettes[j] = multiply(multiply(mesh_inverse, worlds[skin["joints"][j]]), ibms[j])
+                            contributions.append((w, transform(palettes[j], p)))
+                        skinned.append([_sum((_product(w,q[k],ref) for w,q in contributions),ref) for k in range(3)])
                     positions = skinned
                 if not all(number(x) for p in positions for x in p):
                     fail("E_NONFINITE", ref, "Geometry result overflows binary64.")
@@ -258,13 +267,8 @@ def reparent_local(child_world, new_parent_world):
     """Hierarchy probe only. Reject shear/singular TRS; no skin preservation claim."""
     vector(child_world, 16, "/child_world")
     vector(new_parent_world, 16, "/new_parent_world")
-    local = multiply(inverse(matrix(new_parent_world)), matrix(child_world))
-    if any(abs(local[3][i] - IDENTITY[3][i]) > 1e-9 for i in range(4)):
-        fail("E_TRANSFORM", "/reparent", "Expected affine transforms.")
-    axes = [tuple(local[r][c] for r in range(3)) for c in range(3)]
-    sizes = [math.sqrt(sum(x*x for x in a)) for a in axes]
-    if min(sizes) == 0:
-        fail("E_SINGULAR", "/reparent", "Reparented local has singular scale.")
-    if any(abs(sum(x*y for x,y in zip(axes[i],axes[j])) / (sizes[i]*sizes[j])) > 1e-9 for i in range(3) for j in range(i)):
-        fail("E_SHEAR", "/reparent", "Reparented local cannot be represented by TRS without shear.")
+    child = affine(matrix(child_world), 1e-9, '/child_world')
+    parent = affine(matrix(new_parent_world), 1e-9, '/new_parent_world')
+    local = multiply(inverse(parent), child)
+    validate_trs(local, ref='/reparent')
     return tuple(column_major(local))

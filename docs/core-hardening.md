@@ -56,12 +56,83 @@ changing binary geometry or analytical expectations. The eight-influence fixture
 now uses zero weights for its later set; copying positive weights would duplicate
 joints and exceed the global sum. It still tests explicit four-influence refusal.
 
+## Pure Python numerical hardening
+
+All math helpers require built-in finite int/float components with exact shapes;
+booleans and coercible objects refuse. Matrices contain row tuples internally;
+`matrix` reads glTF column-major values and `column_major` returns a detached
+column-major list. Generic multiply/inverse retain generic 4x4 semantics.
+Position transforms validate the whole affine bottom row before using the point.
+Reparent validates both original affine inputs and computes
+`inverse(new_parent_world) * child_world` before validating local TRS.
+
+Authored and overridden node matrices require nonzero columns, normalized axis
+orthogonality and normalized determinant magnitude near one. Reflections are
+accepted with signed scale. Axis lengths use scaled `hypot`; zero and infinite
+lengths refuse. The normalized determinant avoids raw huge/tiny determinant
+products. Explicit TRS zero scale is accepted until an inverse is required.
+World products and skin palettes can contain shear; a singular weighted POSITION
+blend is accepted when no inverse/decomposition is needed.
+
+Existing Python role tolerances remain: point affine1e-7, node affine1e-12,
+reparent affine/axis orthogonality1e-9, exact IBM bottom row, floating skin sum1e-6,
+authored quaternion squared length1e-5. Authored matrix orthogonality and
+normalized determinant magnitude use1e-9, the same decomposition role as
+reparent. These are project acceptance choices; no physical or universal
+conditioning budget follows. The primary glTF matrix conditions are at pinned
+specification831–846 (commit above), including the absolute normalized determinant
+and distinction between authored zero columns and explicit zero scale.
+
+Selected value arithmetic in helpers, interpolation, hierarchy, morph, skin
+and scalar execution checks every binary64 product/division and ordered
+accumulation intermediate. Overflow/nonfinite results and nonzero products/quotients rounded to zero
+refuse `E_NONFINITE`. Representable subnormal results, exact zero and cancellation
+remain valid. Partial-pivot inverse rejects exact zero pivots; there is no new
+condition-number cutoff or cancellation rescue using higher precision. This
+policy can refuse an exact mathematical result whose selected intermediate
+sequence is unrepresentable. It does not certify accuracy for ill-conditioned
+inputs. Signed huge morph weights and unbounded1.5e308 scalar identity remain
+valid when actual operations are representable.
+
+Quaternion helpers continue to normalize nonunit finite inputs; authored
+node/override/animation quaternions retain the existing unit check. No new strict
+unit mode or wire policy is added. Component LINEAR and duration-scaled Hermite
+retain ordered binary64 arithmetic; raw cubic quaternion tangents are preserved.
+Fractions must be in[0,1], Hermite duration positive, quaternion mode exact bool.
+
+Branch selection follows complete input validation. STEP selects its preceding
+key before duration/fraction arithmetic. LINEAR selects exact validated endpoints
+before subtraction. SLERP normalizes both inputs first; at zero it returns the
+first input, and at one it returns the second input in the hemisphere selected by
+an ordered binary64 dot sign. A rounded-zero dot tie retains the second input's
+sign. Certain rounded-zero products are omitted using their binary64 exponents;
+remaining endpoint dot products use binary64 rounding solely to select a sign.
+Interior interpolation retains checked overflow/underflow and operation order.
+Zero Hermite raw tangents contribute literal zero before coefficient*duration
+work. Skin palettes are composed only for positive influences and zero weights
+skip point arithmetic; every original matrix, all IBM rows including extras, and
+all four indices/weights remain validated. Active influence order and mesh-local
+four-influence POSITION semantics remain unchanged.
+Plain math helpers raise `Fault` with explicit type/shape/numeric/transform/curve
+codes; public decorated APIs translate these to `Result` diagnostics. Output
+containers own detached values.
+
+Package0.1.1, scalar wire/schema/operator1.0 and ordinary valid scalar/geometry
+golden bytes remain unchanged. Consumers should pin exact source/artifact hashes
+when adopting the stricter malformed/unsafe-input refusals.
+
 ## Remaining gates
 
-Scaled-safe affine/norm/dot/determinant math, huge identical axes/shear, reflection,
-underflow/overflow intermediate checks, authored zero matrix columns versus
-explicit TRS zero scale, singular weighted blends and native boundary parity are
-pending. S-H2 is incomplete until those numeric cases pass independent review.
-S-H3 accounting/resolution/graph work, S-H4 wrappers, S-H6 evidence policy, S-H5L
-packaging and X-CONSUMER installed review remain separate gates. This draft does
-not qualify installed/native artifacts, new platforms or production rigs.
+Fresh independent review of the pure numerical draft remains required. S-H2
+semantic and pure numerical work is proposed complete for its frozen scope;
+S-H2/S-H4 native numerical and strict boundary acceptance remains pending.
+Native default quaternion normalization, affine/TRS1e-10 and weights1e-6 remain
+unchanged. Native nested getters currently alias stored Domain/Instruction
+objects; detached copy/lifetime and pre-cast strict guards require the next S-H4
+commit. Plain native C++ multiply still returns Mat4; its checked Result/pilot ABI
+migration must be chosen explicitly in that contract.
+
+S-H3 accounting/resolution/graph work, S-H6 evidence policy, S-H5L packaging and
+X-CONSUMER installed review remain separate gates. Local actual bindings ON
+compatibility tests do not qualify a six-API backend, release wheel, additional
+platforms, ABI3, free-threaded Python, zero-copy/GIL behavior or production rigs.
