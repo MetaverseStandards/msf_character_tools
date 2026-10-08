@@ -119,7 +119,13 @@ def combined():
     rest["nodes"][1]["translation"]=[0,.25,0]
     (ROOT/"rest-not-bind.gltf").write_bytes(json_bytes(rest))
     eight = json.loads(json.dumps(doc))
-    eight["meshes"][0]["primitives"][0]["attributes"].update({"JOINTS_1":joints,"WEIGHTS_1":weights})
+    # A valid later influence set has zero weight here: duplicate positive
+    # weights from the first set would violate the core skin contract.
+    zero_weights = b.add([(0,0,0,0)]*6, "VEC4")
+    eight["bufferViews"] = b.views
+    eight["accessors"] = b.accessors
+    eight["buffers"][0] = {"byteLength": len(b.data), "uri": "data:application/octet-stream;base64,"+base64.b64encode(b.data).decode()}
+    eight["meshes"][0]["primitives"][0]["attributes"].update({"JOINTS_1":joints,"WEIGHTS_1":zero_weights})
     (ROOT/"eight-influence.gltf").write_bytes(json_bytes(eight))
 
 

@@ -29,7 +29,7 @@ def raw_asset():
            'buffers': [{'byteLength': 24, 'uri': 'data:application/octet-stream;base64,' + base64.b64encode(payload).decode()}],
            'bufferViews': [{'buffer': 0, 'byteLength': 12}, {'buffer': 0, 'byteOffset': 12, 'byteLength': 12}],
            'accessors': [{'bufferView': 0, 'componentType': 5126, 'type': 'VEC3', 'count': 1, 'min': [2, 0, 0], 'max': [2, 0, 0]},
-                         {'bufferView': 1, 'componentType': 5126, 'type': 'VEC3', 'count': 1}],
+                         {'bufferView': 1, 'componentType': 5126, 'type': 'VEC3', 'count': 1, 'min': [3, 0, 0], 'max': [3, 0, 0]}],
            'meshes': [{'primitives': [{'mode': 0, 'attributes': {'POSITION': 0}, 'targets': [{'POSITION': 1}]}]}],
            'nodes': [{'mesh': 0, 'weights': [.5]}]}
     return json.dumps(doc, separators=(',', ':')).encode()

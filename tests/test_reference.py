@@ -174,8 +174,8 @@ class AssetTests(Checks):
         data=bytes([0,0,0,0])+struct.pack("<fff",.1,.2,.3)
         d={"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"indices.bin"},{"byteLength":12,"uri":"values.bin"}],
            "bufferViews":[{"buffer":0,"byteLength":1},{"buffer":1,"byteLength":12}],
-           "accessors":[{"componentType":5126,"type":"VEC3","count":1,"sparse":{"count":1,"indices":{"bufferView":0,"componentType":5121},"values":{"bufferView":1}}}],
-           "meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}]}],"nodes":[{"mesh":0}]}
+           "accessors":[{"componentType":5126,"type":"VEC3","count":1,"min":[.1,.2,.3],"max":[.1,.2,.3],"sparse":{"count":1,"indices":{"bufferView":0,"componentType":5121},"values":{"bufferView":1}}}],
+           "meshes":[{"primitives":[{"mode":0,"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}]}],"nodes":[{"mesh":0}]}
         resolver=lambda uri:data[:1] if uri=="indices.bin" else data[4:]
         s=self.good(asset(d,resolver));b=self.good(m.morph_binding(s,source_doc()["signals"][1],0,0));b=dict(b);b["ref"]=dict(b["ref"]);b["ref"]["resource_sha256"]=hashlib.sha256(data[:1]).hexdigest()
         self.good(m.annotate_asset(s,{"bindings":[b]}))
@@ -215,7 +215,7 @@ class AssetTests(Checks):
         self.bad(asset(d),"E_SPARSE_INDEX")
 
     def test_bounds_binary_nan_sparse_index_and_hierarchy(self):
-        d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][0]["count"]=9999
+        d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][0]["byteOffset"]=9999*4
         self.bad(asset(d),"E_ACCESSOR_BOUNDS")
         d=json.loads((FIX/"combined.gltf").read_bytes());data=bytearray(base64.b64decode(d["buffers"][0]["uri"].split(",")[1]));struct.pack_into("<f",data,0,float("nan"));d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode()
         self.bad(asset(d),"E_NONFINITE")
@@ -288,13 +288,13 @@ class GeometryTests(Checks):
 
     def test_skin_bad_binary_types_signed_skin_and_joint_bounds(self):
         d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][1]["componentType"]=5122
-        s=self.good(asset(d));self.bad(m.evaluate_geometry(s),"E_GEOMETRY_TYPE")
+        self.bad(asset(d),"E_GEOMETRY_TYPE")
         for change in ("negative","joint"):
             d=json.loads((FIX/"combined.gltf").read_bytes());data=bytearray(base64.b64decode(d["buffers"][0]["uri"].split(",")[1]))
             aid=2 if change=="negative" else 1;offset=d["bufferViews"][d["accessors"][aid]["bufferView"]]["byteOffset"]
             struct.pack_into("<f" if change=="negative" else "<H",data,offset,-.4 if change=="negative" else 100)
-            d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode();s=self.good(asset(d))
-            self.bad(m.evaluate_geometry(s),"E_SKIN_WEIGHTS" if change=="negative" else "E_JOINT_BOUNDS")
+            d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode()
+            self.bad(asset(d),"E_SKIN_WEIGHTS" if change=="negative" else "E_JOINT_BOUNDS")
 
     def test_reparent_world_preservation_shear_and_singular(self):
         child=[0,1,0,0,-1,0,0,0,0,0,1,0,2,3,4,1]

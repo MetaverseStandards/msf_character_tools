@@ -13,6 +13,7 @@ from .snapshot import AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_
 from .math3d import IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize, column_major
 from .report import public, fail, Result, Report, Fault
 from .records import OwnedRecord, _admit
+from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
 
 
 def _time(timestamp):
@@ -29,54 +30,63 @@ def _asset(snapshot):
         fail("E_REQUIRED_EXTENSION", "/extensionsRequired", "Requested evaluation has unsupported required behavior: " + ", ".join(sorted(unsupported)))
 
 
+def _animation_times(snapshot, accessor_id):
+    times = tuple(x[0] for x in _decode_accessor(snapshot, accessor_id))
+    if any(t < 0 for t in times) or any(a >= b for a, b in zip(times, times[1:])):
+        fail("E_ANIMATION_TIME", "/animations", "Animation times must be nonnegative and strictly increasing.")
+    return times
+
+
+def _sample_channel(snapshot, animation_id, channel_id, timestamp):
+    anim = snapshot.document["animations"][animation_id]
+    channel = anim["channels"][channel_id]
+    target = channel["target"]
+    if "node" not in target or target["path"] not in CORE_PATHS:
+        return None
+    ref = f"/animations/{animation_id}/channels/{channel_id}"
+    sampler = anim["samplers"][channel["sampler"]]
+    path = target["path"]
+    count = animation_layout(snapshot.document, sampler, target, index, ref)
+    interpolation = sampler.get("interpolation", "LINEAR")
+    rows = _decode_accessor(snapshot, sampler["output"])
+    if path == "weights":
+        flat = tuple(x[0] for x in rows)
+        rows = tuple(flat[i:i+count] for i in range(0, len(flat), count))
+    values = rows[1::3] if interpolation == "CUBICSPLINE" else rows
+    if path == "rotation" and any(abs(sum(x*x for x in q) - 1) > 1e-5 for q in values):
+        fail("E_QUATERNION", "/animations", "Authored rotation keys must be unit quaternions.")
+    times = _animation_times(snapshot, sampler["input"])
+    if timestamp <= times[0]:
+        value = values[0]
+    elif timestamp >= times[-1]:
+        value = values[-1]
+    else:
+        i = bisect.bisect_right(times, timestamp) - 1
+        dt = times[i+1] - times[i]
+        t = (timestamp - times[i]) / dt
+        if interpolation == "STEP":
+            value = values[i]
+        elif interpolation == "LINEAR":
+            value = slerp(values[i], values[i+1], t) if path == "rotation" else tuple(x + t*(y-x) for x, y in zip(values[i], values[i+1]))
+        else:
+            h00, h10, h01, h11 = 2*t**3-3*t**2+1, t**3-2*t**2+t, -2*t**3+3*t**2, t**3-t**2
+            value = tuple(h00*p0 + h10*dt*m0 + h01*p1 + h11*dt*m1 for p0, m0, p1, m1 in zip(rows[3*i+1], rows[3*i+2], rows[3*(i+1)+1], rows[3*(i+1)]))
+    if path == "rotation":
+        value = normalize(value)
+    if not all(number(x) for x in value):
+        fail("E_NONFINITE", "/animations", "Animation result is not finite.")
+    return target["node"], path, tuple(value)
+
+
 def _sample_animation(snapshot, animation_id, timestamp):
     _time(timestamp)
     anim = index(animation_id, snapshot.document.get("animations", ()), "/animations")
     result = {}
-    for ci, channel in enumerate(anim["channels"]):
-        target = channel["target"]
-        if "node" not in target:
-            fail("E_ANIMATION_TARGET", f"/animations/{animation_id}/channels/{ci}", "Core evaluation requires explicit target.node.")
-        sampler = anim["samplers"][channel["sampler"]]
-        times = tuple(x[0] for x in _decode_accessor(snapshot, sampler["input"]))
-        if any(t < 0 for t in times) or any(a >= b for a, b in zip(times, times[1:])):
-            fail("E_ANIMATION_TIME", "/animations", "Animation times must be nonnegative and strictly increasing.")
-        path = target["path"]
-        node = snapshot.document["nodes"][target["node"]]
-        count = len(snapshot.document["meshes"][node["mesh"]]["primitives"][0].get("targets", ())) if path == "weights" else 4 if path == "rotation" else 3
-        a = snapshot.document["accessors"][sampler["output"]]
-        expected_type = "SCALAR" if path == "weights" else "VEC4" if path == "rotation" else "VEC3"
-        interpolation = sampler.get("interpolation", "LINEAR")
-        factor = 3 if interpolation == "CUBICSPLINE" else 1
-        if count == 0 or a["componentType"] != 5126 or a["type"] != expected_type or a["count"] != len(times) * factor * (count if path == "weights" else 1):
-            fail("E_ANIMATION_TYPE", "/animations", "Animation output component type, shape or count disagrees with target.")
-        rows = _decode_accessor(snapshot, sampler["output"])
-        if path == "weights":
-            flat = tuple(x[0] for x in rows)
-            rows = tuple(flat[i:i+count] for i in range(0, len(flat), count))
-        values = rows[1::3] if interpolation == "CUBICSPLINE" else rows
-        if path == "rotation" and any(abs(sum(x*x for x in q) - 1) > 1e-5 for q in values):
-            fail("E_QUATERNION", "/animations", "Authored rotation keys must be unit quaternions.")
-        if timestamp <= times[0]:
-            value = values[0]
-        elif timestamp >= times[-1]:
-            value = values[-1]
-        else:
-            i = bisect.bisect_right(times, timestamp) - 1
-            dt = times[i+1] - times[i]
-            t = (timestamp - times[i]) / dt
-            if interpolation == "STEP":
-                value = values[i]
-            elif interpolation == "LINEAR":
-                value = slerp(values[i], values[i+1], t) if path == "rotation" else tuple(x + t*(y-x) for x, y in zip(values[i], values[i+1]))
-            else:
-                h00, h10, h01, h11 = 2*t**3-3*t**2+1, t**3-2*t**2+t, -2*t**3+3*t**2, t**3-t**2
-                value = tuple(h00*p0 + h10*dt*m0 + h01*p1 + h11*dt*m1 for p0, m0, p1, m1 in zip(rows[3*i+1], rows[3*i+2], rows[3*(i+1)+1], rows[3*(i+1)]))
-        if path == "rotation":
-            value = normalize(value)
-        if not all(number(x) for x in value):
-            fail("E_NONFINITE", "/animations", "Animation result is not finite.")
-        result.setdefault(target["node"], {})[path] = tuple(value)
+    for ci in range(len(anim["channels"])):
+        sampled = _sample_channel(snapshot, animation_id, ci, timestamp)
+        if sampled is not None:
+            node, path, value = sampled
+            result.setdefault(node, {})[path] = value
     return result
 
 
@@ -151,7 +161,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
             if label == "morph_weights":
                 if "mesh" not in node:
                     fail("E_MORPH", "/morph_weights", "Morph override needs a mesh node.")
-                count = len(snapshot.document["meshes"][node["mesh"]]["primitives"][0].get("targets", ()))
+                count = morph_count(snapshot.document["meshes"][node["mesh"]])
                 vector(item, count, "/morph_weights")
                 item = {"weights": tuple(item)}
             else:
@@ -161,7 +171,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                 for field, count in (("matrix",16), ("translation",3), ("rotation",4), ("scale",3)):
                     if field in item:
                         vector(item[field], count, "/node_transforms/" + field)
-            if set(item) & set(overrides.get(ni, {})) or "matrix" in item and overrides.get(ni):
+            if set(item) & set(overrides.get(ni, {})) or "matrix" in item and set(overrides.get(ni, {})) - {"weights"}:
                 fail("E_MULTIPLE_WRITERS", f"/nodes/{ni}", "Animation and explicit overrides drive the same property.")
             overrides.setdefault(ni, {}).update(item)
     worlds = _worlds(snapshot, overrides)
@@ -190,7 +200,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                     if any(i[0] >= count for i in ix):
                         fail("E_INDEX_BOUNDS", ref, "Primitive index exceeds vertex count.")
                 targets = primitive.get("targets", ())
-                weights = overrides.get(ni, {}).get("weights", node.get("weights", mesh.get("weights", tuple(0.0 for _ in targets))))
+                weights = overrides.get(ni, {}).get("weights", node.get("weights", mesh.get("weights", tuple(0.0 for _ in range(morph_count(mesh))))))
                 positions = [list(map(float, p)) for p in basis]
                 for weight, target in zip(weights, targets):
                     if "POSITION" in target:
@@ -208,7 +218,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                     skinweights = _accessor(snapshot, attrs["WEIGHTS_0"], "VEC4", {5121,5123,5126}, count, normalized, ref)
                     ibms = tuple(matrix(x) for x in _decode_accessor(snapshot, skin["inverseBindMatrices"])) if "inverseBindMatrices" in skin else tuple(IDENTITY for _ in skin["joints"])
                     for ibm in ibms:
-                        if any(abs(ibm[3][j] - IDENTITY[3][j]) > 1e-7 for j in range(4)):
+                        if ibm[3] != IDENTITY[3]:
                             fail("E_SKIN_TYPE", ref, "Inverse bind matrices must be affine.")
                     mesh_inverse = inverse(worlds[ni])
                     palettes = tuple(multiply(multiply(mesh_inverse, worlds[j]), ibm) for j, ibm in zip(skin["joints"], ibms))

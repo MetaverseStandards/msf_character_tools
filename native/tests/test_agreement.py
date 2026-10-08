@@ -32,7 +32,9 @@ def fixture():
         return len(accessors)-1
 
     position = accessor([1, 0, 0], 5126, "VEC3", 1)
+    accessors[position].update(min=[1,0,0], max=[1,0,0])
     delta = accessor([0, 1, 0], 5126, "VEC3", 1)
+    accessors[delta].update(min=[0,1,0], max=[0,1,0])
     joints = accessor([0, 0, 0, 0], 5123, "VEC4", 1)
     weights = accessor([1, 0, 0, 0], 5126, "VEC4", 1)
     ibm = accessor([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1], 5126, "MAT4", 1)
