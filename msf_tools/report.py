@@ -82,7 +82,7 @@ def fail(code, ref, message, remediation="Correct the referenced input."):
 
 
 def public(fn):
-    """Translate exceptions at every public operation, including helper APIs."""
+    """Translate exceptions for decorated Result APIs; plain helpers raise Fault."""
     @wraps(fn)
     def wrapped(*args, **kwargs):
         try:

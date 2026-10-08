@@ -16,6 +16,7 @@ from urllib.parse import unquote, urlsplit
 from .authoring import keys, string, domain
 from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number
 from .report import public, fail, Report, Result, Diagnostic, Fault
+from .records import OwnedRecord, _admit
 
 COMPONENTS = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
               5123: ("H", 2), 5125: ("I", 4), 5126: ("f", 4)}
@@ -50,7 +51,7 @@ class Chunk:
 
 
 @dataclass(frozen=True)
-class AssetSnapshot:
+class AssetSnapshot(OwnedRecord):
     format: str
     original_bytes: bytes
     sha256: str
@@ -62,9 +63,14 @@ class AssetSnapshot:
 
     @property
     def resource_hashes(self):
+        self._check_integrity()
+        return self._resource_hashes()
+
+    def _resource_hashes(self):
         return {r.id: r.sha256 for r in self.resources if r.sha256 is not None}
 
     def to_dict(self):
+        self._check_integrity()
         return {"schema_version": "1.0", "format": self.format, "asset_sha256": self.sha256,
                 "document": thaw(self.document), "resources": [r.to_dict() for r in self.resources],
                 "chunks": [{"type": c.type, "byte_length": len(c.data), "sha256": digest(c.data)} for c in self.chunks],
@@ -72,6 +78,47 @@ class AssetSnapshot:
                 "capabilities": {"geometry": ["POSITION", "relative_morph", "four_influence_LBS"],
                                  "animations": ["STEP", "LINEAR", "CUBICSPLINE"],
                                  "supported_required_extensions": sorted(SUPPORTED_REQUIRED_EXTENSIONS)}}
+
+
+    def _check_consistency(self):
+        if type(self.original_bytes) is not bytes or digest(self.original_bytes) != self.sha256:
+            fail("E_RECORD_INTEGRITY", "/", "Snapshot original bytes and digest disagree.")
+        if self.format == "profile":
+            doc = parse_json(self.original_bytes)
+            if doc != thaw(self.document) or doc.get("schema_version") != "1.0" or doc.get("channels") != thaw(self.channels):
+                fail("E_RECORD_INTEGRITY", "/", "Profile raw document and channels disagree.")
+            if self.resources or self.chunks or self.bindings:
+                fail("E_RECORD_INTEGRITY", "/", "Profile contains asset-only state.")
+            return
+        kind, doc, chunks, bin_chunk = _parse_asset(self.original_bytes, self.format)
+        if kind != self.format or doc != thaw(self.document) or chunks != self.chunks:
+            fail("E_RECORD_INTEGRITY", "/", "Snapshot source, parsed view or chunks disagree.")
+        _validate_document(doc)  # Includes hierarchy cycles before any world traversal.
+        expected = [(f"/buffers/{i}", b.get("uri"), b["byteLength"]) for i, b in enumerate(doc.get("buffers", ()))]
+        expected += [(f"/images/{i}", img["uri"], None) for i, img in enumerate(doc.get("images", ())) if "uri" in img]
+        if len(expected) != len(self.resources):
+            fail("E_RECORD_INTEGRITY", "/resources", "Resource inventory disagrees with source.")
+        for (rid, uri, length), resource in zip(expected, self.resources):
+            if type(resource) is not Resource or resource.id != rid or resource.uri != uri or length is not None and resource.byte_length != length:
+                fail("E_RECORD_INTEGRITY", rid, "Resource declaration disagrees with source.")
+            data = resource.data
+            if data is None:
+                if resource.sha256 is not None or uri is None or uri.startswith("data:"):
+                    fail("E_RECORD_INTEGRITY", rid, "Required embedded resource is missing.")
+            else:
+                if type(data) is not bytes or digest(data) != resource.sha256 or len(data) < resource.byte_length:
+                    fail("E_RECORD_INTEGRITY", rid, "Resource bytes and identity disagree.")
+                if length is None and resource.byte_length != len(data):
+                    fail("E_RECORD_INTEGRITY", rid, "Image length and bytes disagree.")
+                embedded = bin_chunk[:length] if uri is None else _data_uri(uri, rid) if uri.startswith("data:") else None
+                if embedded is not None and data != embedded:
+                    fail("E_RECORD_INTEGRITY", rid, "Embedded resource disagrees with raw source.")
+        channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in self.bindings}
+        if channels != self.channels:
+            fail("E_RECORD_INTEGRITY", "/channels", "Channels disagree with bindings.")
+        if self.bindings:
+            _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": self.sha256,
+                                     "resource_hashes": self._resource_hashes(), "bindings": self.bindings})
 
 
 class LocalResolver:
@@ -221,6 +268,7 @@ def _decode_accessor(snapshot, accessor_id):
 def decode_accessor(snapshot, index):
     if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
         fail("E_SNAPSHOT", "/", "Expected a glTF asset snapshot.")
+    snapshot._check_integrity()
     return _decode_accessor(snapshot, index)
 
 
@@ -462,31 +510,24 @@ def _data_uri(uri, ref):
         fail("E_RESOURCE_URI", ref, "Invalid base64 resource.")
 
 
-@public
-def inspect_asset(bytes, format, resolver=None, sidecar=None):
-    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
-        fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
-    if len(bytes) > MAX_ASSET_BYTES:
-        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget.")
-    if resolver is not None and not callable(resolver):
-        fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
+def _parse_asset(raw, format):
     chunks = []
     bin_chunk = None
     if format.lower() == "glb":
-        if len(bytes) < 20:
+        if len(raw) < 20:
             fail("E_GLB_HEADER", "/", "Truncated GLB header.")
-        magic, version, length = struct.unpack_from("<III", bytes)
-        if magic != 0x46546C67 or version != 2 or length != len(bytes) or length % 4:
+        magic, version, length = struct.unpack_from("<III", raw)
+        if magic != 0x46546C67 or version != 2 or length != len(raw) or length % 4:
             fail("E_GLB_HEADER", "/", "GLB magic/version/total length mismatch.")
         cursor = 12
-        while cursor < len(bytes):
-            if cursor + 8 > len(bytes):
+        while cursor < len(raw):
+            if cursor + 8 > len(raw):
                 fail("E_GLB_CHUNK", "/", "Truncated chunk header.")
-            size, kind = struct.unpack_from("<II", bytes, cursor)
+            size, kind = struct.unpack_from("<II", raw, cursor)
             cursor += 8
-            if size % 4 or cursor + size > len(bytes):
+            if size % 4 or cursor + size > len(raw):
                 fail("E_GLB_CHUNK", "/", "Chunk length is unaligned or exceeds GLB.")
-            chunks.append(Chunk(kind, bytes[cursor:cursor + size]))
+            chunks.append(Chunk(kind, raw[cursor:cursor + size]))
             cursor += size
         if not chunks or chunks[0].type != 0x4E4F534A or sum(c.type == 0x4E4F534A for c in chunks) != 1 or sum(c.type == 0x004E4942 for c in chunks) > 1:
             fail("E_GLB_CHUNK", "/", "GLB needs one first JSON chunk and at most one BIN chunk.")
@@ -498,8 +539,20 @@ def inspect_asset(bytes, format, resolver=None, sidecar=None):
         doc = parse_json(chunks[0].data.decode("utf-8"))
         kind = "glb"
     else:
-        doc = parse_json(bytes.decode("utf-8"))
+        doc = parse_json(raw.decode("utf-8"))
         kind = "gltf"
+    return kind, doc, tuple(chunks), bin_chunk
+
+
+@public
+def inspect_asset(bytes, format, resolver=None, sidecar=None):
+    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
+        fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
+    if len(bytes) > MAX_ASSET_BYTES:
+        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget.")
+    if resolver is not None and not callable(resolver):
+        fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
+    kind, doc, chunks, bin_chunk = _parse_asset(bytes, format)
     _validate_document(doc)
     resources = []
     warnings = []
@@ -565,17 +618,19 @@ def inspect_asset(bytes, format, resolver=None, sidecar=None):
         channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in sc["bindings"]}
         snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze(channels), freeze(sc["bindings"]))
     report = Report(tuple(errors + warnings))
-    return Result(snapshot if report.ok else None, report)
+    return Result(_admit(snapshot) if report.ok else None, report)
 
 
 @dataclass(frozen=True)
-class Sidecar:
+class Sidecar(OwnedRecord):
     document: Mapping
 
     def to_dict(self):
+        self._check_integrity()
         return thaw(self.document)
 
     def to_bytes(self):
+        self._check_integrity()
         return canonical_json(self.document)
 
 
@@ -609,11 +664,13 @@ def _binding(snapshot, b):
 
 
 def _validate_sidecar(snapshot, sidecar):
+    if isinstance(sidecar, Sidecar):
+        sidecar._check_integrity()
     sc = sidecar.document if isinstance(sidecar, Sidecar) else sidecar
     keys(sc, {"schema_version", "asset_sha256", "resource_hashes", "bindings"}, {"metadata"}, "/sidecar")
     if sc["schema_version"] != "1.0":
         fail("E_SIDECAR_VERSION", "/sidecar", "Unsupported sidecar version.")
-    if sc["asset_sha256"] != snapshot.sha256 or sc["resource_hashes"] != snapshot.resource_hashes:
+    if sc["asset_sha256"] != snapshot.sha256 or sc["resource_hashes"] != snapshot._resource_hashes():
         fail("E_STALE_SOURCE", "/sidecar", "Sidecar asset or consumed resource hashes are stale.")
     if "metadata" in sc and not isinstance(sc["metadata"], Mapping):
         fail("E_TYPE", "/sidecar/metadata", "Metadata must be an object.")
@@ -636,15 +693,19 @@ def _validate_sidecar(snapshot, sidecar):
 def annotate_asset(snapshot, annotations):
     if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
         fail("E_SNAPSHOT", "/", "Annotation requires an inspected glTF asset.")
+    snapshot._check_integrity()
     keys(annotations, {"bindings"}, {"metadata"}, "/annotations")
     sc = {"schema_version": "1.0", "asset_sha256": snapshot.sha256,
           "resource_hashes": snapshot.resource_hashes, **thaw(annotations)}
     _validate_sidecar(snapshot, sc)
-    return Sidecar(freeze(sc))
+    return _admit(Sidecar(sc))
 
 
 @public
 def morph_binding(snapshot, signal, node, target):
+    if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
+        fail("E_SNAPSHOT", "/", "Binding requires an inspected glTF asset.")
+    snapshot._check_integrity()
     n = index(node, snapshot.document.get("nodes", ()), "/node")
     if "mesh" not in n:
         fail("E_BINDING_REFERENCE", "/node", "Node must have a mesh.")

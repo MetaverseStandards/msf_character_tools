@@ -8,21 +8,29 @@ import io
 from .authoring import ValidatedAuthoring, _TOKEN
 from .common import canonical_json, digest, thaw
 from .report import public, fail
+from .records import OwnedRecord, _admit
 
 
 @dataclass(frozen=True)
-class Pack:
+class Pack(OwnedRecord):
     document: Mapping
     sha256: str
 
     def to_dict(self):
+        self._check_integrity()
         return thaw(self.document)
 
     def to_bytes(self):
+        self._check_integrity()
         return canonical_json(self.document)
+
+    def _check_consistency(self):
+        if digest(canonical_json(self.document)) != self.sha256:
+            fail("E_RECORD_INTEGRITY", "/", "Pack canonical bytes and digest disagree.")
 
     @property
     def signals(self):
+        self._check_integrity()
         return {s["id"]: s for s in self.document["signals"]}
 
 
@@ -30,10 +38,12 @@ class Pack:
 def compile_pack(validated_authoring):
     if not isinstance(validated_authoring, ValidatedAuthoring) or validated_authoring._token is not _TOKEN:
         fail("E_VALIDATED_REQUIRED", "/", "compile_pack requires validated_authoring.", "Call validate_authoring or load_authoring and check its Result first.")
-    return Pack(validated_authoring.document, digest(canonical_json(validated_authoring.document)))
+    validated_authoring._check_integrity()
+    return _admit(Pack(validated_authoring.document, digest(canonical_json(validated_authoring.document))))
 
 
 def survey_csv(pack):
+    pack._check_integrity()
     stream = io.StringIO(newline="")
     writer = csv.writer(stream, lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
     profiles = pack.document["profiles"]
@@ -45,6 +55,7 @@ def survey_csv(pack):
 
 
 def coverage(pack):
+    pack._check_integrity()
     signals = pack.document["signals"]
     rules = [r for mapping in pack.document["mappings"] for r in mapping["rules"]]
     dispositions = ("mapped", "unsupported", "unresolved", "excluded")

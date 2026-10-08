@@ -39,7 +39,12 @@ def digest(data):
 
 
 def number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def integer(value):
@@ -59,16 +64,22 @@ def json_value(value, ref="/", depth=0):
         for key, v in value.items():
             if type(key) is not str:
                 fail("E_TYPE", ref, "Object keys must be strings.")
-            json_value(v, f"{ref}/{key}", depth + 1)
+            json_value(v, f"{'' if ref == '/' else ref}/{key}", depth + 1)
         return
     if isinstance(value, (tuple, list)):
         for i, v in enumerate(value):
-            json_value(v, f"{ref}/{i}", depth + 1)
+            json_value(v, f"{'' if ref == '/' else ref}/{i}", depth + 1)
         return
     fail("E_TYPE", ref, "Expected a JSON-compatible value.")
 
 
 def parse_json(data):
+    def parse_int(text):
+        # More than 309 significant decimal digits cannot fit binary64. Avoid
+        # Python's decimal integer digit ceiling and let json_value report its path.
+        if len(text.lstrip("-")) > 309:
+            return -math.inf if text.startswith("-") else math.inf
+        return int(text)
     def pairs(items):
         out = {}
         for k, v in items:
@@ -78,6 +89,6 @@ def parse_json(data):
         return out
     def invalid(value):
         fail("E_NONFINITE", "/", f"Invalid JSON constant {value}.")
-    result = json.loads(data, object_pairs_hook=pairs, parse_constant=invalid)
+    result = json.loads(data, object_pairs_hook=pairs, parse_constant=invalid, parse_int=parse_int)
     json_value(result)
     return result

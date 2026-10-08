@@ -12,6 +12,7 @@ from .authoring import keys
 from .snapshot import AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS
 from .math3d import IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize, column_major
 from .report import public, fail, Result, Report, Fault
+from .records import OwnedRecord, _admit
 
 
 def _time(timestamp):
@@ -22,6 +23,7 @@ def _time(timestamp):
 def _asset(snapshot):
     if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
         fail("E_SNAPSHOT", "/", "Expected an inspected glTF/GLB snapshot.")
+    snapshot._check_integrity()
     unsupported = set(snapshot.document.get("extensionsRequired", ())) - SUPPORTED_REQUIRED_EXTENSIONS
     if unsupported:
         fail("E_REQUIRED_EXTENSION", "/extensionsRequired", "Requested evaluation has unsupported required behavior: " + ", ".join(sorted(unsupported)))
@@ -113,11 +115,12 @@ def _worlds(snapshot, overrides):
 
 
 @dataclass(frozen=True)
-class GeometryValues:
+class GeometryValues(OwnedRecord):
     timestamp: float
     instances: tuple
 
     def to_dict(self):
+        self._check_integrity()
         return {"timestamp": self.timestamp, "instances": thaw(self.instances)}
 
 
@@ -227,7 +230,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
     if not instances:
         fail("E_GEOMETRY_EMPTY", "/nodes", "Asset has no mesh instances.")
     report = Report(tuple(diagnostics))
-    return Result(GeometryValues(float(timestamp), tuple(instances)) if report.ok else None, report)
+    return Result(_admit(GeometryValues(float(timestamp), tuple(instances))) if report.ok else None, report)
 
 
 @public

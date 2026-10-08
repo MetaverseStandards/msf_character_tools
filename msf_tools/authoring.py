@@ -9,8 +9,9 @@ import os
 import re
 import tomllib
 
-from .common import freeze, thaw, json_value, number
+from .common import thaw, json_value, number
 from .report import public, Diagnostic, Report, Result, Fault, fail
+from .records import OwnedRecord, _admit
 
 ARRAYS = ("signals", "profiles", "mappings", "evidence")
 TOP = {"schema_version", "data_version", "operator_version", "id", "license", *ARRAYS}
@@ -23,20 +24,27 @@ RULE_REQUIRED = {"id", "inputs", "outputs", "operator", "disposition", "assumpti
 DISPOSITIONS = {"mapped", "unsupported", "unresolved", "excluded"}
 STATUSES = {"verified_current", "proposed", "unresolved"}
 _TOKEN = object()
-
+# Explicit blank set shared by the authoring/pack 1.0 schema character class.
+# Includes the existing control whitespace policy and the U+FEFF format mark.
+_BLANK_CHARACTERS = ("\u0009\u000a\u000b\u000c\u000d\u001c\u001d\u001e\u001f\u0020"
+                     "\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+                     "\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")
 
 @dataclass(frozen=True)
-class ValidatedAuthoring:
+class ValidatedAuthoring(OwnedRecord):
     document: Mapping
     _token: object
 
     def to_dict(self):
+        self._check_integrity()
         return thaw(self.document)
 
 
 def keys(obj, required, optional, ref):
     if not isinstance(obj, Mapping):
         fail("E_TYPE", ref, "Expected an object.")
+    if any(type(key) is not str for key in obj):
+        fail("E_TYPE", ref, "Object keys must be strings.")
     missing = required - obj.keys()
     extra = obj.keys() - required - optional
     if missing:
@@ -46,7 +54,7 @@ def keys(obj, required, optional, ref):
 
 
 def string(value, ref):
-    if type(value) is not str or not value.strip():
+    if type(value) is not str or not value.strip(_BLANK_CHARACTERS):
         fail("E_TYPE", ref, "Expected a nonempty string.")
 
 
@@ -59,6 +67,13 @@ def strings(value, ref, unique=True, nonempty=False):
         fail("E_DUPLICATE", ref, "Duplicate array entries.")
     if nonempty and not value:
         fail("E_REQUIRED", ref, "At least one entry is required.")
+
+
+def coupling(value, ref):
+    if type(value) is str:
+        string(value, ref)
+    else:
+        strings(value, ref)
 
 
 def enum(value, choices, ref):
@@ -111,12 +126,15 @@ def validate_signal(s, ref):
             string(s[k], f"{ref}/{k}")
     if "validity" in s and type(s["validity"]) not in (str, bool):
         fail("E_TYPE", f"{ref}/validity", "Expected a boolean or explicit validity description.")
+    if type(s.get("validity")) is str:
+        string(s["validity"], f"{ref}/validity")
     if "confidence" in s and not (type(s["confidence"]) is str or
             number(s["confidence"]) and 0 <= s["confidence"] <= 1):
         fail("E_TYPE", ref, "Confidence must be a description or number in [0,1].")
-    if "coupling" in s and not (type(s["coupling"]) is str or
-            isinstance(s["coupling"], (list, tuple)) and all(type(x) is str for x in s["coupling"])):
-        fail("E_TYPE", ref, "Coupling must be a string or array of strings.")
+    if type(s.get("confidence")) is str:
+        string(s["confidence"], f"{ref}/confidence")
+    if "coupling" in s:
+        coupling(s["coupling"], f"{ref}/coupling")
     if "metadata" in s and not isinstance(s["metadata"], Mapping):
         fail("E_TYPE", ref, "metadata must be an object.")
 
@@ -136,9 +154,8 @@ def validate_rule(r, ref):
         enum(r["mapping_quality"], {"exact", "approximate"}, ref)
     elif "mapping_quality" in r:
         fail("E_DISPOSITION", ref, "mapping_quality is only valid on mapped rules.")
-    if "coupling" in r and not (type(r["coupling"]) is str or
-            isinstance(r["coupling"], (list, tuple)) and all(type(x) is str for x in r["coupling"])):
-        fail("E_TYPE", ref, "Invalid coupling description.")
+    if "coupling" in r:
+        coupling(r["coupling"], f"{ref}/coupling")
     op = r["operator"]
     keys(op, {"id"}, {"scale", "offset", "weights"}, f"{ref}/operator")
     enum(op["id"], {"identity", "affine", "weighted_sum"}, ref)
@@ -173,8 +190,7 @@ def validate_authoring(document):
             return False
     if not check(keys, document, TOP, set(), "/"):
         return Result(None, Report(tuple(diagnostics)))
-    if not check(json_value, document):
-        return Result(None, Report(tuple(diagnostics)))
+    check(json_value, document)
     for k in ("id", "license"):
         check(string, document[k], f"/{k}")
     check(enum, document["schema_version"], {"1.0"}, "/schema_version")
@@ -258,7 +274,7 @@ def validate_authoring(document):
                     if type(item) is str and item not in inventory:
                         check(fail, "E_REFERENCE", f"/rules/{rid}/{field}", f"Unknown reference {item}.")
     report = Report(tuple(diagnostics))
-    return Result(ValidatedAuthoring(freeze(thaw(document)), _TOKEN) if report.ok else None, report)
+    return Result(_admit(ValidatedAuthoring(document, _TOKEN)) if report.ok else None, report)
 
 
 @public
