@@ -159,8 +159,13 @@ class MappingTests(Checks):
         self.good(compile_doc(d));self.bad(compile_map(d),"E_UNRESOLVED_RULE")
         d=source_doc();d["mappings"][0]["rules"][0]["mapping_quality"]="approximate"
         self.bad(compile_map(d),"E_APPROXIMATION")
+        p=self.good(compile_doc(d))
+        self.bad(m.compile_mapping(p,self.good(m.profile_snapshot(p,"source")),self.good(m.profile_snapshot(p,"target")),"wink",True),"E_LOSS_REQUIRED")
+        # Approximation needs an authored loss; compilation preserves it.
+        loss={"category":"signal","effect":"approximated","reason":"Original declared synthetic approximation.","refs":["input.wink","output.wink"]}
+        d["mappings"][0]["rules"][0]["loss_annotations"]=[loss]
         p=self.good(compile_doc(d)); c=self.good(m.compile_mapping(p,self.good(m.profile_snapshot(p,"source")),self.good(m.profile_snapshot(p,"target")),"wink",True))
-        self.assertEqual(c.losses[0].effect,"approximated")
+        self.assertEqual(c.losses[0].to_dict(),loss)
 
 
 class AssetTests(Checks):

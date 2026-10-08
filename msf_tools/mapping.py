@@ -13,6 +13,8 @@ from .report import public, fail, Fault, Result, Report, Loss
 from .records import OwnedRecord, _admit
 from .math3d import _add, _product, _sum
 
+_LOSS_EFFECTS = {"approximated", "dropped", "unknown"}
+
 
 @public
 def profile_snapshot(pack, id):
@@ -103,11 +105,27 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
     if mapping is None:
         fail("E_MAPPING_REFERENCE", "/mappings", f"Unknown mapping {mapping_id}.")
     diagnostics, losses = [], []
+    evidence = {e["id"]: e for e in pack.document["evidence"]}
     def check(fn, *args):
         try:
             fn(*args)
         except Fault as exc:
             diagnostics.append(exc.diagnostic)
+    def execution_evidence(record, kind, rule):
+        # Inventory validation preserves statuses; execution checks each own
+        # reference. These declarations do not establish domain equivalence.
+        sid, status = record["id"], record["evidence_status"]
+        if kind == "Rule":
+            if status == "unresolved":
+                check(fail, "E_EVIDENCE_STATUS", sid, f"Rule {sid} has unresolved evidence_status and cannot execute.")
+        elif status == "unresolved" or rule["evidence_status"] == "verified_current" and status != "verified_current":
+            check(fail, "E_EVIDENCE_STATUS", sid, f"Signal {sid} has evidence_status {status}, incompatible with rule {rule['id']} ({rule['evidence_status']}).")
+        if not record["evidence"]:
+            check(fail, "E_EVIDENCE_REQUIRED", sid, f"{kind} {sid} requires nonempty evidence for execution.")
+        for eid in record["evidence"]:
+            ref_status = evidence[eid]["status"]
+            if ref_status == "unresolved" or status == "verified_current" and ref_status != "verified_current":
+                check(fail, "E_EVIDENCE_COMPATIBILITY", sid, f"{kind} {sid} includes evidence {eid} with status {ref_status}, incompatible with its evidence_status {status}.")
     def channel(sid, snapshot):
         if sid not in (snapshot.channels or {}):
             fail("E_CHANNEL_REFERENCE", sid, "Required channel is absent from snapshot.", "Use profile_snapshot or hash-bound structural sidecar bindings.")
@@ -121,17 +139,19 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
         rid = r["id"]
         if r["disposition"] != "mapped":
             check(fail, "E_UNRESOLVED_RULE", rid, "Requested mapping contains an unsupported, unresolved or excluded rule.")
+        execution_evidence(r, "Rule", r)
         if r.get("mapping_quality") == "approximate" and not allow_approximation:
             check(fail, "E_APPROXIMATION", rid, "Approximate rule requires explicit opt-in.")
         if r.get("mapping_quality") == "approximate" and not r["loss_annotations"]:
-            losses.append(Loss("signal", "approximated", "Declared approximate mapping.", (rid,)))
+            check(fail, "E_LOSS_REQUIRED", rid, f"Approximate rule {rid} requires explicit loss_annotations.")
         for loss in r["loss_annotations"]:
-            if loss["effect"] in ("approximated", "dropped", "unknown") and not allow_approximation:
+            if loss["effect"] in _LOSS_EFFECTS and not allow_approximation:
                 check(fail, "E_APPROXIMATION", rid, "Declared loss requires explicit approximation opt-in.")
             losses.append(Loss(loss["category"], loss["effect"], loss["reason"], tuple(loss["refs"]), loss.get("units"), loss.get("bound")))
         for sid in (*r["inputs"], *r["outputs"]):
             if signals[sid]["disposition"] != "mapped":
                 check(fail, "E_SIGNAL_DISPOSITION", rid, f"Signal {sid} is not mapped.")
+            execution_evidence(signals[sid], "Signal", r)
         output = r["outputs"][0]
         if output in writers:
             check(fail, "E_MULTIPLE_WRITERS", output, "Two rules write the same signal.")
@@ -145,6 +165,20 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
             check(fail, "E_CALIBRATION", rid, "Identity requires the same explicit calibration basis.")
         if r["operator"]["id"] == "identity" and inputs[0]["domain"] != out["domain"]:
             check(fail, "E_DOMAIN_COMPATIBILITY", rid, "Identity requires equal declared domains.")
+        if r["operator"]["id"] == "identity":
+            for field in ("neutral", "side", "coupling"):
+                if (field in inputs[0]) != (field in out) or field in inputs[0] and inputs[0][field] != out[field]:
+                    check(fail, f"E_{field.upper()}_COMPATIBILITY", rid,
+                          f"Identity requires equal presence and value of {field} on {inputs[0]['id']} and {output}.")
+        else:
+            # Exact arithmetic on one basis needs no blanket assumption guard.
+            # A changed basis or declared loss needs an authored derivation;
+            # its entailment remains the domain reviewer's responsibility.
+            mixed_basis = any(s["calibration"] != out["calibration"] or s["units"] != out["units"] for s in inputs)
+            declared_loss = any(loss["effect"] in _LOSS_EFFECTS for loss in r["loss_annotations"])
+            if not r["assumptions"] and (mixed_basis or r.get("mapping_quality") == "approximate" or declared_loss):
+                check(fail, "E_DERIVATION_ASSUMPTIONS", rid,
+                      f"Nonidentity rule {rid} requires explicit derivation assumptions for differing calibration/units or declared approximation/loss.")
     dependencies = {r["id"]: {writers[s] for s in r["inputs"] if s in writers} for r in rules}
     ordered = []
     done = set()

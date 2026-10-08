@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "data_version": "0.1.1",
+  "operator_version": "1.0",
+  "id": "synthetic.proposed.composite",
+  "license": "CC-BY-SA-4.0",
+  "signals": [
+    {
+      "id": "synthetic.open",
+      "label": "synthetic.open",
+      "value_type": "scalar",
+      "units": "1",
+      "domain": {
+        "min": 0,
+        "max": 1
+      },
+      "calibration": "synthetic.raw.open.v1",
+      "side": "shared",
+      "disposition": "mapped",
+      "evidence": [
+        "original.synthetic.composite"
+      ],
+      "evidence_status": "proposed"
+    },
+    {
+      "id": "synthetic.wide",
+      "label": "synthetic.wide",
+      "value_type": "scalar",
+      "units": "1",
+      "domain": {
+        "min": 0,
+        "max": 1
+      },
+      "calibration": "synthetic.raw.wide.v1",
+      "side": "shared",
+      "disposition": "mapped",
+      "evidence": [
+        "original.synthetic.composite"
+      ],
+      "evidence_status": "proposed"
+    },
+    {
+      "id": "synthetic.lid",
+      "label": "synthetic.lid",
+      "value_type": "scalar",
+      "units": "1",
+      "domain": {
+        "min": 0,
+        "max": 1
+      },
+      "calibration": "synthetic.composite.lid.v1",
+      "side": "shared",
+      "disposition": "mapped",
+      "evidence": [
+        "original.synthetic.composite"
+      ],
+      "evidence_status": "proposed"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "synthetic.source",
+      "label": "Original synthetic distinct-basis inputs",
+      "signal_ids": [
+        "synthetic.open",
+        "synthetic.wide"
+      ]
+    },
+    {
+      "id": "synthetic.target",
+      "label": "Original synthetic composite output",
+      "signal_ids": [
+        "synthetic.lid"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "original.synthetic.composite",
+      "claim": "Original author-defined weighted composite arithmetic; no provider equivalence or physiological measurement",
+      "status": "proposed",
+      "license": "CC-BY-SA-4.0",
+      "authorship": "RCEF contributors (2026)",
+      "locator": "DESIGN_02.md section 3: original synthetic open/wide/lid definition"
+    }
+  ],
+  "mappings": [
+    {
+      "id": "synthetic.mix",
+      "rules": [
+        {
+          "id": "synthetic.mix.weighted",
+          "inputs": [
+            "synthetic.open",
+            "synthetic.wide"
+          ],
+          "outputs": [
+            "synthetic.lid"
+          ],
+          "operator": {
+            "id": "weighted_sum",
+            "weights": [
+              0.75,
+              0.25
+            ]
+          },
+          "disposition": "mapped",
+          "mapping_quality": "approximate",
+          "assumptions": [
+            "Original author-defined weighted composite on distinct declared bases; no provider/anatomical/visual equivalence",
+            "Two inputs cannot be recovered from one output"
+          ],
+          "evidence": [
+            "original.synthetic.composite"
+          ],
+          "evidence_status": "proposed",
+          "loss_annotations": [
+            {
+              "category": "signal",
+              "effect": "approximated",
+              "reason": "two inputs cannot be recovered from one weighted composite",
+              "refs": [
+                "synthetic.open",
+                "synthetic.wide",
+                "synthetic.lid"
+              ],
+              "units": "1"
+            },
+            {
+              "category": "geometry",
+              "effect": "unknown",
+              "reason": "No geometry or physiological evidence evaluated",
+              "refs": [
+                "synthetic.lid"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

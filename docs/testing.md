@@ -80,3 +80,36 @@ prior build/log/artifact hashes accompany the shared correction evidence. No
 native rebuild or host qualification is inferred from the Python gates. A new
 fresh independent clean process must close the exact corrected tree before
 acceptance; the earlier review's exit0 with error_event=true is not acceptance.
+
+## Structural evidence draft 05 gate
+
+`tests/test_structural_evidence.py` adds 24 methods with independent original
+storage documents and the corrected RCEF synthetic derivation literals. A static
+27-row current/proposed/unresolved table admits five combinations and refuses
+22. Twelve own-reference rows run at each of rule/source/target. Twelve mixed
+reference negatives use both list orders, each with all-current and unreferenced
+bad-reference positives. Additional cases cover every bad reference, current
+endpoints inside proposed rules, multi-input and virtual-intermediate isolation,
+zero-weight inputs, identity metadata presence/value/null and exact diagnostics.
+
+Signed affine and bilateral mean preserve their explicit derivation and losses.
+The standalone proposed composite fixture preserves the corrected design's
+literal document and independently expected `.375,.625,.25,.75`. Exact arithmetic
+on one basis remains legal with empty assumptions; distinct basis or declared
+approximation/loss needs assumptions. Quality-only and target-basis-only changes
+can retain numerical scope with opt-in/losses. Domain entailment is separately
+reviewed. These tests do not qualify RCEF source literals, providers or capture.
+
+Both actual runtimes saved 113 semantic assertion failures, zero errors, before
+the compiler edit. The legacy test that expected a manufactured loss now asserts
+refusal without an authored annotation, then retention of a supplied annotation;
+that changed segment also saved one failure on each runtime. Original authoring
+data and generated goldens remain unchanged. Schema/runtime tests preserve
+known incompatible/empty inventory without adding schema keys or versions.
+
+Builder GREEN: 24 targeted methods and 150 full tests on Python3.11.17 (one
+targeted and three full optional jsonschema skips), and Python3.12.15+meta (zero
+skips, actual Draft202012 schema validation). `check.py` passes on both. No
+unaffected native/host gate was rerun. Saved commands/source/test hashes and
+case-to-RED links accompany the private draft handoff. Fresh independent exact
+tree review remains required; builder GREEN is not acceptance.

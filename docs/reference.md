@@ -105,6 +105,50 @@ evaluate_mapping(compiled_mapping, samples) -> Result[EvaluatedValues]
 
 `profile_snapshot(pack,id)` explicitly constructs a virtual typed snapshot; it is never an overloaded inspect constructor. Its identity includes pack hash/profile/channels. Asset channels require verified sidecar bindings. Compiler checks snapshot type/unit/domain/calibration against pack, refuses missing references, competing drivers/multiple writers, cycles, unsupported or unresolved requested signals/rules, incompatible units/shapes, and approximation without opt-in. Instructions use stable topological order; independent rules preserve declared order. Intermediate values may remain virtual, terminal outputs must be bound in target. Declared losses survive compilation/evaluation reports.
 
+Authoring validation and pack compilation preserve well-formed `verified_current`,
+`proposed` and `unresolved` inventory, including empty evidence arrays. Requested
+execution checks each rule, input, intermediate and output: a current rule needs
+current endpoints; a proposed rule permits current/proposed endpoints. Every
+record needs nonempty own evidence. Current records require every included
+reference current, including current endpoints in proposed rules. Proposed
+records permit current/proposed references. Participating unresolved records or
+references refuse; unreferenced inventory remains allowed. Approximation opt-in
+does not change authored statuses or evidence.
+
+Identity additionally requires equal presence and value of `neutral`, `side`
+and `coupling` on pack records. Absence differs from zero or an empty coupling
+array; null remains structurally invalid. Profile channels keep their existing
+type/unit/domain/calibration fields. These metadata equalities apply to identity.
+
+Nonidentity operations need nonempty derivation assumptions when any input
+calibration or units differs from the output, quality is approximate, or a loss
+effect is `approximated`, `dropped` or `unknown`. Exact numeric operations on one
+basis with no declared loss can keep empty assumptions; differing bounds alone
+do not imply a different basis. Unit conversion retains its existing explicit
+affine requirement. Approximate quality requires explicitly authored nonempty
+`loss_annotations`; the compiler no longer supplies a generic loss. Existing
+opt-in applies to declared losses even when quality is exact.
+
+| Execution refusal | Diagnostic ref |
+| --- | --- |
+| `E_EVIDENCE_STATUS` | Offending rule/signal ID; endpoint message names requesting rule |
+| `E_EVIDENCE_REQUIRED` | Record ID with empty own evidence |
+| `E_EVIDENCE_COMPATIBILITY` | Record ID; message identifies each incompatible evidence ID/status |
+| `E_NEUTRAL_COMPATIBILITY`, `E_SIDE_COMPATIBILITY`, `E_COUPLING_COMPATIBILITY` | Identity rule ID; message identifies both endpoints |
+| `E_DERIVATION_ASSUMPTIONS`, `E_LOSS_REQUIRED` | Rule ID |
+
+Checks run in rule declaration order, with own rule evidence before endpoint
+evidence, inputs before output, and references in authored order. All incompatible
+included references are reported. A repeated intermediate is checked at each
+participating rule. Existing record, snapshot, graph and channel checks retain
+their order. Missing/invalid statuses and unknown IDs still refuse at authoring
+validation with `E_REQUIRED`, `E_ENUM` and `E_REFERENCE`.
+
+These are structural arithmetic admission checks. A declared status, assumption,
+loss or matching calibration string does not establish physiological, provider
+or visual equivalence. Domain review owns the meaning and support for those
+claims, including legitimate synthetic mixed-basis operations.
+
 ```python
 from msf_tools import load_authoring, compile_pack, profile_snapshot
 from msf_tools import compile_mapping, evaluate_mapping
