@@ -212,8 +212,11 @@ class GraphOrdering(unittest.TestCase):
 
     @unittest.skipUnless(os.environ.get('MSF_SLOW_TESTS') == '1', 'Set MSF_SLOW_TESTS=1 to run timed checks.')
     def test_long_chain_compiles_within_cpu_budget(self):
-        # On the reference machine, record integrity checks take about two thirds
-        # of this budget; rescanning every rule per wave roughly doubled it.
+        """The 0.7 CPU-second bound is calibrated on an Apple M4 Max (macOS, CPython 3.11/3.12).
+
+        There, record integrity checks take about 0.45 s of it and rescanning every
+        rule per wave roughly doubled the total. Slower machines may need a larger bound.
+        """
         count = 3000
         rules = [identity_rule(f'r{i}', f's{i}', f's{i + 1}') for i in reversed(range(count))]
         doc = graph([f's{i}' for i in range(count + 1)], rules, ['s0'], [f's{count}'])

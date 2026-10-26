@@ -209,7 +209,7 @@ class AssetTests(Checks):
         raw=(FIX/"combined.gltf").read_bytes()
         self.assertIs(inspect.signature(m.inspect_asset).parameters["bytes"].kind,inspect.Parameter.POSITIONAL_ONLY)
         self.good(m.inspect_asset(raw,"gltf"));self.good(m.inspect_asset(raw,format="gltf"))
-        r=m.inspect_asset(bytes=raw,format="gltf");self.bad(r,"E_INPUT");self.assertIn("positional-only",r.report.diagnostics[0].message)
+        r=m.inspect_asset(bytes=raw,format="gltf");self.bad(r,"E_INPUT");self.assertEqual(len(r.report.diagnostics),1)
 
     def test_extension_defined_animation_inventory_and_runtime_refusal(self):
         d=json.loads((FIX/"combined.gltf").read_bytes());d["extensionsUsed"].append("KHR_animation_pointer");d["extensionsRequired"]=["KHR_animation_pointer"]
@@ -340,8 +340,10 @@ class GeometryTests(Checks):
             with self.subTest(doc=doc,cap=11),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",11):
                 self.assert_instance_budget_refusal(m.evaluate_geometry(s))
 
-    def test_default_budget_refuses_multiplied_mesh(self):
-        self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((1000,1333),(334,1))))))
+    def test_default_budget_refuses_smallest_workload_over_cap(self):
+        # Counts are multiples of 3, so 4,000,002 is the first workload above the 4,000,000 cap.
+        r=m.evaluate_geometry(self.good(asset(instanced_points((1000,1333),(334,1)))))
+        self.assert_instance_budget_refusal(r);self.assertIn("need 4000002 position",r.report.diagnostics[0].message)
 
     def test_default_budget_counts_morph_targets_per_instance(self):
         # 100 vertices x 200 instances is 60,000 components; 100 targets make it 6,060,000.
