@@ -16,4 +16,4 @@ dependencies = []
 msf-tools = "msf_tools.cli:main"
 
 [tool.setuptools]
-packages = ["msf_tools"]
+packages = ["msf_tools", "msf_tools.sources"]
