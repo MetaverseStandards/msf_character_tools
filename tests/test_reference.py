@@ -67,6 +67,12 @@ class Checks(unittest.TestCase):
 
 
 class AuthoringTests(Checks):
+    def test_fragment_socket_is_refused(self):
+        with tempfile.TemporaryDirectory() as td, socket.socket(socket.AF_UNIX) as listener:
+            root=Path(td).resolve();(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());listener.bind(str(root/"s.toml"))
+            r=m.load_authoring(root)
+        self.assertEqual([(d.code,d.ref) for d in r.report.diagnostics],[("E_FRAGMENT_PATH","s.toml")]);self.assertIsNone(r.value)
+
     def test_fragment_fifo_is_refused_without_blocking(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());os.mkfifo(root/"zz.toml")

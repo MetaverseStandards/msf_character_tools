@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import base64
 import binascii
-import errno
 import os
 import re
 import stat
@@ -15,7 +14,7 @@ import struct
 from urllib.parse import unquote, urlsplit
 
 from .authoring import keys, string, domain
-from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number
+from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number, SPECIAL_FILE_ERRNOS
 from .report import public, fail, Report, Result, Diagnostic, Fault
 from .records import OwnedRecord, _admit
 from .math3d import matrix, validate_trs, authored_quaternion
@@ -33,7 +32,6 @@ MAX_TOTAL_RESOURCE_BYTES = 256 * 1024 * 1024
 MAX_ACCESSOR_COMPONENTS = 1_000_000
 MAX_TOTAL_ACCESSOR_COMPONENTS = 4_000_000
 MAX_STRUCTURAL_OBJECTS = 100_000
-_SPECIAL_FILE_ERRNOS = frozenset({errno.ENXIO, errno.ENODEV, errno.EOPNOTSUPP})
 
 
 @dataclass(frozen=True)
@@ -162,8 +160,7 @@ class LocalResolver:
             try:
                 resource_fd = os.open(path.parts[-1], flags, dir_fd=fd)
             except OSError as exc:
-                # Sockets and driverless devices fail at open, before fstat can classify them.
-                if exc.errno in _SPECIAL_FILE_ERRNOS:
+                if exc.errno in SPECIAL_FILE_ERRNOS:
                     fail("E_RESOURCE_TYPE", "/resources", "Resource must be a regular file.")
                 raise
             try:

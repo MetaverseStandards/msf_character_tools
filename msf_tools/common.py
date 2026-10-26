@@ -2,11 +2,15 @@
 """Immutable JSON values and the version-one deterministic byte convention."""
 from collections.abc import Mapping
 from types import MappingProxyType
+import errno
 import hashlib
 import json
 import math
 
 from .report import fail
+
+# Sockets and driverless devices fail at open, before fstat can classify them.
+SPECIAL_FILE_ERRNOS = frozenset({errno.ENXIO, errno.ENODEV, errno.EOPNOTSUPP})
 
 
 def freeze(x):

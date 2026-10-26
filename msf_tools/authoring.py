@@ -10,7 +10,7 @@ import re
 import stat
 import tomllib
 
-from .common import thaw, json_value, number
+from .common import thaw, json_value, number, SPECIAL_FILE_ERRNOS
 from .report import public, Diagnostic, Report, Result, Fault, fail
 from .records import OwnedRecord, _admit
 
@@ -314,7 +314,12 @@ def load_authoring(path):
 def _read_fragment(path, relative):
     # Fragments are discovered, not named by the caller. O_NONBLOCK keeps a FIFO
     # from blocking the open so the descriptor check can refuse it.
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno in SPECIAL_FILE_ERRNOS:
+            fail("E_FRAGMENT_PATH", str(relative), "Authoring fragments must be regular files.")
+        raise
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             fail("E_FRAGMENT_PATH", str(relative), "Authoring fragments must be regular files.")
