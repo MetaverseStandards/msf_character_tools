@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import base64
 import binascii
+import importlib
+import math
 import os
 import re
 import stat
@@ -21,7 +23,7 @@ from .math3d import matrix, validate_trs, authored_quaternion
 from .gltf_semantics import (parse_document, morph_count, validate_meshes,
                              validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
 from .sources import paths as source_paths
-from .sources import (SOURCE_FORMATS, SourceParseError, GENERATED_MAX_BYTES,
+from .sources import (SOURCE_FORMATS, SourceLimits, SourceParseError,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
 COMPONENTS = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
@@ -155,6 +157,14 @@ def _source_summary(snapshot):
     """How a generated snapshot was produced, for exports that record its identity."""
     return {k: snapshot.source[k] for k in ("format", "adapter", "adapter_version", "reader", "options_sha256")}
 
+
+# Each module exposes ADAPTER and imports its reader library at import time.
+_ADAPTER_MODULES = {"usd": "msf_tools.sources.usd", "usda": "msf_tools.sources.usd", "usdc": "msf_tools.sources.usd",
+                    "usdz": "msf_tools.sources.usd", "fbx": "msf_tools.sources.fbx"}
+_GLTF_FORMATS = ("gltf", "glb", "gltf2", "json")
+_FBX_BINARY_MAGIC = b"Kaydara FBX Binary  \x00"
+# Losses whose strict refusal has a different name from the plain W_ to E_ swap.
+_STRICT_CODES = {"W_INBETWEENS_DROPPED": "E_INBETWEEN_UNSUPPORTED", "W_SHEAR_BAKED": "E_SHEAR_UNSUPPORTED"}
 
 _SOURCE_KEYS = {"format", "sha256", "byte_length", "adapter", "adapter_version", "reader", "options_sha256",
                 "node_order", "node_paths", "target_keys", "dependencies", "losses"}
@@ -643,10 +653,85 @@ def _parse_asset(raw, format):
 
 
 @public
-def inspect_asset(bytes, /, format, resolver=None, sidecar=None):
-    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
+def inspect_asset(bytes, /, format, resolver=None, sidecar=None, *, limits=None, options=None):
+    if type(format) is str and format.lower() in SOURCE_FORMATS and type(bytes) is type(b""):
+        return _inspect_source_format(bytes, format.lower(), resolver, sidecar, limits, options)
+    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in _GLTF_FORMATS:
+        if type(format) is str and format.lower() not in _GLTF_FORMATS + SOURCE_FORMATS:
+            fail("E_ASSET_TYPE", "/", "Expected a gltf/glb format or a source format: " + ", ".join(SOURCE_FORMATS) + ".")
         fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
+    if limits is not None or options is not None:
+        fail("E_SOURCE_OPTIONS", "/", "limits and options apply only to source formats.")
     return _inspect_gltf(bytes, format, resolver, sidecar)
+
+
+def _source_magic(data, fmt):
+    """Return the concrete format the bytes show, or None when they disagree with `fmt`."""
+    found = ("usda" if data.startswith(b"#usda") else "usdc" if data.startswith(b"PXR-USDC")
+             else "usdz" if data.startswith(b"PK\x03\x04") else None)
+    if fmt == "usd":
+        return found if found in ("usda", "usdc") else None
+    if fmt == "fbx":
+        head = data[:4096]
+        text = head.lstrip(b"\xef\xbb\xbf \t\r\n")
+        # ASCII FBX has no magic; accept text that starts like a comment or a node name.
+        if data.startswith(_FBX_BINARY_MAGIC) or b"\x00" not in head and (text[:1].isalpha() or text[:1] == b";"):
+            return "fbx"
+        return None
+    return fmt if found == fmt else None
+
+
+def _source_options(options, fmt):
+    if options is None:
+        options = {}
+    def bad(message):
+        fail("E_SOURCE_OPTIONS", "/options", message)
+    if not isinstance(options, Mapping):
+        bad("Options must be a mapping.")
+    unknown = set(options) - {"influences", "losses", "animation", "sample_rate"}
+    if unknown:
+        bad("Unknown options: " + ", ".join(sorted(map(str, unknown))))
+    normalized = {"influences": options.get("influences", "faithful"), "losses": options.get("losses", "declare")}
+    if normalized["influences"] not in ("faithful", "top4") or type(normalized["influences"]) is not str:
+        bad("influences must be 'faithful' or 'top4'.")
+    if normalized["losses"] not in ("declare", "strict") or type(normalized["losses"]) is not str:
+        bad("losses must be 'declare' or 'strict'.")
+    if "animation" in options:
+        animation = options["animation"]
+        if not (type(animation) is str and animation or type(animation) is int and animation >= 0):
+            bad("animation must be a stack name or a nonnegative index.")
+        normalized["animation"] = animation
+    if "sample_rate" in options:
+        rate = options["sample_rate"]
+        if fmt != "fbx" or type(rate) not in (int, float) or not math.isfinite(rate) or rate <= 0:
+            bad("sample_rate is a positive frame rate for FBX sources only.")
+        normalized["sample_rate"] = float(rate)
+    return normalized
+
+
+def _load_adapter(fmt):
+    extra = "fbx" if fmt == "fbx" else "usd"
+    try:
+        return importlib.import_module(_ADAPTER_MODULES[fmt]).ADAPTER
+    except ImportError:
+        fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} support.",
+             f"pip install 'msf-tools[{extra}]'")
+
+
+def _inspect_source_format(data, fmt, resolver, sidecar, limits, options):
+    concrete = _source_magic(data, fmt)
+    if concrete is None:
+        fail("E_FORMAT_MISMATCH", "/", f"Bytes do not start like a {fmt} file.")
+    if limits is None:
+        limits = SourceLimits()
+    elif not isinstance(limits, SourceLimits):
+        fail("E_SOURCE_OPTIONS", "/limits", "limits must be a SourceLimits.")
+    options = _source_options(options, concrete)
+    if len(data) > limits.max_source_bytes:
+        fail("E_RESOURCE_LIMIT", "/", f"Source exceeds the {limits.max_source_bytes}-byte limit.")
+    if resolver is not None and not callable(resolver):
+        fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
+    return _inspect_source(_load_adapter(fmt), data, concrete, resolver, sidecar, options, limits)
 
 
 def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET_BYTES,
@@ -739,11 +824,12 @@ def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET
 
 
 @public
-def _inspect_source(adapter, data, fmt, resolver=None, sidecar=None, options=None):
+def _inspect_source(adapter, data, fmt, resolver=None, sidecar=None, options=None, limits=None):
     """Convert a source with `adapter`, then admit the GLB through the glTF path."""
-    options = {} if options is None else options
+    options = _source_options(options, fmt)
+    limits = SourceLimits() if limits is None else limits
     try:
-        generated = adapter.convert(data, fmt, resolver, None, options)
+        generated = adapter.convert(data, fmt, resolver, limits, options)
     except SourceParseError as exc:
         fail("E_SOURCE_PARSE", "/", str(exc)[:512] or "The source reader rejected the file.",
              "Check that the source file is valid for its declared format.")
@@ -753,10 +839,18 @@ def _inspect_source(adapter, data, fmt, resolver=None, sidecar=None, options=Non
               "node_paths": list(generated.node_paths), "target_keys": [list(k) for k in generated.target_keys],
               "dependencies": [{"uri": uri, "sha256": sha, "byte_length": length} for uri, sha, length in generated.dependencies],
               "losses": [d.to_dict() for d in generated.losses]}
-    result = _inspect_gltf(generated.glb, "glb", None, sidecar, max_asset_bytes=GENERATED_MAX_BYTES,
-                           component_caps=(GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS),
+    if (len(generated.dependencies) > limits.max_dependencies
+            or sum(length for _, _, length in generated.dependencies) > limits.max_dependency_bytes):
+        fail("E_RESOURCE_LIMIT", "/source/dependencies", "Source dependencies exceed the dependency count or byte limit.")
+    result = _inspect_gltf(generated.glb, "glb", None, sidecar, max_asset_bytes=limits.max_generated_bytes,
+                           component_caps=(limits.max_accessor_components, limits.max_total_accessor_components),
                            source=freeze(source))
-    report = Report(result.report.diagnostics + tuple(generated.losses), result.report.losses)
+    losses = generated.losses
+    if options["losses"] == "strict":
+        losses = tuple(Diagnostic(_STRICT_CODES.get(d.code, "E_" + d.code.removeprefix("W_")), "error", d.ref, d.message,
+                                  "Allow declared losses, or change the source so the loss does not occur.")
+                       if d.severity == "warning" else d for d in losses)
+    report = Report(result.report.diagnostics + tuple(losses), result.report.losses)
     return Result(result.value, report)
 
 

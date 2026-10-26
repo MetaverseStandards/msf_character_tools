@@ -87,3 +87,6 @@ class FakeAdapter:
 
 def resolver(uri):
     return {'layers/sub.usda': b'#usda 1.0\n(sub layer)\n'}[uri]
+
+
+ADAPTER = FakeAdapter()

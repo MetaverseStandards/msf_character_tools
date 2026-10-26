@@ -56,7 +56,8 @@ Unary/weighted output domain is checked during evaluation. Identity requires equ
 ## Snapshots and sidecars
 
 ```python
-inspect_asset(bytes, /, format, resolver=None, sidecar=None) -> Result[AssetSnapshot]
+inspect_asset(bytes, /, format, resolver=None, sidecar=None, *,
+              limits=None, options=None) -> Result[AssetSnapshot]
 annotate_asset(snapshot, annotations) -> Result[Sidecar]
 ```
 
@@ -94,6 +95,54 @@ Accessors support all core component types, matrix column padding, offsets, inte
 `annotate_asset` accepts `{bindings:[...],metadata?:{...}}`; output is a canonical, idempotent sidecar. Every reuse verifies source hash, the complete consumed resource hash inventory, structural indices and locator agreement. Sparse index, sparse value and base buffer digests are all bound by the sidecar. Optional `ref.resource_sha256` must identify a consumed target resource. Binding IDs/destinations are unique. Initial version supports scalar morph weights per mesh instance; other channel binding shapes need an explicit revision.
 
 `morph_binding(snapshot, signal, node, target) -> Result[immutable binding]` creates a structural binding from a pack signal, including its single target resource digest when applicable. Multiple buffers remain fully bound in `resource_hashes`. `decode_accessor(snapshot,index)` returns `Result[tuple[tuple[number,...],...]]`.
+
+### Source formats
+
+`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs an optional extra (`msf-tools[usd]` or `msf-tools[fbx]`); without it the result is `E_FORMAT_DEPENDENCY`. The adapters themselves are added separately; this section describes the shared contract.
+
+An adapter converts the source into an in-memory GLB with one glTF vertex per source point. The unchanged glTF inspector then admits it, and `original_bytes`, `sha256` and `format="glb"` describe that GLB. `source` records:
+- `format`, `sha256` and `byte_length` of the source; the source bytes are not kept;
+- `adapter`, `adapter_version` and `reader`;
+- `options_sha256`, the digest of the canonical options with defaults filled in;
+- `node_order="path-sorted-v2"`;
+- `node_paths`, one per glTF node, and `target_keys`, one list per glTF mesh in target order;
+- `dependencies` (`uri`, `sha256`, `byte_length`, sorted by URI) and `losses` (warning or info diagnostics, which are also in the report).
+
+The GLB bytes are deterministic for a fixed source, dependency set, adapter version, reader version and options, but not across reader versions, so no hash of them is persisted. Every recorded hash is the source sha256 instead:
+- snapshot `asset_sha256` (`to_dict` adds `generated_sha256` and `source`);
+- sidecar and binding `asset_sha256`;
+- geometry golden `asset_sha256`;
+- compiled-mapping `source_sha256` and `target_sha256`.
+
+Goldens and compiled mappings add a summary of how the snapshot was produced (`source`, or `source_adapter` / `target_adapter`). Sidecar `resource_hashes` lists the source dependencies.
+
+Node paths escape `%`, `/`, `#`, `[`, `]`, `:` and control characters in each component. `[k]` tells apart duplicate siblings, and `#helper:geometry` or `#helper:scale` marks reader-made helper nodes. glTF node `i` is the `i`-th path in order of unescaped components. A generated-snapshot binding must carry `ref.source_locator = <node path>#<target key>`, which is authoritative. The stored `node`, `mesh`, `target` and `locator` are hints:
+- if a different reader version moved them, the binding is admitted with the resolved indices and a `W_BINDING_REINDEXED` warning;
+- if the locator names nothing in the source, it is `E_STALE_SOURCE`;
+- `resource_sha256` is refused.
+
+glTF bindings never use `source_locator`.
+
+`options` is a mapping with these keys only:
+- `influences`: `"faithful"` (default) or `"top4"`;
+- `losses`: `"declare"` (default) or `"strict"`;
+- `animation`: a stack name or a nonnegative index;
+- `sample_rate`: FBX only.
+
+Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning loss refuses with its paired error code (`W_X` becomes `E_X`; `W_SHEAR_BAKED` becomes `E_SHEAR_UNSUPPORTED` and `W_INBETWEENS_DROPPED` becomes `E_INBETWEEN_UNSUPPORTED`). Info losses never refuse. Reader rejections are `E_SOURCE_PARSE`, truncated to 512 characters.
+
+`limits` is a `msf_tools.sources.SourceLimits` of positive integers (`E_RESOURCE_LIMIT` when exceeded):
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `max_source_bytes` | 512 MiB | At most 4 GiB. |
+| `max_dependency_bytes`, `max_dependencies` | 1 GiB, 1,000 | |
+| `max_usdz_members` | 10,000 | Checked by the USD adapter. |
+| `max_generated_bytes` | 512 MiB | Replaces the 64 MiB glTF input limit for the GLB. |
+| `max_accessor_components`, `max_total_accessor_components` | 4,000,000, 16,000,000 | Can be lowered, not raised. Integrity checks and the geometry evaluation budget use these defaults for generated snapshots. |
+| `max_reader_memory`, `timeout_s` | 2 GiB, 300 s | Used by isolated conversion. |
+
+glTF formats refuse `limits` and `options` with `E_SOURCE_OPTIONS`.
 
 ## Mapping and samples
 

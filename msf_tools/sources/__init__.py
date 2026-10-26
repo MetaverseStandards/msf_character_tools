@@ -29,3 +29,36 @@ class Generated:
     target_keys: tuple      # per glTF mesh, one key per morph target in target order
     dependencies: tuple     # (uri, sha256, byte_length), sorted by uri
     losses: tuple           # Diagnostic objects with warning or info severity
+
+
+MAX_SOURCE_BYTES_CEILING = 4 * 1024 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class SourceLimits:
+    """Limits for one source inspection; every field is a positive integer.
+
+    The component limits may be lowered but not raised: later integrity checks
+    re-validate generated snapshots against the generated defaults.
+    `max_usdz_members`, `max_reader_memory` and `timeout_s` are enforced by the
+    adapters and by isolated conversion.
+    """
+    max_source_bytes: int = 512 * 1024 * 1024
+    max_dependency_bytes: int = 1024 * 1024 * 1024
+    max_dependencies: int = 1000
+    max_usdz_members: int = 10000
+    max_generated_bytes: int = GENERATED_MAX_BYTES
+    max_accessor_components: int = GENERATED_MAX_ACCESSOR_COMPONENTS
+    max_total_accessor_components: int = GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS
+    max_reader_memory: int = 2 * 1024 * 1024 * 1024
+    timeout_s: int = 300
+
+    def __post_init__(self):
+        ceilings = {"max_source_bytes": MAX_SOURCE_BYTES_CEILING,
+                    "max_accessor_components": GENERATED_MAX_ACCESSOR_COMPONENTS,
+                    "max_total_accessor_components": GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS}
+        for name, value in vars(self).items():
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer.")
+            if value > ceilings.get(name, value):
+                raise ValueError(f"{name} cannot exceed {ceilings[name]}.")

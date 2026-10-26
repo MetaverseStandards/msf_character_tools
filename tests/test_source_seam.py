@@ -10,7 +10,9 @@ from msf_tools import snapshot as snapshots
 from msf_tools.common import digest, freeze, thaw
 from msf_tools.records import _admit
 from msf_tools.report import Fault
+from msf_tools.sources import SourceLimits
 from support import fake_adapter as fake
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 COMBINED = (ROOT / 'tests/fixtures/combined.gltf').read_bytes()
@@ -63,7 +65,8 @@ class GeneratedSnapshots(unittest.TestCase):
         self.assertEqual(thaw(s.source), {
             'format': 'usda', 'sha256': self.source_sha, 'byte_length': len(self.data),
             'adapter': 'msf-fake', 'adapter_version': '1', 'reader': 'fake-reader 1',
-            'options_sha256': digest(m.canonical_json({})), 'node_order': 'path-sorted-v2',
+            'options_sha256': digest(m.canonical_json({'influences': 'faithful', 'losses': 'declare'})),
+            'node_order': 'path-sorted-v2',
             'node_paths': ['/Root', '/Root/Face'], 'target_keys': [['smile', 'blink']],
             'dependencies': [{'uri': 'layers/sub.usda', 'sha256': digest(fake.resolver('layers/sub.usda')),
                               'byte_length': len(fake.resolver('layers/sub.usda'))}],
@@ -233,3 +236,96 @@ class SourceLocatorBinding(unittest.TestCase):
         binding['ref']['source_locator'] = '/Root/Face#smile'
         result = m.annotate_asset(snapshot, {'bindings': [binding]})
         self.assertEqual([d.code for d in result.report.diagnostics], ['E_UNKNOWN_KEY'])
+
+
+FAKE_TABLE = {'usd': 'support.fake_adapter', 'usda': 'support.fake_adapter'}
+
+
+class PublicSourceDispatch(unittest.TestCase):
+    def setUp(self):
+        table = patch.dict(snapshots._ADAPTER_MODULES, FAKE_TABLE)
+        table.start()
+        self.addCleanup(table.stop)
+        self.data = fake.source(fake.scene())
+
+    def inspect(self, data=None, fmt='usda', **kwargs):
+        kwargs.setdefault('resolver', fake.resolver)
+        return m.inspect_asset(self.data if data is None else data, fmt, **kwargs)
+
+    def errors(self, result):
+        return [(d.code, d.ref) for d in result.report.diagnostics if d.severity == 'error']
+
+    def test_public_inspect_admits_sources_deterministically(self):
+        first, second = good(self.inspect()), good(self.inspect())
+        self.assertEqual(first.source['format'], 'usda')
+        self.assertEqual(first.original_bytes, second.original_bytes)
+        self.assertEqual(first.to_dict(), second.to_dict())
+        self.assertEqual(good(self.inspect(fmt='usd')).source['format'], 'usda')
+        self.assertEqual(good(self.inspect(fmt='USDA')).source['format'], 'usda')
+
+    def test_magic_bytes_must_match_the_declared_format(self):
+        for data, fmt in ((b'PXR-USDC' + self.data, 'usda'), (self.data, 'usdc'), (self.data, 'usdz'), (b'', 'usd'),
+                          (b'PK\x03\x04rest', 'usd'), (b'\x00\x01\x02', 'fbx'), (self.data[:0], 'fbx')):
+            with self.subTest(data=data[:8], fmt=fmt):
+                self.assertEqual(self.errors(self.inspect(data, fmt)), [('E_FORMAT_MISMATCH', '/')])
+
+    def test_missing_reader_is_a_dependency_diagnostic(self):
+        with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'support.no_such_adapter'}):
+            result = self.inspect()
+        self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
+        self.assertIn("msf-tools[usd]", result.report.diagnostics[0].remediation)
+        result = m.inspect_asset(b'Kaydara FBX Binary  \x00\x1a\x00', 'fbx')
+        self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
+        self.assertIn("msf-tools[fbx]", result.report.diagnostics[0].remediation)
+
+    def test_unknown_formats_and_gltf_source_arguments_are_refused(self):
+        result = m.inspect_asset(self.data, 'obj')
+        self.assertEqual(self.errors(result), [('E_ASSET_TYPE', '/')])
+        self.assertIn('usd, usda, usdc, usdz, fbx', result.report.diagnostics[0].message)
+        for kwargs in ({'options': {}}, {'limits': SourceLimits()}):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(self.errors(m.inspect_asset(COMBINED, 'gltf', **kwargs)), [('E_SOURCE_OPTIONS', '/')])
+
+    def test_options_are_closed_validated_and_digested_with_defaults(self):
+        for options in ({'colour': 1}, {'influences': 'top8'}, {'losses': True}, {'animation': -1}, {'animation': True},
+                        {'sample_rate': 30.0}, [('losses', 'strict')]):
+            with self.subTest(options=options):
+                self.assertEqual(self.errors(self.inspect(options=options)), [('E_SOURCE_OPTIONS', '/options')])
+        digest_of = lambda options: good(self.inspect(options=options)).source['options_sha256']
+        self.assertEqual(digest_of(None), digest_of({'influences': 'faithful', 'losses': 'declare'}))
+        self.assertNotEqual(digest_of(None), digest_of({'influences': 'top4'}))
+        self.assertNotEqual(digest_of({'animation': 0}), digest_of({'animation': 'Take 001'}))
+
+    def test_strict_losses_refuse_and_infos_stay(self):
+        losses = [['W_SKIPPED', '/Root', 'Skipped 1 camera.'], ['W_SHEAR_BAKED', '/Root', 'Baked shear.'], ['I_UNITS_CONVERTED', '/', 'cm to m.']]
+        data = fake.source(fake.scene(losses=losses))
+        declared = self.inspect(data)
+        self.assertEqual([d.severity for d in declared.report.diagnostics], ['warning', 'warning', 'info'])
+        strict = self.inspect(data, options={'losses': 'strict'})
+        self.assertIsNone(strict.value)
+        self.assertEqual([(d.code, d.severity) for d in strict.report.diagnostics],
+                         [('E_SKIPPED', 'error'), ('E_SHEAR_UNSUPPORTED', 'error'), ('I_UNITS_CONVERTED', 'info')])
+
+    def test_input_and_output_size_limits(self):
+        n = len(self.data)
+        self.assertTrue(self.inspect(limits=SourceLimits(max_source_bytes=n)).ok)
+        self.assertEqual(self.errors(self.inspect(limits=SourceLimits(max_source_bytes=n - 1))), [('E_RESOURCE_LIMIT', '/')])
+        glb_size = len(good(self.inspect()).original_bytes)
+        self.assertTrue(self.inspect(limits=SourceLimits(max_generated_bytes=glb_size)).ok)
+        self.assertEqual(self.errors(self.inspect(limits=SourceLimits(max_generated_bytes=glb_size - 1))), [('E_RESOURCE_LIMIT', '/')])
+        self.assertEqual(self.errors(self.inspect(limits=SourceLimits(max_accessor_components=8))), [('E_RESOURCE_LIMIT', '/accessors/0')])
+        self.assertEqual(self.errors(self.inspect(limits=SourceLimits(max_total_accessor_components=9))), [('E_RESOURCE_LIMIT', '/accessors/1')])
+        two = fake.source(fake.scene(dependencies=['layers/sub.usda', 'layers/two.usda']))
+        resolver = lambda uri: b'0123456789'
+        self.assertTrue(self.inspect(two, resolver=resolver, limits=SourceLimits(max_dependencies=2, max_dependency_bytes=20)).ok)
+        self.assertEqual(self.errors(self.inspect(two, resolver=resolver, limits=SourceLimits(max_dependencies=1))),
+                         [('E_RESOURCE_LIMIT', '/source/dependencies')])
+        self.assertEqual(self.errors(self.inspect(two, resolver=resolver, limits=SourceLimits(max_dependency_bytes=19))),
+                         [('E_RESOURCE_LIMIT', '/source/dependencies')])
+        self.assertEqual(self.errors(self.inspect(limits={'max_source_bytes': 1})), [('E_SOURCE_OPTIONS', '/limits')])
+
+    def test_source_limits_are_positive_integers_within_ceilings(self):
+        for field, value in (('max_source_bytes', 0), ('max_source_bytes', 4 * 2**30 + 1), ('timeout_s', -1), ('max_dependencies', True),
+                             ('max_usdz_members', 1.0), ('max_accessor_components', 4_000_001), ('max_total_accessor_components', 16_000_001)):
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                SourceLimits(**{field: value})
