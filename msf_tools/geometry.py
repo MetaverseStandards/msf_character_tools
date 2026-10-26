@@ -8,13 +8,19 @@ import bisect
 
 from .common import freeze, thaw, number, integer
 from .authoring import keys
-from .snapshot import AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS
+from .snapshot import (AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS,
+                       MAX_TOTAL_ACCESSOR_COMPONENTS)
 from .math3d import (IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize,
                      column_major, affine, validate_trs, authored_quaternion, linear, hermite,
                      _add, _sub, _product, _divide, _sum)
 from .report import public, fail, Result, Report, Fault
 from .records import OwnedRecord, _admit
 from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
+
+# POSITION vertices summed over every mesh node instance. Inspection caps declared
+# accessor components, so an asset that evaluates each POSITION accessor once fits;
+# instancing a mesh or sharing an accessor between primitives multiplies the work.
+MAX_INSTANCE_VERTICES = MAX_TOTAL_ACCESSOR_COMPONENTS // 3
 
 
 def _time(timestamp):
@@ -143,12 +149,30 @@ def _accessor(snapshot, aid, shape, components, count=None, normalized=None, ref
     return _decode_accessor(snapshot, aid)
 
 
+def _instance_vertices(document):
+    accessors = document.get("accessors", ())
+    per_mesh = []
+    for mesh in document.get("meshes", ()):
+        count = 0
+        for primitive in mesh["primitives"]:
+            position = primitive["attributes"].get("POSITION")
+            # Bad references are diagnosed per primitive during evaluation.
+            if integer(position) and 0 <= position < len(accessors):
+                count += accessors[position]["count"]
+        per_mesh.append(count)
+    return sum(per_mesh[node["mesh"]] for node in document.get("nodes", ()) if "mesh" in node)
+
+
 @public
 def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weights=None, node_transforms=None, attributes=("POSITION",)):
     _asset(snapshot)
     _time(timestamp)
     if tuple(attributes) != ("POSITION",):
         fail("E_GEOMETRY_CAPABILITY", "/attributes", "Reference evaluation supports positions only.")
+    vertices = _instance_vertices(snapshot.document)
+    if vertices > MAX_INSTANCE_VERTICES:
+        fail("E_RESOURCE_LIMIT", "/nodes", f"Mesh instances need {vertices} POSITION vertex evaluations; the budget is {MAX_INSTANCE_VERTICES}.",
+             "Reduce mesh instances or vertices, or evaluate a smaller asset.")
     if animation_id is not None and not integer(animation_id):
         fail("E_ANIMATION_REFERENCE", "/animation_id", "Select one explicit integer clip index.")
     overrides = _sample_animation(snapshot, animation_id, timestamp) if animation_id is not None else {}

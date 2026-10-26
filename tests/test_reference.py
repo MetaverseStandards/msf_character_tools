@@ -15,9 +15,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import msf_tools as m
-from msf_tools import cli
+from msf_tools import cli, geometry
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests/fixtures"
@@ -285,7 +286,35 @@ class AssetTests(Checks):
         self.assertEqual(s.original_bytes,raw)
 
 
+def instanced_points(*meshes):
+    """Zero-backed point meshes given as (vertex count, instance count) pairs."""
+    accessors,mesh_rows,nodes=[],[],[]
+    for count,instances in meshes:
+        accessors.append({"componentType":5126,"type":"VEC3","count":count,"min":[0,0,0],"max":[0,0,0]})
+        mesh_rows.append({"primitives":[{"mode":0,"attributes":{"POSITION":len(accessors)-1}}]})
+        nodes+=[{"mesh":len(mesh_rows)-1}]*instances
+    return {"asset":{"version":"2.0"},"accessors":accessors,"meshes":mesh_rows,"nodes":nodes}
+
+
 class GeometryTests(Checks):
+    def assert_instance_budget_refusal(self, r):
+        self.assertEqual([(d.code,d.ref) for d in r.report.diagnostics],[("E_RESOURCE_LIMIT","/nodes")])
+        self.assertIsNone(r.value)
+
+    def test_instance_vertex_budget_threshold(self):
+        with patch.object(geometry,"MAX_INSTANCE_VERTICES",4):
+            for instances in (3,4):
+                v=self.good(m.evaluate_geometry(self.good(asset(instanced_points((1,instances)))))).to_dict()
+                self.assertEqual([i["node"] for i in v["instances"]],list(range(instances)))
+            self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((1,5))))))
+            self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((2,1),(1,3))))))
+
+    def test_default_instance_vertex_budget_refuses_multiplied_mesh(self):
+        s=self.good(asset(instanced_points((1000,1333),(334,1))))
+        self.assert_instance_budget_refusal(m.evaluate_geometry(s))
+        # Evaluating each POSITION accessor once stays within the inspection component limit.
+        self.assertEqual(geometry.MAX_INSTANCE_VERTICES,1_333_333)
+
     def test_separate_morph_and_skin_analytical(self):
         doc=json.loads((FIX/"combined.gltf").read_bytes())
         doc.pop("animations")
