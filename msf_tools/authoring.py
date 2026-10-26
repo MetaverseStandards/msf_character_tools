@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 import re
+import stat
 import tomllib
 
 from .common import thaw, json_value, number
@@ -296,7 +297,7 @@ def load_authoring(path):
         if folded in names or any(part.split('.')[0].upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))} for part in relative.parts):
             fail("E_FRAGMENT_PATH", str(relative), "Reserved filename or case-insensitive collision.")
         names.add(folded)
-        doc = tomllib.loads(p.read_text(encoding="utf-8"))
+        doc = tomllib.loads(_read_fragment(p, relative))
         for k, v in doc.items():
             if k in ARRAYS:
                 if not isinstance(v, list):
@@ -308,6 +309,19 @@ def load_authoring(path):
                 seen_meta.add(k)
                 merged[k] = v
     return validate_authoring(merged)
+
+
+def _read_fragment(path, relative):
+    # Fragments are discovered, not named by the caller. O_NONBLOCK keeps a FIFO
+    # from blocking the open so the descriptor check can refuse it.
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            fail("E_FRAGMENT_PATH", str(relative), "Authoring fragments must be regular files.")
+        with os.fdopen(fd, encoding="utf-8", closefd=False) as stream:
+            return stream.read()
+    finally:
+        os.close(fd)
 
 
 def authoring_files(path):

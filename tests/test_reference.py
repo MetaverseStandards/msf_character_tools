@@ -67,6 +67,17 @@ class Checks(unittest.TestCase):
 
 
 class AuthoringTests(Checks):
+    def test_fragment_fifo_is_refused_without_blocking(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());os.mkfifo(root/"zz.toml")
+            code="import json,sys,msf_tools as m;r=m.load_authoring(sys.argv[1]);print(json.dumps([(d.code,d.ref) for d in r.report.diagnostics]))"
+            # A FIFO with no writer blocks a plain open, so loading runs in a killable child process.
+            try:
+                r=subprocess.run([sys.executable,"-B","-c",code,root],cwd=ROOT,capture_output=True,timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("load_authoring blocked opening a FIFO fragment instead of refusing it.")
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout),[["E_FRAGMENT_PATH","zz.toml"]])
+
     def test_unused_evidence_coverage_and_partitions(self):
         d=source_doc();d["evidence"].append({"id":"unused","claim":"Unresolved original inventory","status":"unresolved","license":"CC-BY-SA-4.0","authorship":"MSF Tools contributors"})
         p=self.good(compile_doc(d));c=m.coverage(p)

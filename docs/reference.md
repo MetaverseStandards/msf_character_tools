@@ -43,7 +43,7 @@ Unary/weighted output domain is checked during evaluation. Identity requires equ
 
 ### Fragment loader
 
-`load_authoring(path) -> Result[ValidatedAuthoring]` accepts one TOML file or directory containing `pack.toml`. Directory TOML fragments are recursively sorted by relative path, excluding any `generated` directory and all hidden file/directory components (names beginning with `.`). Exclusion uses relative paths: a deliberately hidden authoring root is still allowed. Hidden virtual environments and CI checkouts are pruned before traversal. Array categories concatenate in that order; metadata keys cannot occur twice even if values match. Symlinks, reserved device filenames and case-insensitive path collisions fail. TOML datetime values must be quoted when stored as strings; arbitrary non-JSON objects fail.
+`load_authoring(path) -> Result[ValidatedAuthoring]` accepts one TOML file or directory containing `pack.toml`. Directory TOML fragments are recursively sorted by relative path, excluding any `generated` directory and all hidden file/directory components (names beginning with `.`). Exclusion uses relative paths: a deliberately hidden authoring root is still allowed. Hidden virtual environments and CI checkouts are pruned before traversal. Array categories concatenate in that order; metadata keys cannot occur twice even if values match. Symlinks, reserved device filenames and case-insensitive path collisions fail. Fragments are opened without blocking, so a FIFO or other non-regular `.toml` entry fails `E_FRAGMENT_PATH` instead of hanging. TOML datetime values must be quoted when stored as strings; arbitrary non-JSON objects fail.
 
 ### Deterministic outputs
 
