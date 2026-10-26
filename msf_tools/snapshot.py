@@ -129,6 +129,8 @@ class LocalResolver:
 
     Every component is opened relative to a directory descriptor with O_NOFOLLOW.
     This prevents symlink substitution between validation and the actual read.
+    O_NONBLOCK keeps the open of a FIFO from waiting for a writer, so the
+    descriptor reaches the regular-file check and is refused there.
     """
     def __init__(self, root, max_resource_bytes=64 * 1024 * 1024, max_total_bytes=256 * 1024 * 1024):
         self.root = Path(root).absolute()
@@ -148,7 +150,7 @@ class LocalResolver:
         path = PurePosixPath(decoded)
         if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or not decoded or path.is_absolute() or "\\" in decoded or "\x00" in decoded or any(x in ("", ".", "..") for x in decoded.split("/")):
             fail("E_RESOURCE_URI", "/resources", "Resolver accepts relative local paths without traversal.")
-        flags = os.O_RDONLY | os.O_NOFOLLOW
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
         fd = os.open(self.root, flags | os.O_DIRECTORY)
         try:
             for part in path.parts[:-1]:

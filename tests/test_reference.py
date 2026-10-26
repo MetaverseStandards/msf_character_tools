@@ -8,6 +8,7 @@ import inspect
 import io
 import json
 import math
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -260,6 +261,18 @@ class AssetTests(Checks):
             for uri in ["../data.bin","%2e%2e/data.bin","/absolute","https://example.invalid/x","link.bin"]:
                 d["buffers"][0]["uri"]=uri;self.assertFalse(asset(d,m.LocalResolver(root)).ok)
             d["buffers"][0]["uri"]="data.bin";self.bad(asset(d,m.LocalResolver(root,max_resource_bytes=8)),"E_RESOURCE_LIMIT")
+
+    def test_resolver_refuses_fifo_without_blocking(self):
+        d={"asset":{"version":"2.0"},"buffers":[{"byteLength":12,"uri":"pipe.bin"}]}
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();os.mkfifo(root/"pipe.bin");(root/"asset.gltf").write_bytes(m.canonical_json(d))
+            # A FIFO with no writer blocks a plain open, so the CLI runs in a killable child process.
+            try:
+                r=subprocess.run([sys.executable,"-B","-m","msf_tools","inspect",root/"asset.gltf","--resolver-root",root],cwd=ROOT,capture_output=True,timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("Resolver blocked opening a FIFO instead of refusing it.")
+        self.assertEqual(r.returncode,1);self.assertEqual(r.stdout,b"")
+        self.assertEqual([(x["code"],x["ref"]) for x in json.loads(r.stderr)["diagnostics"]],[("E_RESOURCE_TYPE","/resources")])
 
     def test_sidecar_idempotence_hash_references_mapping(self):
         raw=(FIX/"combined.gltf").read_bytes();s=self.good(m.inspect_asset(raw,"gltf"));d=source_doc();sig=d["signals"][1]
