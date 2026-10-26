@@ -104,14 +104,14 @@ def combined():
             mw = [-.5+1.5*u,1.5-u,.25-.75*u] if ni == 5 else [-.5,1.5,.25]
             positions = []
             for p,ds in zip(basis,zip(*deltas)):
-                morphed = [p[k]+sum(w*d[k] for w,d in zip(mw,ds)) for k in range(3)]
+                morphed = [p[k]+math.fsum(w*d[k] for w,d in zip(mw,ds)) for k in range(3)]
                 bound = [morphed[0]+.25,morphed[1],morphed[2]]
                 head = rotate(bound,1,math.pi/3*u)
                 jaw = rotate(rotate(bound,0,math.pi/2*u),1,math.pi/3*u)
                 accessory = [bound[0]+.2*u,bound[1]+.1*u,bound[2]]
                 # Root rotation cancels through inverse(W_mesh); directly evaluate
                 # the remaining four known joint equations in root coordinates.
-                positions.append([sum(w*q[k] for w,q in zip([.4,.3,.2,.1],[head,jaw,accessory,bound]))-translation[k] for k in range(3)])
+                positions.append([math.fsum(w*q[k] for w,q in zip([.4,.3,.2,.1],[head,jaw,accessory,bound]))-translation[k] for k in range(3)])
             instances.append({"node":ni,"positions":positions})
         golden["samples"].append({"timestamp":t,"instances":instances})
     (ROOT/"combined.analytical.json").write_bytes(json_bytes(golden))

@@ -6,7 +6,9 @@ import hashlib
 import json
 from pathlib import Path
 import struct
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import msf_tools as m
 
@@ -240,5 +242,15 @@ class CoreSemantics(unittest.TestCase):
     def test_native_fixture_position_bounds_independently_required(self):
         raw=(ROOT/'tests/fixtures/native-agreement.gltf').read_bytes();d=json.loads(raw);aid=d['meshes'][0]['primitives'][0]['attributes']['POSITION'];a=d['accessors'][aid]
         self.assertEqual(a.get('min'),[1,0,0]);self.assertEqual(a.get('max'),[1,0,0]);self.good(m.inspect_asset(raw,'gltf'))
+
+
+class FixtureGeneration(unittest.TestCase):
+    def test_generator_reproduces_checked_in_fixtures(self):
+        import make_fixtures
+        with tempfile.TemporaryDirectory() as td, patch.object(make_fixtures,'ROOT',Path(td)):
+            make_fixtures.combined();make_fixtures.native_agreement()
+            for path in sorted(Path(td).iterdir()):
+                with self.subTest(fixture=path.name):
+                    self.assertEqual(path.read_bytes(),(ROOT/'tests/fixtures'/path.name).read_bytes())
 
 if __name__=='__main__': unittest.main()
