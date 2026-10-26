@@ -9,7 +9,7 @@ import bisect
 from .common import freeze, thaw, number, integer
 from .authoring import keys
 from .snapshot import (AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS,
-                       MAX_TOTAL_ACCESSOR_COMPONENTS)
+                       MAX_TOTAL_ACCESSOR_COMPONENTS, _identity, _source_summary)
 from .math3d import (IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize,
                      column_major, affine, validate_trs, authored_quaternion, linear, hermite,
                      _add, _sub, _product, _divide, _sum)
@@ -178,8 +178,9 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
     if tuple(attributes) != ("POSITION",):
         fail("E_GEOMETRY_CAPABILITY", "/attributes", "Reference evaluation supports positions only.")
     components = _evaluation_components(snapshot.document)
-    if components > MAX_EVALUATION_COMPONENTS:
-        fail("E_RESOURCE_LIMIT", "/nodes", f"Mesh instances need {components} position and morph-target components; the budget is {MAX_EVALUATION_COMPONENTS}.",
+    budget = MAX_EVALUATION_COMPONENTS if snapshot.source is None else snapshot._component_caps()[1]
+    if components > budget:
+        fail("E_RESOURCE_LIMIT", "/nodes", f"Mesh instances need {components} position and morph-target components; the budget is {budget}.",
              "Reduce mesh instances or vertices, or evaluate a smaller asset.")
     if animation_id is not None and not integer(animation_id):
         fail("E_ANIMATION_REFERENCE", "/animation_id", "Select one explicit integer clip index.")
@@ -292,9 +293,12 @@ def export_geometry_golden(snapshot, **kwargs):
     result = evaluate_geometry(snapshot, **kwargs)
     if not result.ok:
         return result
-    return freeze({"schema_version": "1.0", "asset_sha256": snapshot.sha256,
-                   "precision": "binary64", "coordinates": "mesh_local", "units": "metres",
-                   "evaluation": result.value.to_dict()})
+    golden = {"schema_version": "1.0", "asset_sha256": _identity(snapshot),
+              "precision": "binary64", "coordinates": "mesh_local", "units": "metres",
+              "evaluation": result.value.to_dict()}
+    if snapshot.source is not None:
+        golden["source"] = _source_summary(snapshot)
+    return freeze(golden)
 
 
 @public

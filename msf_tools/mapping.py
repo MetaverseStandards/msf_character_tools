@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from .authoring import keys, in_domain
 from .common import freeze, thaw, digest, canonical_json, number
 from .pack import Pack
-from .snapshot import AssetSnapshot
+from .snapshot import AssetSnapshot, _identity, _source_summary
 from .report import public, fail, Fault, Result, Report, Loss
 from .records import OwnedRecord, _admit
 from .math3d import _add, _product, _sum
@@ -65,13 +65,17 @@ class CompiledMapping(OwnedRecord):
 
     def to_dict(self):
         self._check_integrity()
-        return {"schema_version": "1.0", "pack_sha256": self.pack.sha256,
-                "source_sha256": self.source_snapshot.sha256, "target_sha256": self.target_snapshot.sha256,
-                "mapping_id": self.mapping_id, "instructions": thaw(self.instructions),
-                "required_inputs": list(self.required_inputs), "outputs": list(self.output_ids),
-                "source_bindings": thaw(self.source_snapshot.bindings),
-                "target_bindings": thaw(self.target_snapshot.bindings),
-                "losses": [loss.to_dict() for loss in self.losses]}
+        result = {"schema_version": "1.0", "pack_sha256": self.pack.sha256,
+                  "source_sha256": _identity(self.source_snapshot), "target_sha256": _identity(self.target_snapshot),
+                  "mapping_id": self.mapping_id, "instructions": thaw(self.instructions),
+                  "required_inputs": list(self.required_inputs), "outputs": list(self.output_ids),
+                  "source_bindings": thaw(self.source_snapshot.bindings),
+                  "target_bindings": thaw(self.target_snapshot.bindings),
+                  "losses": [loss.to_dict() for loss in self.losses]}
+        for side, snapshot in (("source", self.source_snapshot), ("target", self.target_snapshot)):
+            if snapshot.source is not None:
+                result[side + "_adapter"] = _source_summary(snapshot)
+        return result
 
 
 def _check_profile(snapshot, pack, signals):

@@ -20,6 +20,8 @@ from .records import OwnedRecord, _admit
 from .math3d import matrix, validate_trs, authored_quaternion
 from .gltf_semantics import (parse_document, morph_count, validate_meshes,
                              validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
+from .sources import (SOURCE_FORMATS, SourceParseError, GENERATED_MAX_BYTES,
+                      GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
 COMPONENTS = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
               5123: ("H", 2), 5125: ("I", 4), 5126: ("f", 4)}
@@ -63,6 +65,9 @@ class AssetSnapshot(OwnedRecord):
     chunks: tuple[Chunk, ...] = ()
     channels: Mapping = None
     bindings: tuple = ()
+    # Set only for snapshots generated from a source format; the GLB above is then
+    # derived data and `source["sha256"]` is the identity that gets persisted.
+    source: Mapping = None
 
     @property
     def resource_hashes(self):
@@ -70,17 +75,28 @@ class AssetSnapshot(OwnedRecord):
         return self._resource_hashes()
 
     def _resource_hashes(self):
+        if self.source is not None:
+            return {d["uri"]: d["sha256"] for d in self.source["dependencies"]}
         return {r.id: r.sha256 for r in self.resources if r.sha256 is not None}
+
+    def _component_caps(self):
+        if self.source is not None:
+            return GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS
+        return MAX_ACCESSOR_COMPONENTS, MAX_TOTAL_ACCESSOR_COMPONENTS
 
     def to_dict(self):
         self._check_integrity()
-        return {"schema_version": "1.0", "format": self.format, "asset_sha256": self.sha256,
-                "document": thaw(self.document), "resources": [r.to_dict() for r in self.resources],
-                "chunks": [{"type": c.type, "byte_length": len(c.data), "sha256": digest(c.data)} for c in self.chunks],
-                "channels": thaw(self.channels or {}), "bindings": thaw(self.bindings),
-                "capabilities": {"geometry": ["POSITION", "relative_morph", "four_influence_LBS"],
-                                 "animations": ["STEP", "LINEAR", "CUBICSPLINE"],
-                                 "supported_required_extensions": sorted(SUPPORTED_REQUIRED_EXTENSIONS)}}
+        result = {"schema_version": "1.0", "format": self.format, "asset_sha256": _identity(self),
+                  "document": thaw(self.document), "resources": [r.to_dict() for r in self.resources],
+                  "chunks": [{"type": c.type, "byte_length": len(c.data), "sha256": digest(c.data)} for c in self.chunks],
+                  "channels": thaw(self.channels or {}), "bindings": thaw(self.bindings),
+                  "capabilities": {"geometry": ["POSITION", "relative_morph", "four_influence_LBS"],
+                                   "animations": ["STEP", "LINEAR", "CUBICSPLINE"],
+                                   "supported_required_extensions": sorted(SUPPORTED_REQUIRED_EXTENSIONS)}}
+        if self.source is not None:
+            result["generated_sha256"] = self.sha256
+            result["source"] = thaw(self.source)
+        return result
 
 
     def _check_consistency(self):
@@ -90,13 +106,16 @@ class AssetSnapshot(OwnedRecord):
             doc = parse_json(self.original_bytes)
             if doc != thaw(self.document) or doc.get("schema_version") != "1.0" or doc.get("channels") != thaw(self.channels):
                 fail("E_RECORD_INTEGRITY", "/", "Profile raw document and channels disagree.")
-            if self.resources or self.chunks or self.bindings:
+            if self.resources or self.chunks or self.bindings or self.source is not None:
                 fail("E_RECORD_INTEGRITY", "/", "Profile contains asset-only state.")
             return
         kind, doc, chunks, bin_chunk = _parse_asset(self.original_bytes, self.format)
         if kind != self.format or doc != thaw(self.document) or chunks != self.chunks:
             fail("E_RECORD_INTEGRITY", "/", "Snapshot source, parsed view or chunks disagree.")
-        _validate_document(doc)  # Includes hierarchy cycles before any world traversal.
+        # Includes hierarchy cycles before any world traversal.
+        _validate_document(doc, self._component_caps())
+        if self.source is not None:
+            _check_source(self.source, doc, kind)
         expected = [(f"/buffers/{i}", b.get("uri"), b["byteLength"]) for i, b in enumerate(doc.get("buffers", ()))]
         expected += [(f"/images/{i}", img["uri"], None) for i, img in enumerate(doc.get("images", ())) if "uri" in img]
         if len(expected) != len(self.resources):
@@ -120,8 +139,73 @@ class AssetSnapshot(OwnedRecord):
         if channels != self.channels:
             fail("E_RECORD_INTEGRITY", "/channels", "Channels disagree with bindings.")
         if self.bindings:
-            _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": self.sha256,
+            _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": _identity(self),
                                      "resource_hashes": self._resource_hashes(), "bindings": self.bindings})
+
+
+def _identity(snapshot):
+    """The hash every sidecar, report and export records for this snapshot."""
+    return snapshot.source["sha256"] if snapshot.source is not None else snapshot.sha256
+
+
+def _source_summary(snapshot):
+    """How a generated snapshot was produced, for exports that record its identity."""
+    return {k: snapshot.source[k] for k in ("format", "adapter", "adapter_version", "reader", "options_sha256")}
+
+
+_SOURCE_KEYS = {"format", "sha256", "byte_length", "adapter", "adapter_version", "reader", "options_sha256",
+                "node_order", "node_paths", "target_keys", "dependencies", "losses"}
+_DIAGNOSTIC_KEYS = {"code", "severity", "ref", "message", "remediation"}
+
+
+def _check_source(source, doc, kind):
+    def bad(message):
+        fail("E_RECORD_INTEGRITY", "/source", message)
+
+    def text(value):
+        return type(value) is str and value != ""
+
+    def sha(value):
+        return type(value) is str and re.fullmatch("[0-9a-f]{64}", value) is not None
+
+    def count(value):
+        return type(value) is int and value >= 0
+
+    if not isinstance(source, Mapping) or set(source) != _SOURCE_KEYS:
+        bad("Source record keys are wrong.")
+    if kind != "glb" or source["format"] not in SOURCE_FORMATS:
+        bad("Source format is not a supported source format.")
+    if not sha(source["sha256"]) or not sha(source["options_sha256"]) or not count(source["byte_length"]):
+        bad("Source digests or byte length are malformed.")
+    if not all(text(source[k]) for k in ("adapter", "adapter_version", "reader")):
+        bad("Source adapter and reader must be named.")
+    if source["node_order"] != "path-sorted-v2":
+        bad("Unknown source node order.")
+    if doc["asset"].get("generator") != f'{source["adapter"]} {source["adapter_version"]}':
+        bad("Generated asset was not written by the recorded adapter.")
+    paths, keys_by_mesh = source["node_paths"], source["target_keys"]
+    if (not isinstance(paths, tuple) or len(paths) != len(doc.get("nodes", ())) or len(set(paths)) != len(paths)
+            or not all(type(p) is str for p in paths)):
+        bad("Source node paths must name every generated node once.")
+    meshes = doc.get("meshes", ())
+    if not isinstance(keys_by_mesh, tuple) or len(keys_by_mesh) != len(meshes):
+        bad("Source target keys must list every generated mesh.")
+    for mesh, mesh_keys in zip(meshes, keys_by_mesh):
+        if (not isinstance(mesh_keys, tuple) or len(mesh_keys) != morph_count(mesh) or len(set(mesh_keys)) != len(mesh_keys)
+                or not all(type(k) is str for k in mesh_keys)):
+            bad("Source target keys must name every morph target of their mesh once.")
+    dependencies = source["dependencies"]
+    if not isinstance(dependencies, tuple) or not all(
+            isinstance(d, Mapping) and set(d) == {"uri", "sha256", "byte_length"} and text(d["uri"]) and sha(d["sha256"])
+            and count(d["byte_length"]) for d in dependencies):
+        bad("Source dependencies are malformed.")
+    uris = [d["uri"] for d in dependencies]
+    if uris != sorted(set(uris)):
+        bad("Source dependencies must be unique and sorted by URI.")
+    if not isinstance(source["losses"], tuple) or not all(
+            isinstance(d, Mapping) and set(d) == _DIAGNOSTIC_KEYS and all(type(d[k]) is str for k in _DIAGNOSTIC_KEYS)
+            and d["severity"] in ("warning", "info") for d in source["losses"]):
+        bad("Source losses must be warning or info diagnostics.")
 
 
 class LocalResolver:
@@ -253,7 +337,7 @@ def _decode_accessor(snapshot, accessor_id, *, raw=False):
     ref = f"/accessors/{accessor_id}"
     a = index(accessor_id, snapshot.document.get("accessors", ()), ref)
     offsets, _, _ = _layout(a)
-    if a["count"] * len(offsets) > MAX_ACCESSOR_COMPONENTS:
+    if a["count"] * len(offsets) > snapshot._component_caps()[0]:
         fail("E_RESOURCE_LIMIT", ref, "Accessor exceeds the decoded component budget.")
     if "bufferView" in a:
         rows = _read_elements(snapshot, a["bufferView"], a.get("byteOffset", 0), a["count"], a, ref, raw=raw)
@@ -554,7 +638,7 @@ def inspect_asset(bytes, /, format, resolver=None, sidecar=None):
 
 
 def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET_BYTES,
-                  component_caps=(MAX_ACCESSOR_COMPONENTS, MAX_TOTAL_ACCESSOR_COMPONENTS)):
+                  component_caps=(MAX_ACCESSOR_COMPONENTS, MAX_TOTAL_ACCESSOR_COMPONENTS), source=None):
     if len(bytes) > max_asset_bytes:
         fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget." if max_asset_bytes == MAX_ASSET_BYTES
              else f"Asset exceeds the {max_asset_bytes}-byte input budget.")
@@ -590,7 +674,7 @@ def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET
             if len(data) < b["byteLength"]:
                 fail("E_BUFFER_BOUNDS", ref, "Consumed buffer is shorter than byteLength.")
         resources.append(Resource(ref, uri, b["byteLength"], digest(data) if data is not None else None, data))
-    snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}))
+    snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}), source=source)
     errors = []
     for i, a in enumerate(doc.get("accessors", ())):
         # Spec1509: descriptors without base or sparse data may declare arbitrary
@@ -631,13 +715,36 @@ def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET
                 if len(data) > MAX_RESOURCE_BYTES or consumed_bytes > MAX_TOTAL_RESOURCE_BYTES:
                     fail("E_RESOURCE_LIMIT", f"/images/{i}", "Consumed image exceeds byte budget.")
             resources.append(Resource(f"/images/{i}", uri, len(data) if data is not None else 0, digest(data) if data is not None else None, data))
-    snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}))
+    snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}), source=source)
     if sidecar is not None:
         sc = _validate_sidecar(snapshot, sidecar)
         channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in sc["bindings"]}
-        snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze(channels), freeze(sc["bindings"]))
+        snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze(channels),
+                                 freeze(sc["bindings"]), source=source)
     report = Report(tuple(errors + warnings))
     return Result(_admit(snapshot) if report.ok else None, report)
+
+
+@public
+def _inspect_source(adapter, data, fmt, resolver=None, sidecar=None, options=None):
+    """Convert a source with `adapter`, then admit the GLB through the glTF path."""
+    options = {} if options is None else options
+    try:
+        generated = adapter.convert(data, fmt, resolver, None, options)
+    except SourceParseError as exc:
+        fail("E_SOURCE_PARSE", "/", str(exc)[:512] or "The source reader rejected the file.",
+             "Check that the source file is valid for its declared format.")
+    source = {"format": fmt, "sha256": digest(data), "byte_length": len(data),
+              "adapter": adapter.name, "adapter_version": adapter.version, "reader": adapter.reader(),
+              "options_sha256": digest(canonical_json(options)), "node_order": "path-sorted-v2",
+              "node_paths": list(generated.node_paths), "target_keys": [list(k) for k in generated.target_keys],
+              "dependencies": [{"uri": uri, "sha256": sha, "byte_length": length} for uri, sha, length in generated.dependencies],
+              "losses": [d.to_dict() for d in generated.losses]}
+    result = _inspect_gltf(generated.glb, "glb", None, sidecar, max_asset_bytes=GENERATED_MAX_BYTES,
+                           component_caps=(GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS),
+                           source=freeze(source))
+    report = Report(result.report.diagnostics + tuple(generated.losses), result.report.losses)
+    return Result(result.value, report)
 
 
 @dataclass(frozen=True)
@@ -662,7 +769,7 @@ def _binding(snapshot, b):
     domain(b["domain"], "/bindings/domain")
     ref = b["ref"]
     keys(ref, {"asset_sha256", "locator", "node", "mesh", "target"}, {"resource_sha256"}, "/bindings/ref")
-    if ref["asset_sha256"] != snapshot.sha256:
+    if ref["asset_sha256"] != _identity(snapshot):
         fail("E_STALE_SOURCE", "/bindings/ref", "Binding asset hash is stale.")
     node = index(ref["node"], snapshot.document.get("nodes", ()), "/bindings/ref/node")
     mesh = index(ref["mesh"], snapshot.document.get("meshes", ()), "/bindings/ref/mesh")
@@ -689,7 +796,7 @@ def _validate_sidecar(snapshot, sidecar):
     keys(sc, {"schema_version", "asset_sha256", "resource_hashes", "bindings"}, {"metadata"}, "/sidecar")
     if sc["schema_version"] != "1.0":
         fail("E_SIDECAR_VERSION", "/sidecar", "Unsupported sidecar version.")
-    if sc["asset_sha256"] != snapshot.sha256 or sc["resource_hashes"] != snapshot._resource_hashes():
+    if sc["asset_sha256"] != _identity(snapshot) or sc["resource_hashes"] != snapshot._resource_hashes():
         fail("E_STALE_SOURCE", "/sidecar", "Sidecar asset or consumed resource hashes are stale.")
     if "metadata" in sc and not isinstance(sc["metadata"], Mapping):
         fail("E_TYPE", "/sidecar/metadata", "Metadata must be an object.")
@@ -714,7 +821,7 @@ def annotate_asset(snapshot, annotations):
         fail("E_SNAPSHOT", "/", "Annotation requires an inspected glTF asset.")
     snapshot._check_integrity()
     keys(annotations, {"bindings"}, {"metadata"}, "/annotations")
-    sc = {"schema_version": "1.0", "asset_sha256": snapshot.sha256,
+    sc = {"schema_version": "1.0", "asset_sha256": _identity(snapshot),
           "resource_hashes": snapshot.resource_hashes, **thaw(annotations)}
     _validate_sidecar(snapshot, sc)
     return _admit(Sidecar(sc))
@@ -729,7 +836,7 @@ def morph_binding(snapshot, signal, node, target):
     if "mesh" not in n:
         fail("E_BINDING_REFERENCE", "/node", "Node must have a mesh.")
     b = {k: thaw(signal[k]) for k in ("id", "value_type", "units", "domain", "calibration")}
-    b["ref"] = {"asset_sha256": snapshot.sha256, "locator": f"/nodes/{node}/weights/{target}",
+    b["ref"] = {"asset_sha256": _identity(snapshot), "locator": f"/nodes/{node}/weights/{target}",
                 "node": node, "mesh": n["mesh"], "target": target}
     _binding(snapshot, b)
     hashes = set()
@@ -738,6 +845,7 @@ def morph_binding(snapshot, signal, node, target):
             a = snapshot.document["accessors"][aid]
             vids = ([a["bufferView"]] if "bufferView" in a else []) + ([a["sparse"][f]["bufferView"] for f in ("indices", "values")] if "sparse" in a else [])
             hashes.update(snapshot.resources[snapshot.document["bufferViews"][v]["buffer"]].sha256 for v in vids)
-    if len(hashes) == 1 and None not in hashes:
+    # A generated GLB's buffer digest depends on the reader version, so it is never recorded.
+    if len(hashes) == 1 and None not in hashes and snapshot.source is None:
         b["ref"]["resource_sha256"] = next(iter(hashes))
     return freeze(b)
