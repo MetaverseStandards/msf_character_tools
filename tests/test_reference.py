@@ -296,11 +296,14 @@ class AssetTests(Checks):
 
 
 def instanced_points(*meshes):
-    """Zero-backed point meshes given as (vertex count, instance count) pairs."""
+    """Zero-backed point meshes given as (vertices, instances[, morph targets]) tuples."""
     accessors,mesh_rows,nodes=[],[],[]
-    for count,instances in meshes:
+    for count,instances,*targets in meshes:
         accessors.append({"componentType":5126,"type":"VEC3","count":count,"min":[0,0,0],"max":[0,0,0]})
-        mesh_rows.append({"primitives":[{"mode":0,"attributes":{"POSITION":len(accessors)-1}}]})
+        primitive={"mode":0,"attributes":{"POSITION":len(accessors)-1}}
+        if targets:
+            primitive["targets"]=[{"POSITION":len(accessors)-1}]*targets[0]
+        mesh_rows.append({"primitives":[primitive]})
         nodes+=[{"mesh":len(mesh_rows)-1}]*instances
     return {"asset":{"version":"2.0"},"accessors":accessors,"meshes":mesh_rows,"nodes":nodes}
 
@@ -310,19 +313,24 @@ class GeometryTests(Checks):
         self.assertEqual([(d.code,d.ref) for d in r.report.diagnostics],[("E_RESOURCE_LIMIT","/nodes")])
         self.assertIsNone(r.value)
 
-    def test_instance_vertex_budget_threshold(self):
-        with patch.object(geometry,"MAX_INSTANCE_VERTICES",4):
-            for instances in (3,4):
-                v=self.good(m.evaluate_geometry(self.good(asset(instanced_points((1,instances)))))).to_dict()
-                self.assertEqual([i["node"] for i in v["instances"]],list(range(instances)))
-            self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((1,5))))))
-            self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((2,1),(1,3))))))
+    def test_instance_component_budget_threshold(self):
+        # Four one-vertex instances, or two with one morph target, need 12 position components.
+        for doc in (instanced_points((1,4)),instanced_points((1,2,1)),instanced_points((2,1),(1,2))):
+            s=self.good(asset(doc))
+            for cap in (13,12):
+                with self.subTest(doc=doc,cap=cap),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",cap):
+                    self.assertEqual(len(self.good(m.evaluate_geometry(s)).instances),len(doc["nodes"]))
+            with self.subTest(doc=doc,cap=11),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",11):
+                self.assert_instance_budget_refusal(m.evaluate_geometry(s))
 
-    def test_default_instance_vertex_budget_refuses_multiplied_mesh(self):
-        s=self.good(asset(instanced_points((1000,1333),(334,1))))
-        self.assert_instance_budget_refusal(m.evaluate_geometry(s))
-        # Evaluating each POSITION accessor once stays within the inspection component limit.
-        self.assertEqual(geometry.MAX_INSTANCE_VERTICES,1_333_333)
+    def test_default_budget_refuses_multiplied_mesh(self):
+        self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((1000,1333),(334,1))))))
+
+    def test_default_budget_counts_morph_targets_per_instance(self):
+        # 100 vertices x 200 instances is 60,000 components; 100 targets make it 6,060,000.
+        self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((100,200,100))))))
+        # Evaluating each POSITION and morph-target accessor once stays within the inspection component limit.
+        self.assertEqual(geometry.MAX_EVALUATION_COMPONENTS,4_000_000)
 
     def test_separate_morph_and_skin_analytical(self):
         doc=json.loads((FIX/"combined.gltf").read_bytes())

@@ -17,10 +17,11 @@ from .report import public, fail, Result, Report, Fault
 from .records import OwnedRecord, _admit
 from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
 
-# POSITION vertices summed over every mesh node instance. Inspection caps declared
-# accessor components, so an asset that evaluates each POSITION accessor once fits;
-# instancing a mesh or sharing an accessor between primitives multiplies the work.
-MAX_INSTANCE_VERTICES = MAX_TOTAL_ACCESSOR_COMPONENTS // 3
+# Position components read and written per mesh node instance: the base POSITION
+# plus every morph-target POSITION, summed over instances. Inspection caps declared
+# accessor components at the same number, so an asset that evaluates each of those
+# accessors once fits; instancing a mesh or sharing accessors multiplies the work.
+MAX_EVALUATION_COMPONENTS = MAX_TOTAL_ACCESSOR_COMPONENTS
 
 
 def _time(timestamp):
@@ -149,17 +150,18 @@ def _accessor(snapshot, aid, shape, components, count=None, normalized=None, ref
     return _decode_accessor(snapshot, aid)
 
 
-def _instance_vertices(document):
+def _evaluation_components(document):
     accessors = document.get("accessors", ())
     per_mesh = []
     for mesh in document.get("meshes", ()):
-        count = 0
+        components = 0
         for primitive in mesh["primitives"]:
             position = primitive["attributes"].get("POSITION")
             # Bad references are diagnosed per primitive during evaluation.
             if integer(position) and 0 <= position < len(accessors):
-                count += accessors[position]["count"]
-        per_mesh.append(count)
+                targets = sum("POSITION" in target for target in primitive.get("targets", ()))
+                components += 3 * accessors[position]["count"] * (1 + targets)
+        per_mesh.append(components)
     return sum(per_mesh[node["mesh"]] for node in document.get("nodes", ()) if "mesh" in node)
 
 
@@ -169,9 +171,9 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
     _time(timestamp)
     if tuple(attributes) != ("POSITION",):
         fail("E_GEOMETRY_CAPABILITY", "/attributes", "Reference evaluation supports positions only.")
-    vertices = _instance_vertices(snapshot.document)
-    if vertices > MAX_INSTANCE_VERTICES:
-        fail("E_RESOURCE_LIMIT", "/nodes", f"Mesh instances need {vertices} POSITION vertex evaluations; the budget is {MAX_INSTANCE_VERTICES}.",
+    components = _evaluation_components(snapshot.document)
+    if components > MAX_EVALUATION_COMPONENTS:
+        fail("E_RESOURCE_LIMIT", "/nodes", f"Mesh instances need {components} position and morph-target components; the budget is {MAX_EVALUATION_COMPONENTS}.",
              "Reduce mesh instances or vertices, or evaluate a smaller asset.")
     if animation_id is not None and not integer(animation_id):
         fail("E_ANIMATION_REFERENCE", "/animation_id", "Select one explicit integer clip index.")
