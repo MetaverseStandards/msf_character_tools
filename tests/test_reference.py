@@ -9,6 +9,7 @@ import io
 import json
 import math
 import os
+import socket
 from pathlib import Path
 import struct
 import subprocess
@@ -274,6 +275,14 @@ class AssetTests(Checks):
                 self.fail("Resolver blocked opening a FIFO instead of refusing it.")
         self.assertEqual(r.returncode,1);self.assertEqual(r.stdout,b"")
         self.assertEqual([(x["code"],x["ref"]) for x in json.loads(r.stderr)["diagnostics"]],[("E_RESOURCE_TYPE","/resources")])
+
+    def test_resolver_refuses_unix_socket(self):
+        d={"asset":{"version":"2.0"},"buffers":[{"byteLength":12,"uri":"sock.bin"}]}
+        with tempfile.TemporaryDirectory() as td, socket.socket(socket.AF_UNIX) as listener:
+            root=Path(td).resolve();listener.bind(str(root/"sock.bin"))
+            r=asset(d,m.LocalResolver(root))
+        self.assertIsNone(r.value)
+        self.assertEqual([(x.code,x.ref) for x in r.report.diagnostics],[("E_RESOURCE_TYPE","/resources")])
 
     def test_sidecar_idempotence_hash_references_mapping(self):
         raw=(FIX/"combined.gltf").read_bytes();s=self.good(m.inspect_asset(raw,"gltf"));d=source_doc();sig=d["signals"][1]

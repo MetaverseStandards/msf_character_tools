@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import base64
 import binascii
+import errno
 import os
 import re
 import stat
@@ -32,6 +33,7 @@ MAX_TOTAL_RESOURCE_BYTES = 256 * 1024 * 1024
 MAX_ACCESSOR_COMPONENTS = 1_000_000
 MAX_TOTAL_ACCESSOR_COMPONENTS = 4_000_000
 MAX_STRUCTURAL_OBJECTS = 100_000
+_SPECIAL_FILE_ERRNOS = frozenset({errno.ENXIO, errno.ENODEV, errno.EOPNOTSUPP})
 
 
 @dataclass(frozen=True)
@@ -157,7 +159,13 @@ class LocalResolver:
                 next_fd = os.open(part, flags | os.O_DIRECTORY, dir_fd=fd)
                 os.close(fd)
                 fd = next_fd
-            resource_fd = os.open(path.parts[-1], flags, dir_fd=fd)
+            try:
+                resource_fd = os.open(path.parts[-1], flags, dir_fd=fd)
+            except OSError as exc:
+                # Sockets and driverless devices fail at open, before fstat can classify them.
+                if exc.errno in _SPECIAL_FILE_ERRNOS:
+                    fail("E_RESOURCE_TYPE", "/resources", "Resource must be a regular file.")
+                raise
             try:
                 info = os.fstat(resource_fd)
                 if not stat.S_ISREG(info.st_mode):
