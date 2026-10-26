@@ -5,7 +5,7 @@ import json
 from msf_tools.common import digest
 from msf_tools.report import Diagnostic
 from msf_tools.sources import Generated, SourceParseError
-from msf_tools.sources import glb
+from msf_tools.sources import glb, paths as source_paths
 
 MAGIC = b'#usda 1.0\n'
 
@@ -45,7 +45,7 @@ class FakeAdapter:
             raise SourceParseError(f'Fake scene is not JSON: {exc}') from None
         if 'fail' in scene:
             raise SourceParseError(scene['fail'])
-        nodes = sorted(scene['nodes'], key=lambda n: tuple(n['path'].split('/')[1:]))
+        nodes = sorted(scene['nodes'], key=lambda n: source_paths.sort_key(n['path']))
         paths = [n['path'] for n in nodes]
         meshes = []
         for n in nodes:

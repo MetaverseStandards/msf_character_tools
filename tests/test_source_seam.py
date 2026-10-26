@@ -119,6 +119,11 @@ class GeneratedSnapshots(unittest.TestCase):
                         dict(thaw(self.snapshot.source), adapter='other')):
             with self.subTest(changed=sorted(changed)), self.assertRaises(Fault):
                 _admit(replace(self.snapshot, source=freeze(changed)))
+        for key, value in (('node_paths', ['/Root/Face', '/Root']), ('node_paths', ['Root', '/Root/Face']),
+                           ('target_keys', [['smile', 'bl:ink']])):
+            with self.subTest(grammar=value), self.assertRaises(Fault) as caught:
+                _admit(replace(self.snapshot, source=freeze(dict(thaw(self.snapshot.source), **{key: value}))))
+            self.assertEqual(caught.exception.diagnostic.code, 'E_RECORD_INTEGRITY')
         object.__setattr__(self.snapshot, 'source', freeze(dict(thaw(self.snapshot.source), byte_length=1)))
         with self.assertRaises(Fault):
             self.snapshot._check_integrity()

@@ -20,6 +20,7 @@ from .records import OwnedRecord, _admit
 from .math3d import matrix, validate_trs, authored_quaternion
 from .gltf_semantics import (parse_document, morph_count, validate_meshes,
                              validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
+from .sources import paths as source_paths
 from .sources import (SOURCE_FORMATS, SourceParseError, GENERATED_MAX_BYTES,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
@@ -187,6 +188,15 @@ def _check_source(source, doc, kind):
     if (not isinstance(paths, tuple) or len(paths) != len(doc.get("nodes", ())) or len(set(paths)) != len(paths)
             or not all(type(p) is str for p in paths)):
         bad("Source node paths must name every generated node once.")
+    try:
+        order = [source_paths.sort_key(p) for p in paths]
+        for mesh_keys in keys_by_mesh if isinstance(keys_by_mesh, tuple) else ():
+            for key in mesh_keys if isinstance(mesh_keys, tuple) else ():
+                source_paths.parse_target_key(key)
+    except ValueError as exc:
+        bad(f"Source path or target key is malformed: {exc}")
+    if any(a >= b for a, b in zip(order, order[1:])):
+        bad("Source node paths must be in path-sorted order.")
     meshes = doc.get("meshes", ())
     if not isinstance(keys_by_mesh, tuple) or len(keys_by_mesh) != len(meshes):
         bad("Source target keys must list every generated mesh.")
