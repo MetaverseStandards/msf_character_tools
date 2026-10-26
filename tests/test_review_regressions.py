@@ -4,6 +4,7 @@ import copy
 from dataclasses import replace
 import gc
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -13,6 +14,7 @@ from unittest.mock import patch
 import tomllib
 
 import msf_tools as m
+from msf_tools import mapping
 from msf_tools.common import freeze, thaw
 from msf_tools.report import Fault
 
@@ -186,9 +188,23 @@ class GraphOrdering(unittest.TestCase):
         self.assertIsNone(result.value)
         self.assertEqual([d.code for d in result.report.diagnostics], ['E_MAPPING_CYCLE'])
 
-    def test_long_chain_declared_backwards_compiles_in_linear_time(self):
-        # Record integrity checks alone cost about 0.45 CPU seconds here.
-        # Rescanning every rule once per wave adds about as much again.
+    def test_scheduler_orders_long_backwards_chain(self):
+        # Rescanning every rule once per wave needs about 2e8 checks here.
+        count = 20000
+        rules = [{'id': f'r{i}'} for i in reversed(range(count))]
+        dependencies = {f'r{i}': {f'r{i - 1}'} if i else set() for i in range(count)}
+        ordered = mapping._dependency_waves(rules, dependencies)
+        self.assertEqual([r['id'] for r in ordered], [f'r{i}' for i in range(count)])
+
+    def test_scheduler_keeps_declaration_order_and_stops_at_cycles(self):
+        rules = [{'id': rid} for rid in ('A', 'B', 'C', 'P', 'Q', 'R')]
+        dependencies = {'A': {'B'}, 'B': set(), 'C': set(), 'P': {'Q'}, 'Q': {'P'}, 'R': {'R'}}
+        self.assertEqual([r['id'] for r in mapping._dependency_waves(rules, dependencies)], ['B', 'C', 'A'])
+
+    @unittest.skipUnless(os.environ.get('MSF_SLOW_TESTS') == '1', 'Set MSF_SLOW_TESTS=1 to run timed checks.')
+    def test_long_chain_compiles_within_cpu_budget(self):
+        # On the reference machine, record integrity checks take about two thirds
+        # of this budget; rescanning every rule per wave roughly doubled it.
         count = 3000
         rules = [identity_rule(f'r{i}', f's{i}', f's{i + 1}') for i in reversed(range(count))]
         doc = graph([f's{i}' for i in range(count + 1)], rules, ['s0'], [f's{count}'])

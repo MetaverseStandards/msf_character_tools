@@ -87,6 +87,31 @@ def _check_profile(snapshot, pack, signals):
         fail("E_RECORD_INTEGRITY", "/profile", "Profile selection/channels disagree with pack.")
 
 
+def _dependency_waves(rules, dependencies):
+    """Order rules in dependency waves; rules on or behind a cycle are left out."""
+    by_id = {r["id"]: r for r in rules}
+    position = {r["id"]: i for i, r in enumerate(rules)}
+    dependents = {rid: [] for rid in dependencies}
+    for rid, needs in dependencies.items():
+        for need in needs:
+            dependents[need].append(rid)
+    pending = {rid: len(needs) for rid, needs in dependencies.items()}
+    # A rule joins the wave after the one holding its last dependency, and each
+    # wave runs in declaration order: [A needs B, B, C] gives [B, C, A].
+    wave = [r["id"] for r in rules if not pending[r["id"]]]
+    ordered = []
+    while wave:
+        ordered.extend(by_id[rid] for rid in wave)
+        ready = []
+        for rid in wave:
+            for dependent in dependents[rid]:
+                pending[dependent] -= 1
+                if not pending[dependent]:
+                    ready.append(dependent)
+        wave = sorted(ready, key=position.__getitem__)
+    return ordered
+
+
 @public
 def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_approximation=False):
     if not isinstance(pack, Pack) or not isinstance(source_snapshot, AssetSnapshot) or not isinstance(target_snapshot, AssetSnapshot):
@@ -180,26 +205,7 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
                 check(fail, "E_DERIVATION_ASSUMPTIONS", rid,
                       f"Nonidentity rule {rid} requires explicit derivation assumptions for differing calibration/units or declared approximation/loss.")
     dependencies = {r["id"]: {writers[s] for s in r["inputs"] if s in writers} for r in rules}
-    by_id = {r["id"]: r for r in rules}
-    position = {r["id"]: i for i, r in enumerate(rules)}
-    dependents = {rid: [] for rid in dependencies}
-    for rid, needs in dependencies.items():
-        for need in needs:
-            dependents[need].append(rid)
-    pending = {rid: len(needs) for rid, needs in dependencies.items()}
-    # A rule joins the wave after the one holding its last dependency, and each
-    # wave runs in declaration order: [A needs B, B, C] gives [B, C, A].
-    wave = [r["id"] for r in rules if not pending[r["id"]]]
-    ordered = []
-    while wave:
-        ordered.extend(by_id[rid] for rid in wave)
-        ready = []
-        for rid in wave:
-            for dependent in dependents[rid]:
-                pending[dependent] -= 1
-                if not pending[dependent]:
-                    ready.append(dependent)
-        wave = sorted(ready, key=position.__getitem__)
+    ordered = _dependency_waves(rules, dependencies)
     if len(ordered) < len(rules):
         check(fail, "E_MAPPING_CYCLE", mapping_id, "Mapping dependency graph contains a cycle.")
     consumed = {s for r in rules for s in r["inputs"]}
