@@ -29,12 +29,17 @@ def scene(**changes):
 
 
 class FakeAdapter:
+    """`edit` rewrites the parsed scene, standing in for a different reader version."""
     name = 'msf-fake'
     version = '1'
     formats = ('usda',)
 
+    def __init__(self, reader_version='1', edit=None):
+        self.reader_version = reader_version
+        self.edit = edit
+
     def reader(self):
-        return 'fake-reader 1'
+        return f'fake-reader {self.reader_version}'
 
     def convert(self, data, fmt, resolver, limits, options):
         if not data.startswith(MAGIC):
@@ -45,6 +50,8 @@ class FakeAdapter:
             raise SourceParseError(f'Fake scene is not JSON: {exc}') from None
         if 'fail' in scene:
             raise SourceParseError(scene['fail'])
+        if self.edit is not None:
+            self.edit(scene)
         nodes = sorted(scene['nodes'], key=lambda n: source_paths.sort_key(n['path']))
         paths = [n['path'] for n in nodes]
         meshes = []

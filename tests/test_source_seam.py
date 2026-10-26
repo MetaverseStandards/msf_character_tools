@@ -39,10 +39,10 @@ class GltfInspectionLimits(unittest.TestCase):
 SIGNAL = {'id': 'smile', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'literal'}
 
 
-def generated(scene=None, **kwargs):
+def generated(scene=None, adapter=None, **kwargs):
     data = fake.source(scene or fake.scene())
     kwargs.setdefault('resolver', fake.resolver)
-    return data, snapshots._inspect_source(fake.FakeAdapter(), data, 'usda', **kwargs)
+    return data, snapshots._inspect_source(adapter or fake.FakeAdapter(), data, 'usda', **kwargs)
 
 
 def good(result):
@@ -79,7 +79,8 @@ class GeneratedSnapshots(unittest.TestCase):
         self.assertEqual(exported['source'], thaw(s.source))
         self.assertEqual(s.resource_hashes, {'layers/sub.usda': digest(fake.resolver('layers/sub.usda'))})
         binding = good(m.morph_binding(s, SIGNAL, 1, 0))
-        self.assertEqual(binding['ref']['asset_sha256'], self.source_sha)
+        self.assertEqual(thaw(binding['ref']), {'asset_sha256': self.source_sha, 'locator': '/nodes/1/weights/0',
+                                                'node': 1, 'mesh': 0, 'target': 0, 'source_locator': '/Root/Face#smile'})
         sidecar = good(m.annotate_asset(s, {'bindings': [thaw(binding)]}))
         self.assertEqual(sidecar.to_dict()['asset_sha256'], self.source_sha)
         self.assertEqual(sidecar.to_dict()['resource_hashes'], s.resource_hashes)
@@ -166,3 +167,69 @@ class SnapshotHashGuard(unittest.TestCase):
                     visit(child, scope, in_snapshot_class)
             visit(tree, '', False)
         self.assertEqual(offenders, [])
+
+
+def add_arm(scene):
+    scene['nodes'].append({'path': '/Root/Arm'})
+
+
+def swap_targets(scene):
+    scene['meshes']['face']['targets'].reverse()
+
+
+def rename_face(scene):
+    scene['nodes'][0]['path'] = '/Root/Head'
+
+
+class SourceLocatorBinding(unittest.TestCase):
+    def setUp(self):
+        _, result = generated()
+        self.snapshot = good(result)
+        self.binding = thaw(good(m.morph_binding(self.snapshot, SIGNAL, 1, 0)))
+        self.sidecar = good(m.annotate_asset(self.snapshot, {'bindings': [self.binding]}))
+
+    def bound(self, adapter, sidecar=None):
+        return generated(adapter=adapter, sidecar=self.sidecar.to_dict() if sidecar is None else sidecar)[1]
+
+    def test_same_reader_binds_without_warnings(self):
+        result = self.bound(fake.FakeAdapter())
+        self.assertEqual([d.code for d in result.report.diagnostics], ['W_SKIPPED'])
+        self.assertEqual(thaw(good(result).bindings[0]['ref']), self.binding['ref'])
+
+    def test_reindexed_nodes_and_targets_resolve_by_locator(self):
+        def both(scene):
+            add_arm(scene)
+            swap_targets(scene)
+        result = self.bound(fake.FakeAdapter('2', both))
+        snapshot = good(result)
+        self.assertEqual(snapshot.source['node_paths'], ('/Root', '/Root/Arm', '/Root/Face'))
+        self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics],
+                         [('W_BINDING_REINDEXED', '/bindings/ref'), ('W_SKIPPED', '/Root')])
+        self.assertEqual(thaw(snapshot.bindings[0]['ref']), dict(self.binding['ref'], node=2, target=1, locator='/nodes/2/weights/1'))
+        snapshot._check_integrity()
+        annotated = m.annotate_asset(snapshot, {'bindings': [self.binding]})
+        self.assertEqual([d.code for d in annotated.report.diagnostics], ['W_BINDING_REINDEXED'])
+        self.assertEqual(annotated.value.to_dict()['bindings'][0]['ref']['node'], 2)
+
+    def test_missing_source_node_or_target_is_stale(self):
+        for edit in (rename_face, lambda scene: scene['meshes']['face']['targets'].pop(0)):
+            with self.subTest(edit=edit):
+                result = self.bound(fake.FakeAdapter('2', edit))
+                self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics if d.severity == 'error'],
+                                 [('E_STALE_SOURCE', '/bindings/ref/source_locator')])
+
+    def test_generated_bindings_need_a_locator_and_no_buffer_digest(self):
+        for change, code in (({'source_locator': None}, 'E_REQUIRED'), ({'resource_sha256': '0' * 64}, 'E_BINDING_REFERENCE'),
+                             ({'source_locator': '/Root/Face'}, 'E_BINDING_REFERENCE'), ({'node': -1}, 'E_BINDING_REFERENCE')):
+            ref = {k: v for k, v in dict(self.binding['ref'], **change).items() if v is not None}
+            with self.subTest(change=change):
+                result = m.annotate_asset(self.snapshot, {'bindings': [dict(self.binding, ref=ref)]})
+                self.assertEqual([d.code for d in result.report.diagnostics], [code])
+
+    def test_gltf_bindings_refuse_source_locators(self):
+        snapshot = good(m.inspect_asset(COMBINED, 'gltf'))
+        binding = thaw(good(m.morph_binding(snapshot, SIGNAL, 5, 0)))
+        self.assertNotIn('source_locator', binding['ref'])
+        binding['ref']['source_locator'] = '/Root/Face#smile'
+        result = m.annotate_asset(snapshot, {'bindings': [binding]})
+        self.assertEqual([d.code for d in result.report.diagnostics], ['E_UNKNOWN_KEY'])

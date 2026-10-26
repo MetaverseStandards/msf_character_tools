@@ -55,6 +55,11 @@
                 "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
               },
+              "source_locator": {
+                "$comment": "Generated snapshots only: <node path>#<target key> in path-sorted-v2 grammar. It is authoritative; node, mesh, target and locator are then hints.",
+                "pattern": "^/[^#]*#[^#]*$",
+                "type": "string"
+              },
               "target": {
                 "minimum": 0,
                 "type": "integer"

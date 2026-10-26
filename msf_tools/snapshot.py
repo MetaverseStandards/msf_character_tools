@@ -140,8 +140,10 @@ class AssetSnapshot(OwnedRecord):
         if channels != self.channels:
             fail("E_RECORD_INTEGRITY", "/channels", "Channels disagree with bindings.")
         if self.bindings:
-            _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": _identity(self),
-                                     "resource_hashes": self._resource_hashes(), "bindings": self.bindings})
+            _, reindexed = _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": _identity(self),
+                                                    "resource_hashes": self._resource_hashes(), "bindings": self.bindings})
+            if reindexed:
+                fail("E_RECORD_INTEGRITY", "/bindings", "Stored bindings disagree with their source locators.")
 
 
 def _identity(snapshot):
@@ -727,7 +729,8 @@ def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET
             resources.append(Resource(f"/images/{i}", uri, len(data) if data is not None else 0, digest(data) if data is not None else None, data))
     snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}), source=source)
     if sidecar is not None:
-        sc = _validate_sidecar(snapshot, sidecar)
+        sc, reindexed = _validate_sidecar(snapshot, sidecar)
+        warnings.extend(reindexed)
         channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in sc["bindings"]}
         snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze(channels),
                                  freeze(sc["bindings"]), source=source)
@@ -778,6 +781,8 @@ def _binding(snapshot, b):
         fail("E_BINDING_TYPE", "/bindings", "Only scalar morph bindings are supported.")
     domain(b["domain"], "/bindings/domain")
     ref = b["ref"]
+    if snapshot.source is not None:
+        return _source_binding(snapshot, b)
     keys(ref, {"asset_sha256", "locator", "node", "mesh", "target"}, {"resource_sha256"}, "/bindings/ref")
     if ref["asset_sha256"] != _identity(snapshot):
         fail("E_STALE_SOURCE", "/bindings/ref", "Binding asset hash is stale.")
@@ -797,6 +802,36 @@ def _binding(snapshot, b):
                     hashes.add(snapshot.resources[snapshot.document["bufferViews"][vid]["buffer"]].sha256)
         if type(ref["resource_sha256"]) is not str or ref["resource_sha256"] not in hashes or None in hashes:
             fail("E_STALE_SOURCE", "/bindings/ref/resource_sha256", "Consumed target resource digest is stale or unavailable.")
+    return b
+
+
+def _source_binding(snapshot, b):
+    """Resolve a generated-snapshot binding by its source locator.
+
+    The stored node, mesh, target and locator are hints: a different reader can
+    add or drop nodes, which shifts glTF indices while the source is unchanged.
+    """
+    ref = b["ref"]
+    if "resource_sha256" in ref:
+        fail("E_BINDING_REFERENCE", "/bindings/ref/resource_sha256", "Generated snapshots bind by source locator, not buffer digests.")
+    keys(ref, {"asset_sha256", "locator", "node", "mesh", "target", "source_locator"}, set(), "/bindings/ref")
+    if ref["asset_sha256"] != _identity(snapshot):
+        fail("E_STALE_SOURCE", "/bindings/ref", "Binding asset hash is stale.")
+    if not all(integer(ref[k]) and ref[k] >= 0 for k in ("node", "mesh", "target")) or type(ref["locator"]) is not str:
+        fail("E_BINDING_REFERENCE", "/bindings/ref", "Stored node, mesh and target must be nonnegative integers.")
+    try:
+        path, key = source_paths.split_locator(ref["source_locator"])
+    except ValueError:
+        fail("E_BINDING_REFERENCE", "/bindings/ref/source_locator", "Source locator must be '<node path>#<target key>'.")
+    node_paths = snapshot.source["node_paths"]
+    node = node_paths.index(path) if path in node_paths else None
+    mesh = snapshot.document["nodes"][node].get("mesh") if node is not None else None
+    targets = snapshot.source["target_keys"][mesh] if mesh is not None else ()
+    if key not in targets:
+        fail("E_STALE_SOURCE", "/bindings/ref/source_locator", f"Source locator {ref['source_locator']} names no morph target in this source.")
+    target = targets.index(key)
+    resolved = dict(ref, node=node, mesh=mesh, target=target, locator=f"/nodes/{node}/weights/{target}")
+    return b if resolved == dict(ref) else dict(b, ref=resolved)
 
 
 def _validate_sidecar(snapshot, sidecar):
@@ -814,15 +849,23 @@ def _validate_sidecar(snapshot, sidecar):
         fail("E_TYPE", "/sidecar/bindings", "Bindings must be an array.")
     ids = set()
     locators = set()
-    for b in sc["bindings"]:
-        _binding(snapshot, b)
+    bindings, reindexed = [], []
+    for original in sc["bindings"]:
+        b = _binding(snapshot, original)
+        if b is not original:
+            reindexed.append(Diagnostic("W_BINDING_REINDEXED", "warning", "/bindings/ref",
+                                        f"Binding {b['id']} now resolves to {b['ref']['locator']} through its source locator.",
+                                        "Re-annotate to store the current indices."))
         if b["id"] in ids or b["ref"]["locator"] in locators:
             fail("E_DUPLICATE_BINDING", "/sidecar/bindings", "Binding IDs and structural destinations must be unique.")
         ids.add(b["id"])
         locators.add(b["ref"]["locator"])
+        bindings.append(b)
+    if reindexed:
+        sc = dict(sc, bindings=bindings)
     from .common import json_value
     json_value(sc)
-    return sc
+    return sc, reindexed
 
 
 @public
@@ -833,8 +876,8 @@ def annotate_asset(snapshot, annotations):
     keys(annotations, {"bindings"}, {"metadata"}, "/annotations")
     sc = {"schema_version": "1.0", "asset_sha256": _identity(snapshot),
           "resource_hashes": snapshot.resource_hashes, **thaw(annotations)}
-    _validate_sidecar(snapshot, sc)
-    return _admit(Sidecar(sc))
+    sc, reindexed = _validate_sidecar(snapshot, sc)
+    return Result(_admit(Sidecar(thaw(sc))), Report(tuple(reindexed)))
 
 
 @public
@@ -848,6 +891,11 @@ def morph_binding(snapshot, signal, node, target):
     b = {k: thaw(signal[k]) for k in ("id", "value_type", "units", "domain", "calibration")}
     b["ref"] = {"asset_sha256": _identity(snapshot), "locator": f"/nodes/{node}/weights/{target}",
                 "node": node, "mesh": n["mesh"], "target": target}
+    if snapshot.source is not None:
+        mesh_keys = snapshot.source["target_keys"][n["mesh"]]
+        if not integer(target) or not 0 <= target < len(mesh_keys):
+            fail("E_BINDING_REFERENCE", "/bindings/ref", "Binding does not address a mesh-instance morph target.")
+        b["ref"]["source_locator"] = source_paths.locator(snapshot.source["node_paths"][node], mesh_keys[target])
     _binding(snapshot, b)
     hashes = set()
     for p in snapshot.document["meshes"][n["mesh"]]["primitives"]:
