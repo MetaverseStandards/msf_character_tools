@@ -340,6 +340,22 @@ class GeometryTests(Checks):
             with self.subTest(doc=doc,cap=11),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",11):
                 self.assert_instance_budget_refusal(m.evaluate_geometry(s))
 
+    def test_shared_skin_is_counted_once(self):
+        # Two instances x 6 vertices x 3 x (1 + 3 targets) = 144, plus 16 x 4 joints for the one shared skin.
+        s=self.good(m.inspect_asset((FIX/"combined.gltf").read_bytes(),"gltf"))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",208):
+            self.good(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",207):
+            self.assert_instance_budget_refusal(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
+
+    def test_shared_skin_output_matches_separate_skins(self):
+        doc=json.loads((FIX/"combined.gltf").read_bytes());shared=self.good(asset(doc))
+        doc["skins"].append(copy.deepcopy(doc["skins"][0]));doc["nodes"][6]["skin"]=1;separate=self.good(asset(doc))
+        for kwargs in ({},{"animation_id":0,"timestamp":.5},{"animation_id":0,"timestamp":1.75}):
+            with self.subTest(**kwargs):
+                self.assertEqual(m.canonical_json(self.good(m.evaluate_geometry(shared,**kwargs))),
+                                 m.canonical_json(self.good(m.evaluate_geometry(separate,**kwargs))))
+
     def test_default_budget_refuses_smallest_workload_over_cap(self):
         # Counts are multiples of 3, so 4,000,002 is the first workload above the 4,000,000 cap.
         r=m.evaluate_geometry(self.good(asset(instanced_points((1000,1333),(334,1)))))

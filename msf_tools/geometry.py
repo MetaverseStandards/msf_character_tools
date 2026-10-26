@@ -17,10 +17,11 @@ from .report import public, fail, Result, Report, Fault
 from .records import OwnedRecord, _admit
 from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
 
-# Position components read and written per mesh node instance: the base POSITION
-# plus every morph-target POSITION, summed over instances. Inspection caps declared
-# accessor components at the same number, so an asset that evaluates each of those
-# accessors once fits; instancing a mesh or sharing accessors multiplies the work.
+# Position components read and written per mesh node instance (the base POSITION
+# plus every morph-target POSITION), summed over instances, plus one set of inverse
+# bind matrices per skin used. Inspection caps declared accessor components at the
+# same number, so an asset that evaluates each of those accessors once fits;
+# instancing a mesh or sharing accessors multiplies the work.
 MAX_EVALUATION_COMPONENTS = MAX_TOTAL_ACCESSOR_COMPONENTS
 
 
@@ -162,7 +163,12 @@ def _evaluation_components(document):
                 targets = sum("POSITION" in target for target in primitive.get("targets", ()))
                 components += 3 * accessors[position]["count"] * (1 + targets)
         per_mesh.append(components)
-    return sum(per_mesh[node["mesh"]] for node in document.get("nodes", ()) if "mesh" in node)
+    instances = [node for node in document.get("nodes", ()) if "mesh" in node]
+    skins = document.get("skins", ())
+    # Inverse bind matrices are built once per skin, however many instances share it.
+    used_skins = {node["skin"] for node in instances if "skin" in node}
+    return (sum(per_mesh[node["mesh"]] for node in instances)
+            + sum(16 * len(skins[i]["joints"]) for i in used_skins if integer(i) and 0 <= i < len(skins)))
 
 
 @public
@@ -204,6 +210,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
             overrides.setdefault(ni, {}).update(item)
     worlds = _worlds(snapshot, overrides)
     instances, diagnostics = [], []
+    skin_matrices = {}
     for ni, node in enumerate(nodes):
         if "mesh" not in node:
             continue
@@ -244,10 +251,12 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                     weight_accessor = snapshot.document["accessors"][attrs["WEIGHTS_0"]]
                     normalized = weight_accessor["componentType"] != 5126
                     skinweights = _accessor(snapshot, attrs["WEIGHTS_0"], "VEC4", {5121,5123,5126}, count, normalized, ref)
-                    ibms = tuple(matrix(x) for x in _decode_accessor(snapshot, skin["inverseBindMatrices"])) if "inverseBindMatrices" in skin else tuple(IDENTITY for _ in skin["joints"])
-                    for ibm in ibms:
-                        if ibm[3] != IDENTITY[3]:
-                            fail("E_SKIN_TYPE", ref, "Inverse bind matrices must be affine.")
+                    if node["skin"] not in skin_matrices:
+                        ibms = tuple(matrix(x) for x in _decode_accessor(snapshot, skin["inverseBindMatrices"])) if "inverseBindMatrices" in skin else tuple(IDENTITY for _ in skin["joints"])
+                        skin_matrices[node["skin"]] = ibms, all(ibm[3] == IDENTITY[3] for ibm in ibms)
+                    ibms, affine_ibms = skin_matrices[node["skin"]]
+                    if not affine_ibms:
+                        fail("E_SKIN_TYPE", ref, "Inverse bind matrices must be affine.")
                     mesh_inverse = inverse(worlds[ni])
                     # Admit every original row before any influence selects arithmetic.
                     for js, ws in zip(joints, skinweights):
