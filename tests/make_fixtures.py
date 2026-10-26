@@ -129,5 +129,59 @@ def combined():
     (ROOT/"eight-influence.gltf").write_bytes(json_bytes(eight))
 
 
+def native_agreement():
+    """One-vertex skinned/morphed asset shared by the Python and native agreement tests."""
+    binary = bytearray()
+    views, accessors = [], []
+
+    def accessor(values, component, kind, count):
+        while len(binary) % 4:
+            binary.append(0)
+        offset = len(binary)
+        binary.extend(struct.pack("<" + {5126: "f", 5123: "H"}[component] * len(values), *values))
+        views.append({"buffer": 0, "byteOffset": offset, "byteLength": len(binary) - offset})
+        accessors.append({"bufferView": len(views)-1, "componentType": component,
+                          "type": kind, "count": count})
+        if kind == "SCALAR" and values:
+            accessors[-1].update(min=[min(values)], max=[max(values)])
+        return len(accessors)-1
+
+    position = accessor([1, 0, 0], 5126, "VEC3", 1)
+    accessors[position].update(min=[1,0,0], max=[1,0,0])
+    delta = accessor([0, 1, 0], 5126, "VEC3", 1)
+    accessors[delta].update(min=[0,1,0], max=[0,1,0])
+    joints = accessor([0, 0, 0, 0], 5123, "VEC4", 1)
+    weights = accessor([1, 0, 0, 0], 5126, "VEC4", 1)
+    ibm = accessor([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1], 5126, "MAT4", 1)
+    times = accessor([0, 2], 5126, "SCALAR", 2)
+    morph_curve = accessor([0, 0, 2, 0, 0, 0], 5126, "SCALAR", 6)
+    quat_linear = accessor([0,0,0,1, 0,0,1,0], 5126, "VEC4", 2)
+    quat_cubic = accessor([0,0,0,0, 0,0,0,1, 0,0,2,0,
+                           0,0,0,0, 0,0,1,0, 0,0,0,0], 5126, "VEC4", 6)
+    document = {
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0,1,2]}],
+        "nodes": [{"name": "mesh", "mesh": 0, "skin": 0, "translation": [1,0,0]},
+                  {"name": "joint", "rotation": [0,0,math.sqrt(.5),math.sqrt(.5)]},
+                  {"name": "second instance", "mesh": 0, "skin": 0, "translation": [3,0,0]}],
+        "meshes": [{"weights": [0], "primitives": [{"mode": 0,
+                       "attributes": {"POSITION": position, "JOINTS_0": joints, "WEIGHTS_0": weights},
+                       "targets": [{"POSITION": delta}]}]}],
+        "skins": [{"joints": [1], "inverseBindMatrices": ibm}],
+        "animations": [
+            {"samplers": [{"input": times, "output": morph_curve, "interpolation": "CUBICSPLINE"}],
+             "channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}]},
+            {"samplers": [{"input": times, "output": quat_linear, "interpolation": "LINEAR"}],
+             "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]},
+            {"samplers": [{"input": times, "output": quat_cubic, "interpolation": "CUBICSPLINE"}],
+             "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]},
+        ],
+        "buffers": [{"byteLength": len(binary), "uri": "data:application/octet-stream;base64," + base64.b64encode(binary).decode()}],
+        "bufferViews": views, "accessors": accessors,
+    }
+    ROOT.mkdir(parents=True, exist_ok=True)
+    (ROOT/"native-agreement.gltf").write_bytes(json_bytes(document))
+
+
 if __name__ == "__main__":
     combined()
+    native_agreement()

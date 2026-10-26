@@ -238,9 +238,7 @@ class CoreSemantics(unittest.TestCase):
         del d['accessors'][0]['min'];self.bad(d,'E_ACCESSOR_BOUNDS')
 
     def test_native_fixture_position_bounds_independently_required(self):
-        # Load generator definition without importing the unavailable native module.
-        source=(ROOT/'native/tests/test_agreement.py').read_text();part=source[source.index('def fixture():'):source.index('\n\nclass Agreement')];scope={'struct':struct,'base64':base64,'json':json,'math':__import__('math')};exec(part,scope)
-        raw=scope['fixture']();d=json.loads(raw);aid=d['meshes'][0]['primitives'][0]['attributes']['POSITION'];a=d['accessors'][aid]
+        raw=(ROOT/'tests/fixtures/native-agreement.gltf').read_bytes();d=json.loads(raw);aid=d['meshes'][0]['primitives'][0]['attributes']['POSITION'];a=d['accessors'][aid]
         self.assertEqual(a.get('min'),[1,0,0]);self.assertEqual(a.get('max'),[1,0,0]);self.good(m.inspect_asset(raw,'gltf'))
 
 if __name__=='__main__': unittest.main()

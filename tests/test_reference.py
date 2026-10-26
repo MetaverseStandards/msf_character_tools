@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: MIT
 """Adversarial public API checks and independent analytical numeric fixtures."""
 import base64
+import contextlib
 import copy
 import hashlib
+import io
 import json
 import math
 from pathlib import Path
@@ -13,6 +15,7 @@ import tempfile
 import unittest
 
 import msf_tools as m
+from msf_tools import cli
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests/fixtures"
@@ -130,6 +133,18 @@ class MappingTests(Checks):
         self.bad(m.evaluate_mapping(c,[{"timestamp":True,"values":{},"validity":{}}]),"E_TIMESTAMP")
         self.bad(m.evaluate_mapping(c,[{"timestamp":0,"values":{"input.wink":True},"validity":{"input.wink":True}}]),"E_TYPE")
         self.bad(m.evaluate_mapping(c,[{"timestamp":0,"values":{"input.wink":3},"validity":{"input.wink":True}}]),"E_DOMAIN")
+
+    def test_empty_samples_and_unknown_frame_key(self):
+        c=self.good(compile_map(source_doc()))
+        r=m.evaluate_mapping(c,[])
+        self.assertEqual(self.good(r).to_dict(),{"samples":[]});self.assertEqual(r.report.to_dict(),{"schema_version":"1.0","diagnostics":[],"losses":[]})
+        calls=[]
+        class Frames(list):
+            def __iter__(self):
+                calls.append("iter");return iter([{"timestamp":0,"values":{},"validity":{},"extra":1}])
+        r=m.evaluate_mapping(c,Frames())
+        self.assertEqual(calls,["iter"]);self.assertIsNone(r.value)
+        self.assertEqual(r.report.to_dict(),{"schema_version":"1.0","diagnostics":[{"code":"E_UNKNOWN_KEY","severity":"error","ref":"/samples/0","message":"Unknown keys: extra","remediation":"Correct the referenced input."}],"losses":[]})
 
     def test_topological_and_output_domain_weighted_sum(self):
         d=source_doc(); d["signals"] += [signal("mid"),signal("other")]
@@ -343,8 +358,18 @@ class CLITests(Checks):
                 if destination.name=="symlink.json":destination.symlink_to(p/"asset.gltf")
                 r=self.run_cli("annotate",p/"asset.gltf",p/"annotations.json","--output",destination)
                 self.assertEqual(r.returncode,1);self.assertIn("E_OUTPUT_PATH",[d["code"] for d in json.loads(r.stderr)["diagnostics"]]);self.assertEqual((p/"asset.gltf").read_bytes(),raw)
+                self.assertEqual(r.stdout,b"")
+                if destination.name=="symlink.json":self.assertTrue(destination.is_symlink());self.assertEqual(destination.readlink(),p/"asset.gltf")
             (p/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());before=(p/"pack.toml").read_bytes()
             r=self.run_cli("check",p/"pack.toml","--pack",p/"pack.toml","--csv",p/"survey.csv","--write");self.assertEqual(r.returncode,1);self.assertIn(b'E_OUTPUT_PATH',r.stderr);self.assertEqual((p/"pack.toml").read_bytes(),before);self.assertFalse((p/"survey.csv").exists())
+
+    def test_output_creates_parent_and_leaves_no_temporary_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td);(p/"annotations.json").write_text('{"bindings":[]}');out=p/"nested"/"sidecar.json"
+            err=io.TextIOWrapper(io.BytesIO())
+            with contextlib.redirect_stderr(err):code=cli.main(["annotate",str(FIX/"combined.gltf"),str(p/"annotations.json"),"--output",str(out)])
+            self.assertEqual(code,0,err.buffer.getvalue())
+            self.assertEqual(list(out.parent.iterdir()),[out]);self.assertEqual(json.loads(out.read_bytes())["bindings"],[])
 
     def test_extra_unlisted_output(self):
         with tempfile.TemporaryDirectory() as td:
