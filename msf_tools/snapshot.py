@@ -282,7 +282,8 @@ def decode_accessor(snapshot, index):
     return _decode_accessor(snapshot, index)
 
 
-def _validate_document(doc):
+def _validate_document(doc, component_caps=(MAX_ACCESSOR_COMPONENTS, MAX_TOTAL_ACCESSOR_COMPONENTS)):
+    max_accessor, max_total = component_caps
     if not isinstance(doc, Mapping) or not isinstance(doc.get("asset"), Mapping) or doc["asset"].get("version") != "2.0":
         fail("E_GLTF_VERSION", "/asset", "Expected glTF asset.version 2.0.")
     if "minVersion" in doc["asset"] and doc["asset"]["minVersion"] != "2.0":
@@ -325,7 +326,7 @@ def _validate_document(doc):
             fail("E_ACCESSOR_TYPE", ref, "normalized only supports byte/short components.")
         offsets, element_size, size = _layout(a)
         decoded_components += a["count"] * len(offsets)
-        if a["count"] * len(offsets) > MAX_ACCESSOR_COMPONENTS or decoded_components > MAX_TOTAL_ACCESSOR_COMPONENTS:
+        if a["count"] * len(offsets) > max_accessor or decoded_components > max_total:
             fail("E_RESOURCE_LIMIT", ref, "Accessor exceeds per-accessor or total decoded component budget.")
         for field in ("min", "max"):
             if field in a:
@@ -549,12 +550,18 @@ def _parse_asset(raw, format):
 def inspect_asset(bytes, /, format, resolver=None, sidecar=None):
     if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
         fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
-    if len(bytes) > MAX_ASSET_BYTES:
-        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget.")
+    return _inspect_gltf(bytes, format, resolver, sidecar)
+
+
+def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET_BYTES,
+                  component_caps=(MAX_ACCESSOR_COMPONENTS, MAX_TOTAL_ACCESSOR_COMPONENTS)):
+    if len(bytes) > max_asset_bytes:
+        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget." if max_asset_bytes == MAX_ASSET_BYTES
+             else f"Asset exceeds the {max_asset_bytes}-byte input budget.")
     if resolver is not None and not callable(resolver):
         fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
     kind, doc, chunks, bin_chunk = _parse_asset(bytes, format)
-    _validate_document(doc)
+    _validate_document(doc, component_caps)
     resources = []
     warnings = []
     consumed_bytes = 0
