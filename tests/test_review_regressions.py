@@ -2,10 +2,12 @@
 """Independent review regressions: bounded profile work and portable metadata."""
 import copy
 from dataclasses import replace
+import gc
 import json
 import re
 import subprocess
 from pathlib import Path
+import time
 import unittest
 from unittest.mock import patch
 import tomllib
@@ -133,6 +135,74 @@ class ProfileWork(unittest.TestCase):
         self.assertEqual([r['id'] for r in compiled.instructions], ['r1', 'first', 'r2', 'r0'])
         self.assertEqual(compiled.required_inputs, ('in1', 'in0', 'in2'))
         self.assertEqual(compiled.output_ids, ('out0', 'out1', 'out2'))
+
+
+def scalar_signal(id):
+    return {'id': id, 'label': id, 'value_type': 'scalar', 'units': '1', 'domain': {}, 'calibration': 'literal',
+            'disposition': 'mapped', 'evidence': ['e'], 'evidence_status': 'verified_current'}
+
+
+def identity_rule(id, source, target):
+    return {'id': id, 'inputs': [source], 'outputs': [target], 'operator': {'id': 'identity'}, 'disposition': 'mapped',
+            'mapping_quality': 'exact', 'assumptions': [], 'evidence': ['e'], 'evidence_status': 'verified_current',
+            'loss_annotations': []}
+
+
+def graph(signals, rules, source, target):
+    """Minimal authoring for one mapping named 'graph'."""
+    return {'schema_version': '1.0', 'data_version': '0.1.0', 'operator_version': '1.0', 'id': 'graph', 'license': 'MIT',
+            'signals': [scalar_signal(s) for s in signals],
+            'profiles': [{'id': 'source', 'label': 'source', 'signal_ids': source},
+                         {'id': 'target', 'label': 'target', 'signal_ids': target}],
+            'mappings': [{'id': 'graph', 'rules': rules}],
+            'evidence': [{'id': 'e', 'claim': 'Synthetic dependency graph.', 'status': 'verified_current',
+                          'license': 'MIT', 'authorship': 'MSF Tools contributors'}]}
+
+
+def compile_graph(doc):
+    pack = good(m.compile_pack(good(m.validate_authoring(doc))))
+    return m.compile_mapping(pack, good(m.profile_snapshot(pack, 'source')),
+                             good(m.profile_snapshot(pack, 'target')), 'graph')
+
+
+class GraphOrdering(unittest.TestCase):
+    def test_dependent_rule_waits_for_whole_previous_wave(self):
+        # [A depends on B, B, C] runs as [B, C, A], not [B, A, C].
+        doc = graph(['x', 'b', 'c', 'a'], [identity_rule('A', 'b', 'a'), identity_rule('B', 'x', 'b'),
+                                          identity_rule('C', 'x', 'c')], ['x'], ['a', 'c'])
+        compiled = good(compile_graph(doc))
+        self.assertEqual([r['id'] for r in compiled.instructions], ['B', 'C', 'A'])
+
+    def test_waves_mix_depths_in_declaration_order(self):
+        rules = [identity_rule('D', 'a', 'd'), identity_rule('A', 'b', 'a'), identity_rule('E', 'x', 'e'),
+                 identity_rule('B', 'x', 'b'), identity_rule('F', 'e', 'f')]
+        doc = graph(['x', 'a', 'b', 'd', 'e', 'f'], rules, ['x'], ['d', 'f'])
+        compiled = good(compile_graph(doc))
+        self.assertEqual([r['id'] for r in compiled.instructions], ['E', 'B', 'A', 'F', 'D'])
+
+    def test_cycle_behind_valid_rules_is_reported_once(self):
+        rules = [identity_rule('A', 'x', 'a'), identity_rule('P', 'q', 'p'), identity_rule('Q', 'p', 'q')]
+        result = compile_graph(graph(['x', 'a', 'p', 'q'], rules, ['x'], ['a']))
+        self.assertIsNone(result.value)
+        self.assertEqual([d.code for d in result.report.diagnostics], ['E_MAPPING_CYCLE'])
+
+    def test_long_chain_declared_backwards_compiles_in_linear_time(self):
+        # Record integrity checks alone cost about 0.45 CPU seconds here.
+        # Rescanning every rule once per wave adds about as much again.
+        count = 3000
+        rules = [identity_rule(f'r{i}', f's{i}', f's{i + 1}') for i in reversed(range(count))]
+        doc = graph([f's{i}' for i in range(count + 1)], rules, ['s0'], [f's{count}'])
+        pack = good(m.compile_pack(good(m.validate_authoring(doc))))
+        source, target = good(m.profile_snapshot(pack, 'source')), good(m.profile_snapshot(pack, 'target'))
+        gc.disable()
+        try:
+            start = time.process_time()
+            compiled = good(m.compile_mapping(pack, source, target, 'graph'))
+            elapsed = time.process_time() - start
+        finally:
+            gc.enable()
+        self.assertEqual([r['id'] for r in compiled.instructions], [f'r{i}' for i in range(count)])
+        self.assertLess(elapsed, 0.7, 'CPU seconds')
 
 
 

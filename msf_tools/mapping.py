@@ -180,16 +180,29 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
                 check(fail, "E_DERIVATION_ASSUMPTIONS", rid,
                       f"Nonidentity rule {rid} requires explicit derivation assumptions for differing calibration/units or declared approximation/loss.")
     dependencies = {r["id"]: {writers[s] for s in r["inputs"] if s in writers} for r in rules}
+    by_id = {r["id"]: r for r in rules}
+    position = {r["id"]: i for i, r in enumerate(rules)}
+    dependents = {rid: [] for rid in dependencies}
+    for rid, needs in dependencies.items():
+        for need in needs:
+            dependents[need].append(rid)
+    pending = {rid: len(needs) for rid, needs in dependencies.items()}
+    # A rule joins the wave after the one holding its last dependency, and each
+    # wave runs in declaration order: [A needs B, B, C] gives [B, C, A].
+    wave = [r["id"] for r in rules if not pending[r["id"]]]
     ordered = []
-    done = set()
-    while len(done) < len(rules):
-        available = [r for r in rules if r["id"] not in done and dependencies[r["id"]] <= done]
-        if not available:
-            check(fail, "E_MAPPING_CYCLE", mapping_id, "Mapping dependency graph contains a cycle.")
-            break
-        for r in available:
-            ordered.append(r)
-            done.add(r["id"])
+    while wave:
+        ordered.extend(by_id[rid] for rid in wave)
+        ready = []
+        for rid in wave:
+            for dependent in dependents[rid]:
+                pending[dependent] -= 1
+                if not pending[dependent]:
+                    ready.append(dependent)
+        wave = sorted(ready, key=position.__getitem__)
+    if len(ordered) < len(rules):
+        check(fail, "E_MAPPING_CYCLE", mapping_id, "Mapping dependency graph contains a cycle.")
+    consumed = {s for r in rules for s in r["inputs"]}
     required = tuple(dict.fromkeys(s for r in rules for s in r["inputs"] if s not in writers))
     outputs = tuple(dict.fromkeys(r["outputs"][0] for r in rules if r["outputs"][0] in (target_snapshot.channels or {})))
     for sid in required:
@@ -198,7 +211,7 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
         if sid in (source_snapshot.channels or {}):
             check(fail, "E_MULTIPLE_WRITERS", sid, "Rule output is also a source channel driver.")
         # Intermediate values can remain virtual; terminal outputs must be target-bound.
-        if sid in (target_snapshot.channels or {}) or not any(sid in r["inputs"] for r in rules):
+        if sid in (target_snapshot.channels or {}) or sid not in consumed:
             check(channel, sid, target_snapshot)
     if not outputs:
         check(fail, "E_MAPPING_OUTPUT", mapping_id, "Mapping has no target-bound outputs.")
