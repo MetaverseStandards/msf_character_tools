@@ -56,11 +56,11 @@ Unary/weighted output domain is checked during evaluation. Identity requires equ
 ## Snapshots and sidecars
 
 ```python
-inspect_asset(bytes, format, resolver=None, sidecar=None) -> Result[AssetSnapshot]
+inspect_asset(bytes, /, format, resolver=None, sidecar=None) -> Result[AssetSnapshot]
 annotate_asset(snapshot, annotations) -> Result[Sidecar]
 ```
 
-Supported format strings: `gltf`, `glb` (also `json`/`gltf2` JSON aliases). Input is immutable bytes. Snapshot retains `.original_bytes`, `.sha256`, deeply immutable `.document`, `.chunks` with original payload bytes, `.resources` with URI/declared byte length/digest/consumed data, `.channels` and `.bindings`. `.to_dict()` publishes complete document/inventory/capabilities without embedding duplicate binary payloads. Hashes are source byte identities; names are display only.
+Supported format strings: `gltf`, `glb` (also `json`/`gltf2` JSON aliases). Input is immutable bytes, passed positionally: `bytes` is positional-only, so `inspect_asset(bytes=...)` is refused with `E_INPUT`. Snapshot retains `.original_bytes`, `.sha256`, deeply immutable `.document`, `.chunks` with original payload bytes, `.resources` with URI/declared byte length/digest/consumed data, `.channels` and `.bindings`. `.to_dict()` publishes complete document/inventory/capabilities without embedding duplicate binary payloads. Hashes are source byte identities; names are display only.
 
 No default remote or local external fetch. Embedded base64 and BIN are explicitly consumed. Unconsumed external buffers produce warning/inventory; decoding them fails `E_RESOURCE_UNAVAILABLE`. Images are inventoried; external images are consumed only with explicit resolver. Unknown required extensions and extension-defined animation targets may be inspected, but requested evaluation applies the stricter capability gate.
 

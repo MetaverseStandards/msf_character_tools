@@ -539,7 +539,7 @@ def _parse_asset(raw, format):
 
 
 @public
-def inspect_asset(bytes, format, resolver=None, sidecar=None):
+def inspect_asset(bytes, /, format, resolver=None, sidecar=None):
     if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
         fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
     if len(bytes) > MAX_ASSET_BYTES:

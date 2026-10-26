@@ -4,6 +4,7 @@ import base64
 import contextlib
 import copy
 import hashlib
+import inspect
 import io
 import json
 import math
@@ -184,6 +185,12 @@ class MappingTests(Checks):
 
 
 class AssetTests(Checks):
+    def test_asset_bytes_parameter_is_positional_only(self):
+        raw=(FIX/"combined.gltf").read_bytes()
+        self.assertIs(inspect.signature(m.inspect_asset).parameters["bytes"].kind,inspect.Parameter.POSITIONAL_ONLY)
+        self.good(m.inspect_asset(raw,"gltf"));self.good(m.inspect_asset(raw,format="gltf"))
+        r=m.inspect_asset(bytes=raw,format="gltf");self.bad(r,"E_INPUT");self.assertIn("positional-only",r.report.diagnostics[0].message)
+
     def test_extension_defined_animation_inventory_and_runtime_refusal(self):
         d=json.loads((FIX/"combined.gltf").read_bytes());d["extensionsUsed"].append("KHR_animation_pointer");d["extensionsRequired"]=["KHR_animation_pointer"]
         d["animations"][0]["channels"][0]["target"]={"path":"pointer","extensions":{"KHR_animation_pointer":{"pointer":"/nodes/0/rotation"}}}
