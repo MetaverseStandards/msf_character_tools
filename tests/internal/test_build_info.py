@@ -3,6 +3,7 @@
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -127,6 +128,15 @@ class Backend(unittest.TestCase):
         self.build('build_wheel', side_effect=wheel)
         self.build('build_wheel', status='?? msf_tools/zz.py', side_effect=wheel)
         self.assertEqual(self.seen, [{'version': '1.2.3', 'commit': 'b' * 40}, None])
+
+    def test_macos_wheels_target_a_fixed_release_unless_one_is_set(self):
+        for preset, expected in ((None, build_backend.MACOS_TARGET), ('12.0', '12.0')):
+            with self.subTest(preset=preset), patch.dict('os.environ', clear=False) as env, patch.object(sys, 'platform', 'darwin'):
+                env.pop('MACOSX_DEPLOYMENT_TARGET', None)
+                if preset:
+                    env['MACOSX_DEPLOYMENT_TARGET'] = preset
+                self.build('build_wheel', side_effect=lambda *args: self.seen.append(os.environ['MACOSX_DEPLOYMENT_TARGET']))
+                self.assertEqual(self.seen.pop(), expected)
 
 
 if __name__ == '__main__':

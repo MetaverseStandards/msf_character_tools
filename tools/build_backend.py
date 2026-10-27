@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 """PEP 517 backend: scikit-build-core, plus the build record; see docs/building.md."""
+import os
 from pathlib import Path
+import sys
 import tempfile
 import tomllib
 
@@ -12,6 +14,9 @@ from scikit_build_core.build import (  # noqa: F401  re-exported hooks
 import build_info
 
 ROOT = Path(__file__).resolve().parents[1]
+# The oldest macOS for arm64. CMake builds for it and scikit-build-core names the
+# wheel tag after it; without it both follow the build machine's macOS.
+MACOS_TARGET = "11.0"
 
 
 def _record():
@@ -21,6 +26,8 @@ def _record():
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     settings = dict(config_settings or {})
+    if sys.platform == "darwin":
+        os.environ.setdefault("MACOSX_DEPLOYMENT_TARGET", MACOS_TARGET)
     with tempfile.TemporaryDirectory() as tmp:
         record = Path(tmp, "_build_info.json")
         build_info.write(record, _record())
