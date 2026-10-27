@@ -147,9 +147,18 @@ Inspection inspect(const Bytes& raw, bool glb, const Resolve* resolver, Caps cap
 
 // One of evaluate_geometry's override mappings: absent (None), not a Mapping,
 // or its items in order, each key an integer Value when it was an exact int.
+// When the caller's own code raised while the items were read, broken_value is
+// the item whose value could not be read (its key is in items), or broken_tail
+// says iteration failed after the last item; evaluate_geometry throws
+// OverridesBroken where 0.3.0's loop would have met that error.
 struct Overrides {
     bool present = false, mapping = false;
     std::vector<std::pair<Value, Value>> items;
+    std::optional<std::size_t> broken_value;
+    bool broken_tail = false;
+};
+struct OverridesBroken {
+    std::string label;  // "morph_weights" or "node_transforms"
 };
 
 struct PrimitivePositions {

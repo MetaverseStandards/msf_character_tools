@@ -8,6 +8,7 @@ equal bytes, identical typed values (floats by bit pattern), or the same
 diagnostic or exception. MSF_GATE=1 widens the float and fuzz counts.
 """
 from array import array
+from collections.abc import Mapping
 from decimal import Decimal
 import json
 import math
@@ -242,6 +243,13 @@ class Documents(unittest.TestCase):
             with self.subTest(i=i):
                 self.assertSameOutcome(canonical_json, value)
 
+    def test_mapping_proxies_over_odd_items_are_written_like_the_reference(self):
+        rng = random.Random(6)
+        for i in range(300):
+            value = oddly(random_value(rng, 0), rng)
+            with self.subTest(i=i):
+                self.assertSameOutcome(canonical_json, value)
+
     def test_nesting_limits_match_the_reference(self):
         for depth in (127, 128, 129, 130, 199, 200, 201, 600, 2000):
             with self.subTest(depth=depth):
@@ -341,6 +349,42 @@ def random_value(rng, depth):
     if kind in (6, 7):
         return [random_value(rng, depth + 1) for _ in range(rng.randrange(4))]
     return {random_text(rng): random_value(rng, depth + 1) for _ in range(rng.randrange(4))}
+
+
+class OddItems(Mapping):
+    """A Mapping whose items() returns `items` as given, not (key, value) tuples."""
+    def __init__(self, items, data):
+        self._items, self._data = items, data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def items(self):
+        return self._items
+
+
+def oddly(value, rng):
+    """`value` with some dicts behind a mappingproxy whose items() are lists, short or long tuples, or right."""
+    if isinstance(value, list):
+        return [oddly(v, rng) for v in value]
+    if not isinstance(value, dict):
+        return value
+    value = {k: oddly(v, rng) for k, v in value.items()}
+    shape = rng.randrange(5)
+    if shape == 0:
+        return value
+    pairs = [[k, v] for k, v in value.items()] if shape == 1 else [(k, v) for k, v in value.items()]
+    if shape == 3 and pairs:
+        pairs[-1] = pairs[-1][:1]
+    if shape == 4:
+        pairs.append(('extra', 1, 2))
+    return MappingProxyType(OddItems(pairs, value))
 
 
 def canonical_or_compact(rng):

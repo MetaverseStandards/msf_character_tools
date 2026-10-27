@@ -146,6 +146,8 @@ bool from_python(PyObject* o, Value& v, int depth) {
         v.members.resize(static_cast<std::size_t>(n));
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject* pair = PyList_GET_ITEM(items.ptr(), i);
+            // A mappingproxy over a custom Mapping returns whatever its items() gives.
+            if (!PyTuple_CheckExact(pair) || PyTuple_GET_SIZE(pair) != 2) return false;
             PyObject* key = PyTuple_GET_ITEM(pair, 0);
             auto& member = v.members[static_cast<std::size_t>(i)];
             if (!PyUnicode_CheckExact(key) || !utf8_of(key, member.first)) return false;
