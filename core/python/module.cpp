@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -40,22 +41,6 @@ bool exact_number(PyObject* o, double& out) {
         return true;
     }
     return false;
-}
-
-msf::Domain domain_of(nb::handle spec) {
-    msf::Domain d;
-    nb::tuple t = nb::cast<nb::tuple>(spec);
-    d.has_min = nb::cast<bool>(t[0]);
-    d.min = nb::cast<double>(t[1]);
-    d.has_max = nb::cast<bool>(t[2]);
-    d.max = nb::cast<double>(t[3]);
-    return d;
-}
-
-std::vector<double> doubles(nb::handle seq) {
-    std::vector<double> out;
-    for (nb::handle h : seq) out.push_back(nb::cast<double>(h));
-    return out;
 }
 
 bool same_double(double a, double b) { return std::memcmp(&a, &b, sizeof a) == 0; }
@@ -212,64 +197,151 @@ struct CompiledProgram {
     }
 };
 
+// A spec that does not describe a valid program: always a bug in mapping.py,
+// reported as E_INTERNAL rather than crashing or leaking a C++ exception.
+struct SpecError {
+    std::string what;
+};
+
+[[noreturn]] void bad_spec(const std::string& what) { throw SpecError{what}; }
+
 void require(bool ok, const char* what) {
-    if (!ok) throw nb::value_error(what);
+    if (!ok) bad_spec(what);
 }
 
-CompiledProgram compile(nb::dict spec) {
+// Readers for the spec's Python values. Each accepts exactly one shape.
+PyObject* item(PyObject* dict, const char* key) {
+    PyObject* value = PyDict_GetItemString(dict, key);  // borrowed; the spec dict keeps it alive
+    if (!value) bad_spec(std::string("missing ") + key);
+    return value;
+}
+
+std::vector<PyObject*> sequence(PyObject* o, const char* what) {
+    if (!PyList_Check(o) && !PyTuple_Check(o)) bad_spec(std::string(what) + " must be a list or tuple");
+    Py_ssize_t n = PySequence_Fast_GET_SIZE(o);
+    PyObject** items = PySequence_Fast_ITEMS(o);
+    return std::vector<PyObject*>(items, items + n);
+}
+
+std::vector<PyObject*> tuple_of(PyObject* o, std::size_t size, const char* what) {
+    if (!PyTuple_Check(o) || static_cast<std::size_t>(PyTuple_GET_SIZE(o)) != size)
+        bad_spec(std::string(what) + " must be a tuple of " + std::to_string(size));
+    return sequence(o, what);
+}
+
+std::size_t index(PyObject* o, std::size_t limit, const char* what) {
+    if (!PyLong_CheckExact(o)) bad_spec(std::string(what) + " must be an int");
+    std::size_t v = PyLong_AsSize_t(o);
+    if (v == static_cast<std::size_t>(-1) && PyErr_Occurred()) {
+        PyErr_Clear();
+        bad_spec(std::string(what) + " is out of range");
+    }
+    if (v >= limit) bad_spec(std::string(what) + " is out of range");
+    return v;
+}
+
+double finite(PyObject* o, const char* what) {
+    if (!PyFloat_CheckExact(o)) bad_spec(std::string(what) + " must be a float");
+    double v = PyFloat_AS_DOUBLE(o);
+    if (!std::isfinite(v)) bad_spec(std::string(what) + " must be finite");
+    return v;
+}
+
+bool flag(PyObject* o, const char* what) {
+    if (o != Py_True && o != Py_False) bad_spec(std::string(what) + " must be a bool");
+    return o == Py_True;
+}
+
+std::vector<double> doubles(PyObject* o, const char* what) {
+    std::vector<double> out;
+    for (PyObject* x : sequence(o, what)) out.push_back(finite(x, what));
+    return out;
+}
+
+msf::Domain domain_of(PyObject* o) {
+    auto t = tuple_of(o, 4, "domain");
+    msf::Domain d;
+    d.has_min = flag(t[0], "domain has_min");
+    d.min = finite(t[1], "domain min");
+    d.has_max = flag(t[2], "domain has_max");
+    d.max = finite(t[3], "domain max");
+    return d;
+}
+
+CompiledProgram compile_spec(PyObject* spec) {
+    if (!PyDict_CheckExact(spec)) bad_spec("spec must be a dict");
     CompiledProgram c;
-    c.document = nb::cast<nb::bytes>(spec["document"]);
-    std::size_t slots = c.program.slots = nb::cast<std::size_t>(spec["slots"]);
-    nb::list sources = nb::cast<nb::list>(spec["sources"]);
+    PyObject* document = item(spec, "document");
+    if (!PyBytes_CheckExact(document)) bad_spec("document must be bytes");
+    c.document = nb::borrow<nb::bytes>(document);
+    auto sources = sequence(item(spec, "sources"), "sources");
+    auto instructions = sequence(item(spec, "instructions"), "instructions");
+    // Slots are the sources, then one per instruction output.
+    std::size_t slots = c.program.slots = index(item(spec, "slots"), sources.size() + instructions.size() + 1, "slots");
     require(sources.size() <= slots, "more sources than slots");
     for (std::size_t i = 0; i < sources.size(); ++i) {
-        nb::tuple s = nb::cast<nb::tuple>(sources[i]);
-        require(PyUnicode_CheckExact(s[0].ptr()), "source IDs must be str");
-        c.source_slots[s[0]] = nb::int_(i);
+        auto s = tuple_of(sources[i], 2, "source");
+        require(PyUnicode_CheckExact(s[0]), "source IDs must be str");
+        require(!PyDict_Contains(c.source_slots.ptr(), s[0]), "duplicate source ID");
+        c.source_slots[nb::handle(s[0])] = nb::int_(i);
         c.source_domains.push_back(domain_of(s[1]));
     }
-    require(c.source_slots.size() == sources.size(), "duplicate source ID");
-    for (nb::handle h : nb::cast<nb::list>(spec["required"])) {
-        c.required.push_back(nb::cast<std::size_t>(h));
-        require(c.required.back() < sources.size(), "required input is not a source");
-    }
+    for (PyObject* r : sequence(item(spec, "required"), "required")) c.required.push_back(index(r, sources.size(), "required slot"));
     // Every slot an instruction reads holds this frame's value: a required source or an earlier output.
     std::vector<char> defined(slots);
     for (std::size_t s : c.required) defined[s] = 1;
-    for (nb::handle h : nb::cast<nb::list>(spec["instructions"])) {
-        nb::tuple t = nb::cast<nb::tuple>(h);
+    for (PyObject* h : instructions) {
+        auto t = tuple_of(h, 9, "instruction");
         msf::Instruction ins;
-        std::string op = nb::cast<std::string>(t[0]);
+        require(PyUnicode_CheckExact(t[0]), "operator must be str");
+        std::string op = PyUnicode_AsUTF8(t[0]) ? PyUnicode_AsUTF8(t[0]) : "";
+        PyErr_Clear();
         require(op == "identity" || op == "affine" || op == "weighted_sum" || op == "piecewise_linear", "unknown operator");
         ins.op = op == "identity" ? msf::Op::identity : op == "affine" ? msf::Op::affine
                  : op == "weighted_sum" ? msf::Op::weighted_sum : msf::Op::piecewise_linear;
-        for (nb::handle s : t[1]) ins.inputs.push_back(nb::cast<std::size_t>(s));
-        ins.output = nb::cast<std::size_t>(t[2]);
+        for (PyObject* s : sequence(t[1], "inputs")) ins.inputs.push_back(index(s, slots, "input slot"));
+        ins.output = index(t[2], slots, "output slot");
         ins.output_domain = domain_of(t[3]);
-        ins.scale = nb::cast<double>(t[4]);
-        ins.offset = nb::cast<double>(t[5]);
-        ins.weights = doubles(t[6]);
-        ins.xs = doubles(t[7]);
-        ins.ys = doubles(t[8]);
+        ins.scale = finite(t[4], "scale");
+        ins.offset = finite(t[5], "offset");
+        ins.weights = doubles(t[6], "weights");
+        ins.xs = doubles(t[7], "knot x");
+        ins.ys = doubles(t[8], "knot y");
         require(!ins.inputs.empty() && (ins.op == msf::Op::weighted_sum || ins.inputs.size() == 1), "operator arity");
         require(ins.op != msf::Op::weighted_sum || ins.weights.size() == ins.inputs.size(), "one weight per input");
-        require(ins.op != msf::Op::piecewise_linear || (ins.xs.size() >= 2 && ins.xs.size() == ins.ys.size() &&
-                                                         std::is_sorted(ins.xs.begin(), ins.xs.end())),
+        require(ins.op != msf::Op::piecewise_linear ||
+                    (ins.xs.size() >= 2 && ins.xs.size() == ins.ys.size() &&
+                     std::adjacent_find(ins.xs.begin(), ins.xs.end(), std::greater_equal<double>()) == ins.xs.end()),
                 "piecewise knots");
-        require(ins.output >= sources.size() && ins.output < slots, "output slot");
-        for (std::size_t s : ins.inputs) require(s < slots && defined[s], "input slot");
+        require(ins.output >= sources.size() && !defined[ins.output], "output slot");
+        for (std::size_t s : ins.inputs) require(defined[s], "input slot");
         defined[ins.output] = 1;
         c.program.instructions.push_back(std::move(ins));
     }
     nb::list names;
-    for (nb::handle h : nb::cast<nb::list>(spec["outputs"])) {
-        nb::tuple t = nb::cast<nb::tuple>(h);
-        names.append(t[0]);
-        c.output_slots.push_back(nb::cast<std::size_t>(t[1]));
-        require(c.output_slots.back() < slots && defined[c.output_slots.back()], "output slot");
+    nb::dict seen;
+    for (PyObject* h : sequence(item(spec, "outputs"), "outputs")) {
+        auto t = tuple_of(h, 2, "output");
+        require(PyUnicode_CheckExact(t[0]) && !PyDict_Contains(seen.ptr(), t[0]), "output IDs must be distinct str");
+        seen[nb::handle(t[0])] = nb::none();
+        names.append(nb::handle(t[0]));
+        c.output_slots.push_back(index(t[1], slots, "output slot"));
+        require(defined[c.output_slots.back()], "output slot");
     }
     c.output_names = nb::tuple(names);
     return c;
+}
+
+CompiledProgram compile(nb::handle spec) {
+    try {
+        return compile_spec(spec.ptr());
+    } catch (const SpecError& error) {
+        nb::object report = nb::module_::import_("msf_tools.report");
+        nb::object fault = report.attr("Fault")("E_INTERNAL", "_core.compile", "Malformed core program spec: " + error.what + ".",
+                                                "Report this diagnostic with a minimal reproducible input.");
+        PyErr_SetObject(reinterpret_cast<PyObject*>(Py_TYPE(fault.ptr())), fault.ptr());
+        throw nb::python_error();
+    }
 }
 
 }  // namespace
@@ -285,6 +357,6 @@ NB_MODULE(_core, m) {
         .def("evaluate", &CompiledProgram::evaluate)
         .def("document", [](const CompiledProgram& c) { return c.document; })
         .def("__msf_state__", [](const CompiledProgram& c) { return c.document; });
-    m.def("compile", &compile);
+    m.def("compile", &compile, nb::arg("spec").none());
     m.def("piecewise_clamp", &msf::piecewise_clamp);
 }

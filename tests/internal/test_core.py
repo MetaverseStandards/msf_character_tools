@@ -9,11 +9,12 @@ import os
 import random
 import struct
 import unittest
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from unittest import mock
 
 import msf_tools as m
 from msf_tools import _native
+from msf_tools.report import Fault
 import test_operators_1_1 as ops
 
 REQUIRED = os.environ.get('MSF_REQUIRE_CORE') == '1'
@@ -152,6 +153,67 @@ class CoreTests(unittest.TestCase):
                                    [frame({'in': big})])
         self.assertSameAsReference(affine(2**-600, 0, high=1, out_low=0), [frame({'in': 2**-600})])
         self.assertSameAsReference(affine(1, 0.5), [frame({'in': 0.25}), frame({'in': 1})])
+
+
+def captured_spec(doc):
+    """The spec compile_mapping hands to _core.compile for doc."""
+    specs = []
+    core = _native.core
+    stand_in = SimpleNamespace(**{**vars(core), 'compile': lambda spec: specs.append(spec) or core.compile(spec)})
+    with mock.patch.object(_native, 'core', stand_in):
+        build(doc)
+    return specs[0]
+
+
+JUNK = [None, True, -1, 2**70, 1.5, math.nan, 'x', b'x', (), [], {}, (1,), [0], ('affine',), 10**6]
+
+
+def malformed(spec, rng):
+    """spec with one value replaced, dropped, shortened or lengthened somewhere inside it."""
+    spec = {k: list(v) if isinstance(v, list) else v for k, v in spec.items()}
+    key = rng.choice(list(spec) + ['extra'])
+    choice = rng.randrange(4)
+    if key == 'extra' or choice == 0:
+        spec.pop(key, None) if key != 'extra' else spec.update(extra=1)
+    elif isinstance(spec[key], list) and spec[key] and choice < 3:
+        items = spec[key]
+        i = rng.randrange(len(items))
+        if isinstance(items[i], tuple):
+            parts = list(items[i])
+            j = rng.randrange(len(parts) + 1)
+            if choice == 1:
+                parts = parts[:j]
+            else:
+                parts[j % len(parts)] = rng.choice(JUNK + [(True, 0.0), (False, 0.0, False, 0.0, 1)])
+            items[i] = tuple(parts)
+        else:
+            items[i] = rng.choice(JUNK)
+    else:
+        spec[key] = rng.choice(JUNK)
+    return spec
+
+
+@unittest.skipIf(_native.core is None and not REQUIRED, 'C++ core not built')
+class CompileBoundary(unittest.TestCase):
+    def test_malformed_program_specs_raise_internal_faults(self):
+        rng = random.Random(9)
+        specs = [captured_spec(ops.gaze()), captured_spec(affine(2, 1)), captured_spec(ops.document([[-1, 0], [0.5, 0.2], [1, 1]]))]
+        refused = 0
+        for _ in range(1500):
+            spec = malformed(rng.choice(specs), rng)
+            try:
+                program = _native.core.compile(spec)
+            except Fault as exc:
+                self.assertEqual(exc.diagnostic.code, 'E_INTERNAL', exc.diagnostic)
+                refused += 1
+                continue
+            # Whatever compiles must evaluate safely.
+            program.evaluate([frame({'look_in': 0.5, 'look_out': 0.25})])
+            program.evaluate([frame({'in': 0.5})])
+        self.assertGreater(refused, 1000)
+        for bad in (None, [], 'spec', {'document': b''}):
+            with self.subTest(spec=bad), self.assertRaises(Fault):
+                _native.core.compile(bad)
 
 
 if __name__ == '__main__':
