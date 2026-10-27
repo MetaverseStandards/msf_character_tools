@@ -2,14 +2,16 @@
 """USD adapter built on usd-core (`pxr`). Importing this module fails when pxr is absent."""
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 import io
+import math
 import posixpath
 import re
 import tempfile
 import zipfile
 
-from pxr import Sdf, Tf, Usd, UsdGeom, UsdSkel
+from pxr import Sdf, Tf, Usd, UsdGeom, UsdLux, UsdShade, UsdSkel
 
 from ..common import digest
 from ..report import Diagnostic, fail
@@ -27,14 +29,57 @@ def _matrix(gf):
     return [float(gf[r][c]) for r in range(4) for c in range(4)]
 
 
-def _trs(prim, path):
+_Z_UP = ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0))
+_Y_UP = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+
+class _Conversion:
+    """C = metersPerUnit * R_up, applied to points and offsets as C p and to local matrices as C L C^-1.
+
+    R_up is a signed axis permutation, so conjugating a shear-free matrix keeps it shear-free.
+    """
+
+    def __init__(self, stage):
+        self.scale = float(UsdGeom.GetStageMetersPerUnit(stage))
+        if not math.isfinite(self.scale) or self.scale <= 0:
+            fail("E_SOURCE_VALUE", "/", "metersPerUnit must be a positive finite number.")
+        self.rotation = _Z_UP if UsdGeom.GetStageUpAxis(stage) == UsdGeom.Tokens.z else _Y_UP
+        self.losses = []
+        if self.scale != 1.0:
+            self.losses.append(Diagnostic("I_UNITS_CONVERTED", "info", "/", f"Converted {self.scale:g} metres per unit to metres.", "No action needed."))
+        if self.rotation is _Z_UP:
+            self.losses.append(Diagnostic("I_AXES_CONVERTED", "info", "/", "Converted Z-up to Y-up.", "No action needed."))
+
+    def point(self, p, scale=True):
+        k = self.scale if scale else 1.0
+        return tuple(k * math.fsum(self.rotation[r][c] * p[c] for c in range(3)) for r in range(3))
+
+    def matrix(self, m):
+        """Conjugate a column-major local matrix."""
+        a = [[m[4 * c + r] for c in range(3)] for r in range(3)]
+        r = self.rotation
+        b = [[math.fsum(r[i][k] * a[k][l] * r[j][l] for k in range(3) for l in range(3)) for j in range(3)] for i in range(3)]
+        t = self.point(m[12:15])
+        return [x for col in range(3) for x in (b[0][col], b[1][col], b[2][col], 0.0)] + [*t, 1.0]
+
+
+def _apply(m, p):
+    return tuple(math.fsum(m[4 * c + r] * p[c] for c in range(3)) + m[12 + r] for r in range(3))
+
+
+def _local(prim, path, conversion):
+    """The prim's local matrix at the earliest time, converted, or None for prims without one."""
     if not prim.IsA(UsdGeom.Xformable):
-        return {}
+        return None
     matrix = _matrix(UsdGeom.Xformable(prim).GetLocalTransformation(_EARLIEST))
+    if not all(math.isfinite(x) for x in matrix):
+        fail("E_SOURCE_VALUE", path, "Transform has a non-finite number.")
     if not transforms.is_affine(matrix):
         fail("E_SOURCE_VALUE", path, "Transform is not affine.")
-    if transforms.has_shear(matrix):
-        fail("E_SHEAR_UNSUPPORTED", path, "Transform has shear, which glTF TRS cannot represent.")
+    return conversion.matrix(matrix)
+
+
+def _trs(matrix, path):
     try:
         translation, rotation, scale = transforms.decompose(matrix)
     except ValueError:
@@ -42,18 +87,50 @@ def _trs(prim, path):
     return {"translation": translation, "rotation": rotation, "scale": scale}
 
 
-def _triangles(mesh, path):
+def _shear(path):
+    fail("E_SHEAR_UNSUPPORTED", path, "Transform has shear, which glTF TRS cannot represent.",
+         "Remove the shear, or keep it only on static unskinned leaf meshes, where it is baked into the points.")
+
+
+def _triangles(mesh, path, flip, skipped):
     counts = list(mesh.GetFaceVertexCountsAttr().Get(_EARLIEST) or ())
     indices = list(mesh.GetFaceVertexIndicesAttr().Get(_EARLIEST) or ())
     if sum(counts) != len(indices) or any(c < 0 for c in counts):
         fail("E_SOURCE_VALUE", path, "Face vertex counts and indices disagree.")
+    holes = set(mesh.GetHoleIndicesAttr().Get(_EARLIEST) or ())
+    if any(not 0 <= h < len(counts) for h in holes):
+        fail("E_SOURCE_VALUE", path, "Hole indices must name faces of the mesh.")
+    skipped["hole face"] += len(holes)
     triangles, start = [], 0
-    for count in counts:
+    for f, count in enumerate(counts):
         face = indices[start:start + count]
         start += count
+        if f in holes:
+            continue
         for k in range(1, count - 1):
-            triangles += [face[0], face[k], face[k + 1]]
+            triangles += [face[0], face[k + 1], face[k]] if flip else [face[0], face[k], face[k + 1]]
     return triangles
+
+
+def _skipped_kind(prim):
+    if prim.IsA(UsdGeom.Mesh):
+        return None
+    if (prim.IsA(UsdGeom.Gprim) or prim.IsA(UsdGeom.PointInstancer) or prim.IsA(UsdGeom.Camera)
+            or prim.HasAPI(UsdLux.LightAPI) or prim.IsA(UsdShade.Material)):
+        return prim.GetTypeName() or "untyped prim"
+    return None
+
+
+def _skipped(counts):
+    parts = [f"{n} {kind}" for kind, n in sorted(counts.items()) if kind not in ("hole face", "external asset dependency") and n]
+    for kind in ("hole face", "external asset dependency"):
+        if counts[kind]:
+            plural = {"hole face": "hole faces", "external asset dependency": "external asset dependencies"}[kind]
+            parts.append(f"{counts[kind]} {kind if counts[kind] == 1 else plural}")
+    if not parts:
+        return []
+    text = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return [Diagnostic("W_SKIPPED", "warning", "/", f"Skipped {text}.", "Review the declared loss.")]
 
 
 def _blend_shapes(prim, points, path):
@@ -94,13 +171,13 @@ class UsdAdapter:
 
     def convert(self, data, fmt, resolver, limits, options):
         with tempfile.TemporaryDirectory() as tmp:
-            layer, dependencies, losses = _materialize(Path(tmp), data, fmt, resolver, limits)
+            layer, dependencies, external = _materialize(Path(tmp), data, fmt, resolver, limits)
             try:
                 stage = Usd.Stage.Open(layer)
             except Tf.ErrorException as exc:
                 raise SourceParseError(str(exc).strip()) from None
             try:
-                return _convert(stage, self, dependencies, losses)
+                return _convert(stage, self, dependencies, external)
             finally:
                 del stage
 
@@ -204,16 +281,18 @@ def _materialize(tmp, data, fmt, resolver, limits):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
             queue.append((_open(str(target)), anchored))
-    losses = ()
-    if external:
-        losses = (Diagnostic("W_SKIPPED", "warning", "/", f"Skipped {len(external)} external asset dependencies (for example textures).",
-                             "Review the declared loss."),)
-    return layer, tuple((uri, sha, length) for uri, (sha, length) in sorted(fetched.items())), losses
+    return layer, tuple((uri, sha, length) for uri, (sha, length) in sorted(fetched.items())), len(external)
 
 
-def _convert(stage, adapter, dependencies, losses):
-    prims = [p for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
-             if p != stage.GetPseudoRoot() and (p.IsA(UsdGeom.Xformable) or p.IsA(UsdGeom.Scope))]
+def _convert(stage, adapter, dependencies, external):
+    conversion = _Conversion(stage)
+    skipped = Counter({"external asset dependency": external})
+    every = [p for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies()) if p != stage.GetPseudoRoot()]
+    for prim in every:
+        kind = _skipped_kind(prim)
+        if kind:
+            skipped[kind] += 1
+    prims = [p for p in every if p.IsA(UsdGeom.Xformable) or p.IsA(UsdGeom.Scope)]
     order = sorted(range(len(prims)), key=lambda i: paths.sort_key(_node_path(prims[i])))
     prims = [prims[i] for i in order]
     index = {p.GetPath(): i for i, p in enumerate(prims)}
@@ -226,25 +305,50 @@ def _convert(stage, adapter, dependencies, losses):
             parent = parent.GetParent()
         if parent:
             children[index[parent.GetPath()]].append(i)
-    nodes, meshes, target_keys = [], [], []
+    nodes, meshes, target_keys, losses = [], [], [], []
     for i, prim in enumerate(prims):
         path = _node_path(prim)
+        local = _local(prim, path, conversion)
+        baked = None
+        if local is not None and transforms.has_shear(local):
+            if (not prim.IsA(UsdGeom.Mesh) or children[i]
+                    or UsdGeom.Xformable(prim).TransformMightBeTimeVarying()):
+                _shear(path)
+            baked, local = local, None
+            losses.append(Diagnostic("W_SHEAR_BAKED", "warning", path, "Sheared transform baked into the mesh points.",
+                                     "Review the declared loss."))
+        elif local is not None and transforms.determinant(local) < 0:
+            losses.append(Diagnostic("I_MIRRORED", "info", path, "Mirrored transform stored as a negative X scale.", "No action needed."))
         mesh_index = None
         if prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(prim)
-            points = [tuple(map(float, p)) for p in mesh.GetPointsAttr().Get(_EARLIEST) or ()]
+            if mesh.GetSubdivisionSchemeAttr().Get() != UsdGeom.Tokens.none:
+                losses.append(Diagnostic("W_SUBDIV_CAGE", "warning", path, "Subdivision surface uses its control cage.",
+                                         "Review the declared loss."))
+            left = mesh.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded
+            if left:
+                losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
+            points = [conversion.point(tuple(map(float, p))) for p in mesh.GetPointsAttr().Get(_EARLIEST) or ()]
             if points:
                 keys, offsets = _blend_shapes(prim, points, path)
+                offsets = [tuple(conversion.point(o) for o in target) for target in offsets]
+                flip = left
+                if baked is not None:
+                    points = [_apply(baked, p) for p in points]
+                    offsets = [tuple(_apply(baked[:12] + [0.0, 0.0, 0.0, 1.0], o) for o in target) for target in offsets]
+                    flip = flip != (transforms.determinant(baked) < 0)
                 mesh_index = len(meshes)
-                meshes.append(glb.Mesh(points=tuple(points), triangles=tuple(_triangles(mesh, path)), targets=tuple(offsets)))
+                meshes.append(glb.Mesh(points=tuple(points), triangles=tuple(_triangles(mesh, path, flip, skipped)),
+                                       targets=tuple(offsets)))
                 target_keys.append(tuple(keys))
-        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, **_trs(prim, path)))
+        trs = _trs(local, path) if local is not None else {}
+        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, **trs))
     try:
         raw = glb.write_glb(tuple(nodes), tuple(meshes), generator=f"{adapter.name} {adapter.version}")
     except ValueError as exc:
         fail("E_SOURCE_VALUE", "/", str(exc))
     return Generated(glb=raw, node_paths=tuple(_node_path(p) for p in prims), target_keys=tuple(target_keys),
-                     dependencies=dependencies, losses=losses)
+                     dependencies=dependencies, losses=tuple(conversion.losses + losses + _skipped(skipped)))
 
 
 ADAPTER = UsdAdapter()

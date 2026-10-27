@@ -211,3 +211,115 @@ class UsdDependencies(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def trs(node):
+    x, y, z, w = node.get('rotation', (0.0, 0.0, 0.0, 1.0))
+    sx, sy, sz = node.get('scale', (1.0, 1.0, 1.0))
+    t = node.get('translation', (0.0, 0.0, 0.0))
+    r = [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+         [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]]
+    return [[r[i][0] * sx, r[i][1] * sy, r[i][2] * sz, t[i]] for i in range(3)]
+
+
+def world_points(snapshot, path):
+    """Mesh points of the node at `path`, carried to world space through the glTF node TRS chain."""
+    index = snapshot.source['node_paths'].index(path)
+    nodes = snapshot.document['nodes']
+    parent = {c: i for i, n in enumerate(nodes) for c in n.get('children', ())}
+    instances = good(m.evaluate_geometry(snapshot)).to_dict()['instances']
+    points = next(i for i in instances if i['node'] == index)['primitives'][0]['positions']
+    while index is not None:
+        matrix = trs(nodes[index])
+        points = [[sum(matrix[r][c] * p[c] for c in range(3)) + matrix[r][3] for r in range(3)] for p in points]
+        index = parent.get(index)
+    return points
+
+
+def mesh(name, points, counts, indices, extra='', scheme='none'):
+    scheme_line = f'    uniform token subdivisionScheme = "{scheme}"\n' if scheme else ''
+    return (f'def Mesh "{name}"\n{{\n    point3f[] points = {points}\n    int[] faceVertexCounts = {counts}\n'
+            f'    int[] faceVertexIndices = {indices}\n{scheme_line}{extra}}}\n')
+
+
+def xform(name, ops, body):
+    lines = ''.join(f'    {op}\n' for op in ops)
+    order = ', '.join('"' + op.split()[1].split('=')[0].split('.')[0] + '"' for op in ops if 'xformOp:' in op.split()[1])
+    order_line = f'    uniform token[] xformOpOrder = [{order}]\n' if order else ''
+    return f'def Xform "{name}"\n{{\n{lines}{order_line}' + ''.join('    ' + line + '\n' for line in body.splitlines()) + '}\n'
+
+
+TRI = mesh('Tri', '[(100, 0, 0), (0, 100, 0), (0, 0, 100)]', '[3]', '[0, 1, 2]')
+SHEAR = 'matrix4d xformOp:transform = ((1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))'
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdMeshesAndTransforms(unittest.TestCase):
+    def codes(self, snapshot):
+        return [(d['code'], d['ref']) for d in thaw(snapshot.source['losses'])]
+
+    def assertPoints(self, actual, expected):
+        self.assertEqual(len(actual), len(expected))
+        for a, e in zip(actual, expected):
+            for x, y in zip(a, e):
+                self.assertAlmostEqual(x, y, places=5)
+
+    def test_units_and_up_axis_are_applied_to_the_data(self):
+        shape = ('    uniform token[] skel:blendShapes = ["up"]\n    rel skel:blendShapeTargets = </Root/Tri/Up>\n'
+                 '    def BlendShape "Up"\n    {\n        uniform int[] pointIndices = [0]\n'
+                 '        uniform vector3f[] offsets = [(0, 0, 100)]\n    }\n')
+        tri = mesh('Tri', '[(100, 0, 0), (0, 100, 0), (0, 0, 100)]', '[3]', '[0, 1, 2]', shape).replace(
+            'def Mesh "Tri"', 'def Mesh "Tri" (prepend apiSchemas = ["SkelBindingAPI"])')
+        data = layer(xform('Root', ['double3 xformOp:translate = (0, 0, 100)', 'float xformOp:rotateZ = 90'], tri),
+                     'upAxis = "Z"\n    metersPerUnit = 0.01')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('I_UNITS_CONVERTED', '/'), ('I_AXES_CONVERTED', '/')])
+        self.assertPoints(positions(snapshot), [[1, 0, 0], [0, 0, -1], [0, 1, 0]])
+        self.assertPoints(positions(snapshot, morph_weights={1: [1.0]}), [[1, 1, 0], [0, 0, -1], [0, 1, 0]])
+        # USD world points rotate about Z, then rise 100 cm along Z; C carries Z-up centimetres to Y-up metres.
+        self.assertPoints(world_points(snapshot, '/Root/Tri'), [[0, 1, -1], [-1, 1, 0], [0, 2, 0]])
+
+    def test_mirrored_nodes_keep_their_world_points(self):
+        data = layer(xform('M', ['double3 xformOp:scale = (1, 1, -1)'], TRI), 'metersPerUnit = 1')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('I_MIRRORED', '/M')])
+        self.assertLess(snapshot.document['nodes'][0]['scale'][0], 0)
+        self.assertPoints(world_points(snapshot, '/M/Tri'), [[100, 0, 0], [0, 100, 0], [0, 0, -100]])
+
+    def test_static_shear_on_an_unskinned_leaf_mesh_is_baked(self):
+        data = layer(xform('Root', [], xform('Tri', [SHEAR], '').replace('def Xform "Tri"\n{\n', 'def Mesh "Tri"\n{\n'
+                     '    point3f[] points = [(0, 1, 0), (1, 0, 0), (0, 0, 1)]\n    int[] faceVertexCounts = [3]\n'
+                     '    int[] faceVertexIndices = [0, 1, 2]\n    uniform token subdivisionScheme = "none"\n')),
+                     'metersPerUnit = 1')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('W_SHEAR_BAKED', '/Root/Tri')])
+        self.assertEqual({k for k in ('translation', 'rotation', 'scale') if k in snapshot.document['nodes'][1]}, set())
+        self.assertPoints(positions(snapshot), [[0.5, 1, 0], [1, 0, 0], [0, 0, 1]])
+        strict = m.inspect_asset(data, 'usda', options={'losses': 'strict'})
+        self.assertEqual([d.code for d in strict.report.diagnostics], ['E_SHEAR_UNSUPPORTED'])
+
+    def test_shear_on_interior_or_animated_nodes_is_refused(self):
+        interior = layer(xform('Root', [SHEAR], TRI), 'metersPerUnit = 1')
+        animated = layer(mesh('Tri', '[(0, 1, 0), (1, 0, 0), (0, 0, 1)]', '[3]', '[0, 1, 2]',
+                              '    matrix4d xformOp:transform.timeSamples = {0: ((1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)),'
+                              ' 1: ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))}\n'
+                              '    uniform token[] xformOpOrder = ["xformOp:transform"]\n'), 'metersPerUnit = 1')
+        for data, ref in ((interior, '/Root'), (animated, '/Tri')):
+            with self.subTest(ref=ref):
+                result = m.inspect_asset(data, 'usda')
+                self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', ref)])
+
+    def test_holes_cages_winding_and_skipped_prims_are_declared(self):
+        quads = mesh('Quads', '[(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)]', '[4, 4]',
+                     '[0, 1, 2, 3, 1, 4, 5, 2]', '    int[] holeIndices = [1]\n    uniform token orientation = "leftHanded"\n',
+                     scheme=None)
+        others = ('def Camera "Cam" {}\ndef BasisCurves "Hair"\n{\n    int[] curveVertexCounts = [2]\n'
+                  '    point3f[] points = [(0, 0, 0), (0, 1, 0)]\n}\ndef Material "Skin" {}\n')
+        snapshot = good(m.inspect_asset(layer(quads + others, 'metersPerUnit = 1'), 'usda'))
+        self.assertEqual(self.codes(snapshot), [('W_SUBDIV_CAGE', '/Quads'), ('I_WINDING_FLIPPED', '/Quads'), ('W_SKIPPED', '/')])
+        self.assertEqual(thaw(snapshot.source['losses'])[-1]['message'],
+                         'Skipped 1 BasisCurves, 1 Camera, 1 Material and 1 hole face.')
+        self.assertEqual(snapshot.source['node_paths'], ('/Cam', '/Hair', '/Quads'))
+        primitive = snapshot.document['meshes'][0]['primitives'][0]
+        self.assertEqual(m.decode_accessor(snapshot, primitive['indices']).value, ((0,), (2,), (1,), (0,), (3,), (2,)))

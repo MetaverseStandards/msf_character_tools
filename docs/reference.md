@@ -146,7 +146,12 @@ glTF formats refuse `limits` and `options` with `E_SOURCE_OPTIONS`.
 
 #### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
 
-Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Local transforms come from the earliest authored time and must be affine, free of shear and nonsingular. Reader errors in any layer are `E_SOURCE_PARSE`.
+Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Reader errors in any layer are `E_SOURCE_PARSE`.
+
+- **Units and up axis** are applied to the data, so geometry comes back in metres with +Y up. With C = `metersPerUnit` times the Z-up to Y-up rotation (identity for Y-up), points and blend offsets become C·p and local transforms C·L·C⁻¹. An unauthored `metersPerUnit` means centimetres, as in USD. Conversions are declared as `I_UNITS_CONVERTED` and `I_AXES_CONVERTED`.
+- **Local transforms** come from the earliest authored time and must be affine, finite and nonsingular. A negative determinant is stored as a negative X scale (`I_MIRRORED`). Shear (two axes of the linear part more than 1e-6 from perpendicular in cosine) is baked into the points of a static leaf mesh, leaving the node with no transform (`W_SHEAR_BAKED`); anywhere else it is `E_SHEAR_UNSUPPORTED`.
+- **Faces:** hole faces are dropped, subdivision surfaces use their control cage (`W_SUBDIV_CAGE`), and `orientation = "leftHanded"` faces are reversed (`I_WINDING_FLIPPED`).
+- **Skipped prims:** curves, points, NURBS, implicit surfaces, point instancers, cameras, lights and materials are counted by type in one `W_SKIPPED`, together with hole faces. Xformable ones still become nodes.
 
 Before a stage is opened, every layer named by a sublayer, reference or payload is gathered:
 
