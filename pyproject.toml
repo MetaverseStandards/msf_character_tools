@@ -9,8 +9,9 @@ version = "0.3.0"
 description = "Validated signal mappings and immutable glTF reference evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT AND BSD-3-Clause"
-license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt"]
+license = "MIT AND BSD-3-Clause AND BSL-1.0"
+license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt",
+                 "LICENSES/BSL-1.0.txt", "core/third_party/fast_float/LICENSE-MIT"]
 authors = [{name = "MSF Tools contributors"}]
 dependencies = []
 

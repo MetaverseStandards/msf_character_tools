@@ -4,8 +4,22 @@
 # environments, then print a summary block for a pull-request description.
 # Interpreters default to $MSF/_tools/venv3.11 and venv3.12; override with
 # MSF_PY311 / MSF_PY312.
+#
+#   --gate      add the gate tier: 10^7 floats against repr, wider JSON fuzzing,
+#               and RCEF's JSON goldens (MSF_RCEF_ROOT, MSF_RCEF_COMMIT)
+#   --sanitize  rebuild the core with ASan and UBSan, run the core and public
+#               suites on it, then restore the normal build
 set -u
 cd "$(dirname "$0")/.." || exit 2
+gate=0
+sanitize=0
+for arg in "$@"; do
+  case "$arg" in
+    --gate) gate=1 ;;
+    --sanitize) sanitize=1 ;;
+    *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize]" >&2; exit 2 ;;
+  esac
+done
 MSF="${MSF:-$HOME/.local/share/msf}"
 failed=0
 lines=()
@@ -119,6 +133,49 @@ fi
 if [ -x "$py312" ]; then
   output=$(MSF_TOOLS_PURE=1 MSF_REQUIRE_CORE= suites "$py312" 'test*.py' '')
   tier "Public suite on the pure-Python path (MSF_TOOLS_PURE=1, Python 3.12)" $? "$output"
+fi
+
+# Gate tier (--gate): the G1 checks too slow for the fast suite.
+if [ $gate -eq 1 ] && [ -x "$py312" ]; then
+  start=$(python3 -c 'import time; print(time.time())')
+  output=$(MSF_GATE=1 suites "$py312" '' 'test_core_json.py')
+  tier "Gate tier (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens; $(seconds "$start") s)" $? "$output"
+else
+  lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")
+fi
+
+# Sanitizer tier (--sanitize). Isolated source readers start a worker with a
+# cleared environment, which cannot load the ASan runtime, so their one public
+# test is left out here.
+if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
+  case "$(uname -s)" in
+    Darwin) preload=(DYLD_INSERT_LIBRARIES="$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)") ;;
+    *) preload=(LD_PRELOAD="$(cc -print-file-name=libasan.so)") ;;
+  esac
+  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
+      && cmake --build build/core-asan-3.12 >/dev/null 2>&1; then
+    output=$(env "${preload[@]}" ASAN_OPTIONS=detect_leaks=0:strip_env=0 UBSAN_OPTIONS=print_stacktrace=1 "$py312" -B - <<'PY' 2>&1
+import sys, unittest
+sys.path[:0] = ['tests', 'tests/public']
+loader = unittest.defaultTestLoader
+def flat(suite):
+    for test in suite:
+        yield from flat(test) if isinstance(test, unittest.TestSuite) else [test]
+tests = [t for t in flat(loader.discover('tests/public', top_level_dir='tests/public')) if 'isolated_reader' not in t.id()]
+for pattern in ('test_core*.py', 'test_record_integrity_internal.py', 'test_diagnostics_registry.py'):
+    tests += list(flat(loader.discover('tests/internal', pattern=pattern, top_level_dir='tests')))
+result = unittest.TextTestRunner(verbosity=0).run(unittest.TestSuite(tests))
+sys.exit(not result.wasSuccessful())
+PY
+)
+    tier "Sanitizer tier (ASan + UBSan core; public suite less 1 isolated-worker test, core and record tests)" $? "$output"
+  else
+    lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
+    failed=1
+  fi
+  cmake -E copy build/core-3.12/_core.*.so msf_tools/ >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
+else
+  lines+=("- Sanitizer tier: SKIPPED (scripts/ci_local.sh --sanitize)")
 fi
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.

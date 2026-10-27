@@ -13,9 +13,12 @@
 #include <utility>
 #include <vector>
 
+#include "msf/diagnostics.hpp"
 #include "msf/program.hpp"
 
 namespace nb = nanobind;
+
+void bind_json(nb::module_& m);
 
 namespace {
 
@@ -199,11 +202,10 @@ struct CompiledProgram {
 
 // A spec that does not describe a valid program: always a bug in mapping.py,
 // reported as E_INTERNAL rather than crashing or leaking a C++ exception.
-struct SpecError {
-    std::string what;
-};
-
-[[noreturn]] void bad_spec(const std::string& what) { throw SpecError{what}; }
+[[noreturn]] void bad_spec(const std::string& what) {
+    msf::fail(msf::Code::E_INTERNAL, "_core.compile", "Malformed core program spec: " + what + ".",
+              "Report this diagnostic with a minimal reproducible input.");
+}
 
 void require(bool ok, const char* what) {
     if (!ok) bad_spec(what);
@@ -332,17 +334,7 @@ CompiledProgram compile_spec(PyObject* spec) {
     return c;
 }
 
-CompiledProgram compile(nb::handle spec) {
-    try {
-        return compile_spec(spec.ptr());
-    } catch (const SpecError& error) {
-        nb::object report = nb::module_::import_("msf_tools.report");
-        nb::object fault = report.attr("Fault")("E_INTERNAL", "_core.compile", "Malformed core program spec: " + error.what + ".",
-                                                "Report this diagnostic with a minimal reproducible input.");
-        PyErr_SetObject(reinterpret_cast<PyObject*>(Py_TYPE(fault.ptr())), fault.ptr());
-        throw nb::python_error();
-    }
-}
+CompiledProgram compile(nb::handle spec) { return compile_spec(spec.ptr()); }
 
 }  // namespace
 
@@ -359,4 +351,5 @@ NB_MODULE(_core, m) {
         .def("__msf_state__", [](const CompiledProgram& c) { return c.document; });
     m.def("compile", &compile, nb::arg("spec").none());
     m.def("piecewise_clamp", &msf::piecewise_clamp);
+    bind_json(m);
 }
