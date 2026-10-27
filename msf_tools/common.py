@@ -13,6 +13,10 @@ from .report import fail
 # Sockets and driverless devices fail at open, before fstat can classify them.
 SPECIAL_FILE_ERRNOS = frozenset({errno.ENXIO, errno.ENODEV, errno.EOPNOTSUPP})
 _UTF8 = {"utf-8", "utf-8-sig"}
+# canonical_json and parse_json refuse containers nested deeper than this, on
+# both the core and the Python path, with RecursionError(TOO_DEEP).
+MAX_NESTING = 200
+TOO_DEEP = f"JSON nesting exceeds {MAX_NESTING} levels."
 
 
 def freeze(x):
@@ -35,13 +39,54 @@ def thaw(x):
     return x
 
 
+def _thaw_limited(x, depth=0):
+    """thaw, refusing containers nested deeper than MAX_NESTING."""
+    if hasattr(x, "to_dict"):
+        return _thaw_limited(x.to_dict(), depth)
+    if isinstance(x, Mapping):
+        if depth >= MAX_NESTING:
+            raise RecursionError(TOO_DEEP)
+        return {k: _thaw_limited(v, depth + 1) for k, v in x.items()}
+    if isinstance(x, (tuple, list)):
+        if depth >= MAX_NESTING:
+            raise RecursionError(TOO_DEEP)
+        return [_thaw_limited(v, depth + 1) for v in x]
+    if isinstance(x, float) and x == 0.0:
+        return 0.0
+    return x
+
+
+def _too_deep_at(text):
+    """Index of the first bracket opening a container past MAX_NESTING, outside strings, or None."""
+    if text.count("[") + text.count("{") <= MAX_NESTING:
+        return None
+    depth, in_string, escaped = 0, False, False
+    for i, c in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "[{":
+            depth += 1
+            if depth > MAX_NESTING:
+                return i
+        elif c in "]}":
+            depth -= 1
+    return None
+
+
 def canonical_json(value):
     if _native.core is not None:
         # None: a value only the reference path below can write or refuse exactly.
         raw = _native.core.canonical_json(value)
         if raw is not None:
             return raw
-    return (json.dumps(thaw(value), sort_keys=True, ensure_ascii=False,
+    return (json.dumps(_thaw_limited(value), sort_keys=True, ensure_ascii=False,
                        allow_nan=False, indent=2) + "\n").encode("utf-8")
 
 
@@ -105,6 +150,16 @@ def parse_json(data):
         return out
     def invalid(value):
         fail("E_NONFINITE", "/", f"Invalid JSON constant {value}.")
+    text = data.decode(json.detect_encoding(data), "surrogatepass") if isinstance(data, (bytes, bytearray)) else data
+    cut = _too_deep_at(text) if type(text) is str else None
+    if cut is not None:
+        # Errors before the over-deep container still come first, as in json.loads.
+        try:
+            json.loads(text[:cut], object_pairs_hook=pairs, parse_constant=invalid, parse_int=parse_int)
+        except json.JSONDecodeError as exc:
+            if exc.pos < cut:
+                raise
+        raise RecursionError(TOO_DEEP)
     result = json.loads(data, object_pairs_hook=pairs, parse_constant=invalid, parse_int=parse_int)
     json_value(result)
     return result

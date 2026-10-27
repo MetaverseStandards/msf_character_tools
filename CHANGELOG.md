@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- `canonical_json` and the JSON parser refuse containers nested more than 200 deep with `RecursionError("JSON nesting exceeds 200 levels.")`, where 0.3.0 failed with `RecursionError` at a depth that depended on the interpreter and the call stack (about 500 to 1000). This is the one intended difference from 0.3.0 in the C++ core's JSON handling, and both the core and the pure-Python path behave this way. Documents are still limited to 128 levels by validation.
+
 ## 0.3.0
 
 ### Added

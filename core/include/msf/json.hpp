@@ -35,16 +35,19 @@ struct Value {
     static Value make_string(std::string wtf8);
 };
 
-// Nesting this deep is left to the Python reference path, whose recursion limit
-// decides the outcome; the json_value limit (128) is far below it.
-constexpr int kMaxParseDepth = 512;
+// Containers nested deeper than this are refused, here and on the Python path
+// (common.MAX_NESTING), where the refusal used to depend on the stack. The
+// json_value limit (128) is below it.
+constexpr int kMaxNesting = 200;
+inline const char* const kTooDeep = "JSON nesting exceeds 200 levels.";
 
 struct ParseOutcome {
     enum class Status {
         ok,
-        syntax,         // not JSON, or nested past kMaxParseDepth: the caller reports it as Python's json does
+        syntax,         // not JSON: the caller reports it as Python's json does
         constant,       // NaN, Infinity or -Infinity; detail is the constant
         duplicate_key,  // detail is the key (WTF-8), found when its object closed
+        too_deep,       // a container opened past kMaxNesting
     } status = Status::ok;
     std::string detail;
     Value value;

@@ -17,9 +17,12 @@ using msf::json::Value;
 
 namespace {
 
-// Deeper Python structures go to the reference path, where the interpreter's
-// recursion limit decides what happens.
-constexpr int kMaxConvertDepth = 512;
+struct TooDeep {};
+
+[[noreturn]] void raise_too_deep() {
+    PyErr_SetString(PyExc_RecursionError, msf::json::kTooDeep);
+    throw nb::python_error();
+}
 
 nb::object decode(const std::string& wtf8) {
     return nb::steal(PyUnicode_DecodeUTF8(wtf8.data(), static_cast<Py_ssize_t>(wtf8.size()), "surrogatepass"));
@@ -38,8 +41,8 @@ bool utf8_of(PyObject* str, std::string& out) {
 
 // common.thaw for the exact JSON types; anything else (records with to_dict,
 // subclasses, non-str keys, other objects) returns false for the reference path.
+// Throws TooDeep for containers nested past kMaxNesting, as common._thaw_limited does.
 bool from_python(PyObject* o, Value& v, int depth) {
-    if (depth > kMaxConvertDepth) return false;
     if (o == Py_None) {
         v = Value::null_value();
     } else if (o == Py_True || o == Py_False) {
@@ -65,6 +68,7 @@ bool from_python(PyObject* o, Value& v, int depth) {
         if (!utf8_of(o, s)) return false;
         v = Value::make_string(std::move(s));
     } else if (PyList_CheckExact(o) || PyTuple_CheckExact(o)) {
+        if (depth >= msf::json::kMaxNesting) throw TooDeep{};
         nb::object items = nb::steal(PySequence_Tuple(o));
         if (!items.is_valid()) {
             PyErr_Clear();
@@ -77,6 +81,7 @@ bool from_python(PyObject* o, Value& v, int depth) {
         for (Py_ssize_t i = 0; i < n; ++i)
             if (!from_python(PyTuple_GET_ITEM(items.ptr(), i), v.items[static_cast<std::size_t>(i)], depth + 1)) return false;
     } else if (PyDict_CheckExact(o) || Py_TYPE(o) == &PyDictProxy_Type) {
+        if (depth >= msf::json::kMaxNesting) throw TooDeep{};
         nb::object items = nb::steal(PyMapping_Items(o));
         if (!items.is_valid() || !PyList_CheckExact(items.ptr())) {
             PyErr_Clear();
@@ -132,7 +137,11 @@ nb::object to_python(const Value& v) {
 // common.canonical_json's bytes, or None when the reference path must decide.
 nb::object canonical_json(nb::handle value) {
     Value v;
-    if (!from_python(value.ptr(), v, 0)) return nb::none();
+    try {
+        if (!from_python(value.ptr(), v, 0)) return nb::none();
+    } catch (const TooDeep&) {
+        raise_too_deep();
+    }
     std::string out;
     try {
         out = msf::json::write_canonical(v);
@@ -161,6 +170,7 @@ nb::object parse_json(nb::handle data) {
     switch (parsed.status) {
         case Status::ok: return nb::make_tuple(to_python(parsed.value));
         case Status::syntax: return nb::none();
+        case Status::too_deep: raise_too_deep();
         case Status::constant:
             msf::fail(msf::Code::E_NONFINITE, "/", "Invalid JSON constant " + parsed.detail + ".");
         case Status::duplicate_key: {
@@ -225,7 +235,7 @@ void bind_json(nb::module_& m) {
     });
     m.def("_parse_status", [](nb::bytes data) {
         msf::json::ParseOutcome parsed = msf::json::parse(std::string_view(data.c_str(), data.size()));
-        static const char* names[] = {"ok", "syntax", "constant", "duplicate_key"};
+        static const char* names[] = {"ok", "syntax", "constant", "duplicate_key", "too_deep"};
         return std::string(names[static_cast<int>(parsed.status)]);
     });
 }

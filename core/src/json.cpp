@@ -295,7 +295,7 @@ private:
     }
 
     Value object(int depth) {
-        if (depth > kMaxParseDepth) syntax();
+        if (depth > kMaxNesting) throw Abort{Status::too_deep, {}};
         ++p_;
         Value v;
         v.kind = Value::Kind::object;
@@ -336,7 +336,7 @@ private:
     }
 
     Value array(int depth) {
-        if (depth > kMaxParseDepth) syntax();
+        if (depth > kMaxNesting) throw Abort{Status::too_deep, {}};
         ++p_;
         Value v;
         v.kind = Value::Kind::array;

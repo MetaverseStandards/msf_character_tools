@@ -39,6 +39,13 @@ def outcome(fn, *args):
         return ('error', type(exc).__name__, str(exc))
 
 
+def outcome_with_message(fn, *args):
+    try:
+        return ('value', fn(*args))
+    except Exception as exc:
+        return ('error', type(exc).__name__, str(exc))
+
+
 def reference(fn, *args):
     with mock.patch.object(_native, 'core', None):
         return outcome(fn, *args)
@@ -53,7 +60,7 @@ def parsed_alike(test, data):
         return actual
     try:
         declined = core.parse_json(data) is None
-    except Fault:
+    except (Fault, RecursionError):
         declined = False
     if declined and expected[0] == 'value':
         # Allowed: nesting past the core's limit, and str holding lone surrogates.
@@ -239,14 +246,42 @@ class Documents(unittest.TestCase):
                 self.assertSameOutcome(canonical_json, value)
 
     def test_nesting_limits_match_the_reference(self):
-        for depth in (127, 128, 129, 130, 500, 600, 2000):
+        for depth in (127, 128, 129, 130, 199, 200, 201, 600, 2000):
             with self.subTest(depth=depth):
                 parsed_alike(self, b'[' * depth + b'1' + b']' * depth)
                 parsed_alike(self, b'{"a":' * depth + b'{}' + b'}' * depth)
-        nested = []
-        for _ in range(600):
-            nested = [nested]
-        self.assertSameOutcome(canonical_json, nested)
+
+    def test_containers_nested_past_200_are_refused_the_same_way_on_both_paths(self):
+        too_deep = ('error', 'RecursionError', 'JSON nesting exceeds 200 levels.')
+        for depth in (199, 200, 201, 600):
+            nested_list = []
+            for _ in range(depth - 1):
+                nested_list = [nested_list]
+            nested_map = {}
+            for _ in range(depth - 1):
+                nested_map = MappingProxyType({'a': nested_map})
+            for value in (nested_list, nested_map):
+                with self.subTest(depth=depth, kind=type(value).__name__):
+                    actual = self.assertSameOutcome(canonical_json, value)
+                    self.assertEqual(actual[0] == 'error', depth > 200, actual)
+                    if depth > 200:
+                        self.assertEqual(outcome_with_message(canonical_json, value), too_deep)
+                        with mock.patch.object(_native, 'core', None):
+                            self.assertEqual(outcome_with_message(canonical_json, value), too_deep)
+            text = b'[' * depth + b']' * depth
+            with self.subTest(depth=depth, kind='text'):
+                actual = parsed_alike(self, text)
+                self.assertEqual(actual[0] == 'error', depth > 200, actual)
+                if depth > 200:
+                    for data in (text, text.decode(), b'[1, ' + text + b']'):
+                        self.assertEqual(outcome_with_message(parse_json, data), too_deep)
+                        with mock.patch.object(_native, 'core', None):
+                            self.assertEqual(outcome_with_message(parse_json, data), too_deep)
+        deep = b'[' * 300 + b']' * 300
+        for data in (b'[1 2, ' + deep + b']', b'[NaN, ' + deep + b']', b'{"a": 1, "a": 2, "b": ' + deep + b'}',
+                     b'[' + deep + b', NaN]', b'["[[[[", ' + deep + b']', b'["\\"", ' + b'[' * 199 + b']' * 199 + b']'):
+            with self.subTest(data=data[:24]):
+                parsed_alike(self, data)
 
     def test_errors_are_reported_in_document_order(self):
         cases = [b'{"a": 1, "a": NaN}', b'{"a": 1, "a": 2, "b": [1,}', b'[1e400, NaN]', b'[NaN, 1e400]',
