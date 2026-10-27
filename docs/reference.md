@@ -6,6 +6,8 @@ Original documentation: CC-BY-SA-4.0. This reference describes project contracts
 
 All six public functions and helpers decorated with `@public` return dataclass `Result[T]` with `.value: T | None`, `.report: Report` and `.ok: bool`. Report has `schema_version="1.0"`, diagnostics and losses. Each diagnostic has `code`, `severity`, singular `ref`, `message`, `remediation`; losses have `category`, `effect`, `reason`, `refs` and optional `units`, `bound`. A report containing any error has no value. Exceptions at decorated Result APIs become diagnostics; plain serialization/helpers (`canonical_json`, record `.to_dict()`/`.to_bytes()`, `survey_csv`, `coverage`) raise exceptions, including `Fault` for inconsistent records; callers must check `.ok` before using values. Records are validated independently so a failing operation reports multiple defects where collection remains meaningful; dependent decoding stops when structure is unsafe.
 
+Every diagnostic code is listed in [schemas/diagnostics.toml](../schemas/diagnostics.toml) with its severity, a one-line meaning, the release that added it and, for source losses, the error that replaces it under strict losses.
+
 ## Record ownership in package 0.1.1
 
 Create records with `validate_authoring`/`load_authoring`, `compile_pack`, `inspect_asset`, `profile_snapshot`, `compile_mapping`, `annotate_asset`, `evaluate_mapping` and `evaluate_geometry`. Public dataclass constructors retain their signatures for compatibility, but direct construction, copying and `dataclasses.replace` do not produce admitted records. Recreate a record with its public factory. This stricter constructor policy affects programmatic record replacement; existing wire inputs and factory call shapes stay the same.

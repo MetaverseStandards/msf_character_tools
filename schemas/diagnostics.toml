@@ -1,0 +1,864 @@
+# SPDX-License-Identifier: MIT
+# Every diagnostic code msf-tools reports, one table per code.
+#
+# severity  error (E_), warning (W_) or info (I_).
+# strict    for warnings a source adapter declares as losses: the error that
+#           replaces the warning when inspect_asset runs with losses = "strict".
+# since     the first release that reports the code. Codes added after
+#           0.2.0.dev0 name the next planned release, 0.3.0.
+# reserved  registered before any code path reports it.
+# removed   the release that stopped reporting it.
+# meaning   one line; diagnostic messages carry the specifics.
+#
+# tests/test_diagnostics_registry.py checks this file against the source.
+
+[E_ACCESSOR_ALIGNMENT]
+severity = "error"
+since = "0.1.0"
+meaning = "An accessor's offset breaks component or matrix-column alignment."
+
+[E_ACCESSOR_BOUNDS]
+severity = "error"
+since = "0.1.0"
+meaning = "An accessor's range or stride runs past its bufferView."
+
+[E_ACCESSOR_DOMAIN]
+severity = "error"
+since = "0.1.0"
+meaning = "An accessor's min/max bounds are inverted, unrepresentable in its type, or differ from its data."
+
+[E_ACCESSOR_STRIDE]
+severity = "error"
+since = "0.1.0"
+meaning = "A byteStride is out of range, misaligned or smaller than one element."
+
+[E_ACCESSOR_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "An accessor has an unsupported componentType, shape or normalized flag."
+
+[E_ANIMATION]
+severity = "error"
+since = "0.1.0"
+meaning = "An animation, sampler or channel is malformed or targets something it cannot."
+
+[E_ANIMATIONS_SKIPPED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: animation stacks other than the selected one were skipped."
+
+[E_ANIMATION_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "Geometry evaluation did not select one explicit integer animation clip."
+
+[E_ANIMATION_TARGET]
+severity = "error"
+since = "0.1.0"
+removed = "0.1.1"
+meaning = "An animation channel had no explicit target node."
+
+[E_ANIMATION_TIME]
+severity = "error"
+since = "0.1.0"
+meaning = "Animation key times are negative or not strictly increasing."
+
+[E_ANIMATION_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "Sampler input or output accessors have the wrong type, count or bounds."
+
+[E_APPROXIMATION]
+severity = "error"
+since = "0.1.0"
+meaning = "An approximate rule, or a rule declaring a loss, ran without the approximation opt-in."
+
+[E_ARITY]
+severity = "error"
+since = "0.1.0"
+meaning = "A rule's input or output count does not fit its operator."
+
+[E_ASSET_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "The asset is not bytes, or its format is not a supported glTF or source format."
+
+[E_ATTRIBUTE_SEMANTIC]
+severity = "error"
+since = "0.1.1"
+meaning = "A primitive attribute name or its set numbering breaks glTF rules."
+
+[E_AUTHORING_PATH]
+severity = "error"
+since = "0.1.0"
+meaning = "The authoring path is neither a TOML file nor a directory holding pack.toml."
+
+[E_BINDING_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A sidecar binding does not address an existing mesh-instance morph target."
+
+[E_BINDING_REQUIRED]
+severity = "error"
+since = "0.1.0"
+meaning = "The CLI was asked to map onto an asset without an explicit sidecar."
+
+[E_BINDING_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "A sidecar binding is not a scalar morph binding."
+
+[E_BUFFER_BOUNDS]
+severity = "error"
+since = "0.1.0"
+meaning = "A bufferView runs past its buffer, or a buffer is shorter than its byteLength."
+
+[E_CALIBRATION]
+severity = "error"
+since = "0.1.0"
+meaning = "An identity rule joins signals with different calibration bases."
+
+[E_CHANNEL_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A signal the mapping needs is not a channel of the snapshot."
+
+[E_CHANNEL_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "A snapshot channel's type, domain or calibration disagrees with the pack."
+
+[E_CLI_ARGUMENT]
+severity = "error"
+since = "0.1.0"
+meaning = "The command line has invalid or missing arguments."
+
+[E_CLI_INPUT]
+severity = "error"
+since = "0.1.0"
+meaning = "The CLI could not read or decode an input file."
+
+[E_COLOR]
+severity = "error"
+since = "0.1.1"
+meaning = "A COLOR_0 component lies outside [0, 1]."
+
+[E_COUPLING_COMPATIBILITY]
+severity = "error"
+since = "0.1.1"
+meaning = "An identity rule joins signals whose coupling differs or is present on only one."
+
+[E_CURVE]
+severity = "error"
+since = "0.1.1"
+meaning = "A cubic spline segment has a non-positive duration."
+
+[E_DERIVATION_ASSUMPTIONS]
+severity = "error"
+since = "0.1.1"
+meaning = "A non-identity rule that changes basis, approximates or declares a loss has no assumptions."
+
+[E_DISPOSITION]
+severity = "error"
+since = "0.1.0"
+meaning = "mapping_quality appears on a rule that is not mapped."
+
+[E_DOMAIN]
+severity = "error"
+since = "0.1.0"
+meaning = "A domain's minimum exceeds its maximum, or a value lies outside its declared domain."
+
+[E_DOMAIN_COMPATIBILITY]
+severity = "error"
+since = "0.1.0"
+meaning = "An identity rule joins signals with different declared domains."
+
+[E_DUPLICATE]
+severity = "error"
+since = "0.1.0"
+meaning = "An array that must hold unique entries has a duplicate."
+
+[E_DUPLICATE_BINDING]
+severity = "error"
+since = "0.1.0"
+meaning = "Two sidecar bindings share an ID or a structural destination."
+
+[E_DUPLICATE_ID]
+severity = "error"
+since = "0.1.0"
+meaning = "Two records in one category, or two rules anywhere, share an ID."
+
+[E_DUPLICATE_KEY]
+severity = "error"
+since = "0.1.0"
+meaning = "A JSON object or authoring metadata repeats a key."
+
+[E_ENUM]
+severity = "error"
+since = "0.1.0"
+meaning = "A value is not one of the allowed choices."
+
+[E_EVIDENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "Public evidence lacks HTTPS, a pinned revision, retrieval date or digest, or a locator."
+
+[E_EVIDENCE_COMPATIBILITY]
+severity = "error"
+since = "0.1.1"
+meaning = "A signal or rule cites evidence whose status is weaker than its own evidence_status."
+
+[E_EVIDENCE_REQUIRED]
+severity = "error"
+since = "0.1.1"
+meaning = "A signal or rule that would execute cites no evidence."
+
+[E_EVIDENCE_STATUS]
+severity = "error"
+since = "0.1.1"
+meaning = "A rule's evidence_status is unresolved, or disagrees with a signal it uses."
+
+[E_EXTENSION]
+severity = "error"
+since = "0.1.0"
+meaning = "A required glTF extension is not also listed as used."
+
+[E_FORMAT_DEPENDENCY]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Support for the source format is not installed, or its reader failed to load."
+
+[E_FORMAT_MISMATCH]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The bytes do not start like a file of the declared format."
+
+[E_FRACTION]
+severity = "error"
+since = "0.1.1"
+meaning = "An interpolation fraction lies outside [0, 1]."
+
+[E_FRAGMENT_PATH]
+severity = "error"
+since = "0.1.0"
+meaning = "An authoring fragment is a symlink, not a regular file, reserved or a case-insensitive collision."
+
+[E_GEOMETRY_CAPABILITY]
+severity = "error"
+since = "0.1.0"
+meaning = "The asset needs geometry features the reference evaluator lacks, such as compression."
+
+[E_GEOMETRY_EMPTY]
+severity = "error"
+since = "0.1.0"
+meaning = "The asset has no mesh instances to evaluate."
+
+[E_GEOMETRY_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "A geometry accessor or override has the wrong binary type, shape, count or form."
+
+[E_GLB_CHUNK]
+severity = "error"
+since = "0.1.0"
+meaning = "A GLB chunk header is truncated, unaligned or runs past the file."
+
+[E_GLB_HEADER]
+severity = "error"
+since = "0.1.0"
+meaning = "The GLB header is truncated or its magic, version or length is wrong."
+
+[E_GLB_PADDING]
+severity = "error"
+since = "0.1.0"
+meaning = "The GLB BIN chunk's length or zero padding disagrees with the buffer."
+
+[E_GLTF_VERSION]
+severity = "error"
+since = "0.1.0"
+meaning = "asset.version is not 2.0, or minVersion is unsupported."
+
+[E_HELPER_NODES]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: the reader added helper nodes."
+
+[E_HIERARCHY]
+severity = "error"
+since = "0.1.0"
+meaning = "Node children are not unique valid indices, or a node has several parents."
+
+[E_HIERARCHY_CYCLE]
+severity = "error"
+since = "0.1.0"
+meaning = "The node hierarchy contains a cycle."
+
+[E_IMAGE]
+severity = "error"
+since = "0.1.0"
+meaning = "An image does not have exactly one of uri and bufferView."
+
+[E_INBETWEEN_PARTIAL]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: a blend channel had no full-weight keyframe."
+
+[E_INBETWEEN_UNSUPPORTED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: in-between blend shapes were dropped."
+
+[E_INDEX_BOUNDS]
+severity = "error"
+since = "0.1.0"
+meaning = "A primitive index exceeds the vertex count."
+
+[E_INDEX_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "Primitive indices are not unsigned, unnormalized scalars."
+
+[E_INFLUENCES_TRUNCATED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: vertices kept only their four strongest joint influences."
+
+[E_INFLUENCE_LIMIT]
+severity = "error"
+since = "0.1.0"
+removed = "0.2.0.dev0"
+meaning = "Geometry evaluation needed more than four joint influences."
+
+[E_INPUT]
+severity = "error"
+since = "0.1.0"
+meaning = "A public call raised a value, type, key, index, OS or overflow error on its input."
+
+[E_INTERNAL]
+severity = "error"
+since = "0.1.0"
+meaning = "An unexpected exception escaped; this is a bug to report."
+
+[E_INVALID_SAMPLE]
+severity = "error"
+since = "0.1.0"
+meaning = "A required input is marked invalid in a sample; neutral is never substituted."
+
+[E_ISOLATE_RESOLVER]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "An isolated reader was given a resolver other than LocalResolver."
+
+[E_JOINT_BOUNDS]
+severity = "error"
+since = "0.1.0"
+meaning = "A weighted joint index exceeds the skin's joint palette."
+
+[E_LOSS_REQUIRED]
+severity = "error"
+since = "0.1.1"
+meaning = "An approximate rule has no loss_annotations."
+
+[E_MAPPING_CYCLE]
+severity = "error"
+since = "0.1.0"
+meaning = "The mapping's rule dependencies form a cycle."
+
+[E_MAPPING_OUTPUT]
+severity = "error"
+since = "0.1.0"
+meaning = "The mapping writes no outputs bound in the target."
+
+[E_MAPPING_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "The requested mapping ID is not in the pack."
+
+[E_MAPPING_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "compile_mapping got the wrong argument types."
+
+[E_MESH]
+severity = "error"
+since = "0.1.0"
+meaning = "A mesh has no primitives, or a primitive has no attributes."
+
+[E_MISSING_SAMPLE]
+severity = "error"
+since = "0.1.0"
+meaning = "A sample lacks a required input value or its validity."
+
+[E_MORPH]
+severity = "error"
+since = "0.1.0"
+meaning = "Morph targets, weights or overrides do not match a mesh."
+
+[E_MULTIPLE_WRITERS]
+severity = "error"
+since = "0.1.0"
+meaning = "Two rules, or an animation and an override, write the same value."
+
+[E_NEUTRAL_COMPATIBILITY]
+severity = "error"
+since = "0.1.1"
+meaning = "An identity rule joins signals whose neutral differs or is present on only one."
+
+[E_NODE_TRANSFORM]
+severity = "error"
+since = "0.1.0"
+meaning = "A node mixes matrix and TRS, or an override uses the other representation."
+
+[E_NONFINITE]
+severity = "error"
+since = "0.1.0"
+meaning = "A number is not a finite binary64 value, or arithmetic overflowed or underflowed."
+
+[E_OPERATOR]
+severity = "error"
+since = "0.1.0"
+meaning = "Operator coefficients are missing, extra or of the wrong type."
+
+[E_OPERATOR_VERSION]
+severity = "error"
+since = "0.3.0"
+reserved = true
+meaning = "The document uses an operator its operator_version does not include."
+
+[E_OUTPUT_EXTRA]
+severity = "error"
+since = "0.1.0"
+meaning = "The output directory or its checksum manifest has unexpected entries."
+
+[E_OUTPUT_MANIFEST]
+severity = "error"
+since = "0.1.0"
+meaning = "The output checksum manifest is malformed."
+
+[E_OUTPUT_MISSING]
+severity = "error"
+since = "0.1.0"
+meaning = "A generated output file is missing."
+
+[E_OUTPUT_PATH]
+severity = "error"
+since = "0.1.0"
+meaning = "An output destination is a symlink, not a regular file, or aliases another output."
+
+[E_OUTPUT_STALE]
+severity = "error"
+since = "0.1.0"
+meaning = "A generated output differs from what the authoring now produces."
+
+[E_PACK]
+severity = "error"
+since = "0.1.0"
+meaning = "A profile was requested without a compiled Pack and explicit profile ID."
+
+[E_POINTS_ANIMATION_DROPPED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: animated points, topology or skin data kept their earliest value."
+
+[E_PRIMITIVE_COUNT]
+severity = "error"
+since = "0.1.1"
+meaning = "A primitive's vertex or index count does not fit its topology mode."
+
+[E_PRIMITIVE_MODE]
+severity = "error"
+since = "0.1.0"
+meaning = "A primitive's mode is not a valid glTF topology."
+
+[E_PROFILE]
+severity = "error"
+since = "0.1.0"
+meaning = "The requested profile ID is not in the pack."
+
+[E_QUATERNION]
+severity = "error"
+since = "0.1.0"
+meaning = "A rotation quaternion is zero or too far from unit length."
+
+[E_RECORD_INTEGRITY]
+severity = "error"
+since = "0.1.1"
+meaning = "A record was not made by its factory, or its state changed after admission."
+
+[E_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A reference names an ID or index that does not exist."
+
+[E_REQUIRED]
+severity = "error"
+since = "0.1.0"
+meaning = "Required keys or entries are missing."
+
+[E_REQUIRED_EXTENSION]
+severity = "error"
+since = "0.1.0"
+meaning = "The asset requires an extension the requested evaluation does not support."
+
+[E_RESOLVER]
+severity = "error"
+since = "0.1.0"
+meaning = "A resolver is required but was not given as an explicit callable."
+
+[E_RESOURCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A buffer without a URI has no GLB BIN chunk to use."
+
+[E_RESOURCE_LIMIT]
+severity = "error"
+since = "0.1.0"
+meaning = "Input exceeds a documented size, count, nesting or work budget."
+
+[E_RESOURCE_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "A resolved resource is not a regular file."
+
+[E_RESOURCE_UNAVAILABLE]
+severity = "error"
+since = "0.1.0"
+meaning = "Evaluation needs an external resource that was not resolved."
+
+[E_RESOURCE_URI]
+severity = "error"
+since = "0.1.0"
+meaning = "A resource URI is not a string or not a relative local path without traversal."
+
+[E_SAMPLE_REFERENCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A sample names a channel that is unknown or not a source channel."
+
+[E_SAMPLE_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "evaluate_mapping got the wrong argument types or sample structure."
+
+[E_SCENE]
+severity = "error"
+since = "0.1.0"
+meaning = "Scene nodes are not unique indices, or a scene root has a parent."
+
+[E_SHAPE]
+severity = "error"
+since = "0.1.0"
+meaning = "Operator shapes disagree, or a vector or matrix has the wrong component count."
+
+[E_SHEAR]
+severity = "error"
+since = "0.1.0"
+meaning = "A matrix cannot be split into TRS without shear."
+
+[E_SHEAR_UNSUPPORTED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "A source transform has shear glTF cannot represent, or, under strict losses, shear that would have been baked."
+
+[E_SIDECAR_VERSION]
+severity = "error"
+since = "0.1.0"
+meaning = "The sidecar version is unsupported."
+
+[E_SIDE_COMPATIBILITY]
+severity = "error"
+since = "0.1.1"
+meaning = "An identity rule joins signals whose side differs or is present on only one."
+
+[E_SIGNAL_DISPOSITION]
+severity = "error"
+since = "0.1.0"
+meaning = "A rule reads or writes a signal that is not mapped."
+
+[E_SINGULAR]
+severity = "error"
+since = "0.1.0"
+meaning = "A division by zero, or a matrix or axis with no inverse."
+
+[E_SKIN]
+severity = "error"
+since = "0.1.0"
+meaning = "A skin, skinned node or skinned primitive is incomplete or inconsistent."
+
+[E_SKINNING_METHOD]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: a non-linear skinning method was stored as linear blend skinning."
+
+[E_SKIN_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "Inverse bind matrices have the wrong accessor type or count, or are not affine."
+
+[E_SKIN_WEIGHTS]
+severity = "error"
+since = "0.1.0"
+meaning = "Skin weights are negative or do not sum to one; nothing is normalized implicitly."
+
+[E_SKIPPED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: the reader skipped unsupported content."
+
+[E_SNAPSHOT]
+severity = "error"
+since = "0.1.0"
+meaning = "The value is not an inspected glTF snapshot."
+
+[E_SOURCE_CRASHED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The isolated reader process exited abnormally."
+
+[E_SOURCE_MEMORY]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The source reader went over max_reader_memory."
+
+[E_SOURCE_OPTIONS]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Source options are unknown or invalid, or were given for a glTF input."
+
+[E_SOURCE_PARSE]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The source reader rejected the file."
+
+[E_SOURCE_PROTOCOL]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The isolated reader process sent a malformed or oversized response."
+
+[E_SOURCE_REFERENCE]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "A source layer or reference is outside the source, unreadable or unsupported."
+
+[E_SOURCE_TIMEOUT]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "The isolated reader process did not finish in time."
+
+[E_SOURCE_VALUE]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "A source file holds a value the conversion cannot represent faithfully."
+
+[E_SPARSE_INDEX]
+severity = "error"
+since = "0.1.0"
+meaning = "Sparse indices are out of range, not increasing, or too many."
+
+[E_SPARSE_STRIDE]
+severity = "error"
+since = "0.1.0"
+meaning = "A sparse bufferView declares byteStride or target."
+
+[E_SPARSE_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "Sparse indices are not unsigned byte, short or int."
+
+[E_STALE_SOURCE]
+severity = "error"
+since = "0.1.0"
+meaning = "A profile snapshot or binding belongs to a different pack or asset."
+
+[E_SUBDIV_CAGE]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: a subdivision surface was kept as its control cage."
+
+[E_TANGENT]
+severity = "error"
+since = "0.1.1"
+meaning = "A TANGENT w component is not exactly -1 or +1."
+
+[E_TIMESTAMP]
+severity = "error"
+since = "0.1.0"
+meaning = "A timestamp is not a nonnegative finite number of seconds."
+
+[E_TIME_SHIFTED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: animation times were shifted to start at 0."
+
+[E_TRANSFORM]
+severity = "error"
+since = "0.1.0"
+meaning = "A transform is not affine, or a transform tolerance is invalid."
+
+[E_TYPE]
+severity = "error"
+since = "0.1.0"
+meaning = "A value has the wrong JSON or Python type."
+
+[E_UNITS]
+severity = "error"
+since = "0.1.0"
+meaning = "A rule changes units without explicit affine coefficients and assumptions."
+
+[E_UNKNOWN_KEY]
+severity = "error"
+since = "0.1.0"
+meaning = "An object has keys outside its closed schema."
+
+[E_UNRESOLVED_RULE]
+severity = "error"
+since = "0.1.0"
+meaning = "The mapping contains an unsupported, unresolved or excluded rule."
+
+[E_UNWEIGHTED_VERTICES]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: skinned vertices without weights were bound to a joint."
+
+[E_USDZ_ARCHIVE]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "A USDZ package is compressed, encrypted, or has unsafe or duplicate members."
+
+[E_VALIDATED_REQUIRED]
+severity = "error"
+since = "0.1.0"
+meaning = "compile_pack was given something other than ValidatedAuthoring."
+
+[E_VALIDITY]
+severity = "error"
+since = "0.1.0"
+meaning = "A sample value has no explicit boolean validity."
+
+[E_VERSION]
+severity = "error"
+since = "0.1.0"
+meaning = "data_version is not a semantic version."
+
+[E_WEIGHTS_NORMALIZED]
+severity = "error"
+since = "0.2.0.dev0"
+meaning = "Strict losses: skin weights were normalized to sum to one."
+
+[I_AXES_CONVERTED]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "Source axes were converted to right-handed +Y up."
+
+[I_INFLUENCES_N]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "Vertices use more than four joint influences, kept in extra JOINTS_n/WEIGHTS_n sets."
+
+[I_MIRRORED]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "A mirrored transform was stored as a negative X scale."
+
+[I_PIVOTS_BAKED]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "FBX pivots, offsets and pre/post rotations were baked into node TRS."
+
+[I_UNITS_CONVERTED]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "Source units were converted to metres."
+
+[I_WINDING_FLIPPED]
+severity = "info"
+since = "0.2.0.dev0"
+meaning = "Left-handed faces were reversed to glTF winding."
+
+[W_ANIMATIONS_SKIPPED]
+severity = "warning"
+strict = "E_ANIMATIONS_SKIPPED"
+since = "0.2.0.dev0"
+meaning = "Animation stacks other than the selected one were not converted."
+
+[W_BINDING_REINDEXED]
+severity = "warning"
+since = "0.2.0.dev0"
+meaning = "A sidecar binding's indices were updated from its structural locator."
+
+[W_HELPER_NODES]
+severity = "warning"
+strict = "E_HELPER_NODES"
+since = "0.2.0.dev0"
+meaning = "The reader added helper nodes to represent the source."
+
+[W_INBETWEENS_DROPPED]
+severity = "warning"
+strict = "E_INBETWEEN_UNSUPPORTED"
+since = "0.2.0.dev0"
+meaning = "In-between blend shapes were dropped; the full-weight shape was kept."
+
+[W_INBETWEEN_PARTIAL]
+severity = "warning"
+strict = "E_INBETWEEN_PARTIAL"
+since = "0.2.0.dev0"
+meaning = "A blend channel with no full-weight keyframe used its largest keyframe scaled up."
+
+[W_INFLUENCES_TRUNCATED]
+severity = "warning"
+strict = "E_INFLUENCES_TRUNCATED"
+since = "0.2.0.dev0"
+meaning = "Vertices kept only their four strongest joint influences."
+
+[W_POINTS_ANIMATION_DROPPED]
+severity = "warning"
+strict = "E_POINTS_ANIMATION_DROPPED"
+since = "0.2.0.dev0"
+meaning = "Animated points, topology or skin data kept their earliest value."
+
+[W_RESOURCE_UNCONSUMED]
+severity = "warning"
+since = "0.1.0"
+meaning = "An external resource was listed but not fetched."
+
+[W_SHEAR_BAKED]
+severity = "warning"
+strict = "E_SHEAR_UNSUPPORTED"
+since = "0.2.0.dev0"
+meaning = "A sheared transform was baked into the mesh points."
+
+[W_SKINNING_METHOD]
+severity = "warning"
+strict = "E_SKINNING_METHOD"
+since = "0.2.0.dev0"
+meaning = "A non-linear skinning method was stored as linear blend skinning."
+
+[W_SKIPPED]
+severity = "warning"
+strict = "E_SKIPPED"
+since = "0.2.0.dev0"
+meaning = "The reader skipped content glTF cannot represent, such as cameras or empty faces."
+
+[W_SUBDIV_CAGE]
+severity = "warning"
+strict = "E_SUBDIV_CAGE"
+since = "0.2.0.dev0"
+meaning = "A subdivision surface was kept as its control cage."
+
+[W_TIME_SHIFTED]
+severity = "warning"
+strict = "E_TIME_SHIFTED"
+since = "0.2.0.dev0"
+meaning = "Animation times were shifted so the animation starts at 0."
+
+[W_UNWEIGHTED_VERTICES]
+severity = "warning"
+strict = "E_UNWEIGHTED_VERTICES"
+since = "0.2.0.dev0"
+meaning = "Skinned vertices without weights were bound to a joint."
+
+[W_WEIGHTS_NORMALIZED]
+severity = "warning"
+strict = "E_WEIGHTS_NORMALIZED"
+since = "0.2.0.dev0"
+meaning = "Skin weights were normalized to sum to one."

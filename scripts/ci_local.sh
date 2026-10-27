@@ -60,9 +60,17 @@ for version in 3.11 3.12; do
   lines+=("- Python $exact: unittest ${ran:-?} tests, ${verdict} in ${took} s; $check")
 done
 
+py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
+if [ -x "$py312" ]; then
+  if unexercised=$(PYTHONPATH=. "$py312" -B tests/test_diagnostics_registry.py 2>&1); then
+    lines+=("- Diagnostics registry: $unexercised")
+  else
+    lines+=("- Diagnostics registry: listing FAILED")
+  fi
+fi
+
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
 openusd="${MSF_OPENUSD_ASSETS:-$MSF/_viz/assets/openusd}"
-py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
 if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
   output=$(MSF_OPENUSD_ASSETS="$openusd" "$py312" -B -m unittest discover -s tests -p test_source_openusd.py 2>&1)
   ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
