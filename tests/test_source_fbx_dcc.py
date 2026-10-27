@@ -9,22 +9,30 @@ was not produced by ufbx or msf-tools, so it checks the conversion independently
 
 Points are compared as sets within ufbx's own per-file tolerance (0.001 OBJ
 units unless the OBJ says otherwise). OBJ files are in the FBX file's own units
-and axes: the unit comes from msf-tools' I_UNITS_CONVERTED, and the axis change
-is chosen among the 24 axis-aligned rotations that best match.
+and axes, read from its GlobalSettings by tests/support/fbx_header.py, not from
+ufbx or msf-tools; msf-tools' declared unit must agree with it.
 
-A pairing that disagrees must be explained by a loss msf-tools declared for
-that file, such as dropped vertex caches or in-between shapes.
+A pairing that disagrees is explained only mesh by mesh: every mesh with
+unmatched points (an OBJ point counts against the mesh of its nearest msf-tools
+point) must carry a declared loss that changes points, such as dropped vertex
+caches or in-between shapes. Each explained row's match fractions are recorded
+in tests/fixtures/dcc_differs.json, so a row that gets worse fails; set
+MSF_DCC_RECORD=1 to rewrite that file. The only accepted refusal is a singular
+transform.
 """
 import itertools
+import json
 import math
 import os
 from pathlib import Path
 import re
 import unittest
 
+from support.fbx_header import axes_and_unit
 from test_source_fbx_native import HAVE_UFBX
 
 ROOT = Path(os.environ['MSF_UFBX_CORPUS']) if os.environ.get('MSF_UFBX_CORPUS') else None
+RECORDED = Path(__file__).resolve().parent / 'fixtures' / 'dcc_differs.json'
 PRESENT = HAVE_UFBX and ROOT is not None and (ROOT / 'test').is_dir()
 
 BLOCK = re.compile(r'^(UFBXT_FILE_TEST[A-Z_]*)\(([^)]*)\)', re.M)
@@ -73,32 +81,27 @@ def obj_file(path):
     return points, directives
 
 
-ROTATIONS = [tuple(tuple(s if c == p else 0 for c in range(3)) for p, s in zip(perm, signs))
-             for perm in itertools.permutations(range(3)) for signs in itertools.product((1, -1), repeat=3)]
-ROTATIONS = [r for r in ROTATIONS if round(
-    r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1]) - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0])
-    + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0])) == 1]
-
-
 def rotate(r, scale, p):
     return tuple(scale * sum(r[i][j] * p[j] for j in range(3)) for i in range(3))
 
 
-def coverage(points, others, tolerance):
-    """Fraction of `points` with a point of `others` within `tolerance`."""
+def misses(points, others, tolerance):
+    """Indices of `points` with no point of `others` within `tolerance`."""
     grid = {}
     for q in others:
         grid.setdefault(tuple(math.floor(x / tolerance) for x in q), []).append(q)
-    near = 0
-    for p in points:
+    out = []
+    for k, p in enumerate(points):
         cell = tuple(math.floor(x / tolerance) for x in p)
-        near += any(math.dist(p, q) <= tolerance for step in itertools.product((-1, 0, 1), repeat=3)
-                    for q in grid.get(tuple(c + s for c, s in zip(cell, step)), ()))
-    return near / max(1, len(points))
+        if not any(math.dist(p, q) <= tolerance for step in itertools.product((-1, 0, 1), repeat=3)
+                   for q in grid.get(tuple(c + s for c, s in zip(cell, step)), ())):
+            out.append(k)
+    return out
 
 
 def world_points(snapshot, seconds):
-    """Every point a triangle uses, of every mesh instance, in world space."""
+    """Per mesh instance: (mesh index, skinned?, world points, the same points in mesh space, and unskinned), for every
+    point its triangles use; or the geometry refusal code."""
     import msf_tools as m
     from test_source_strict import matrix
     nodes = snapshot.document['nodes']
@@ -112,15 +115,17 @@ def world_points(snapshot, seconds):
         return geometry.report.diagnostics[0].code
     for instance in geometry.value.to_dict()['instances']:
         primitive = snapshot.document['meshes'][instance['mesh']]['primitives'][0]
-        points = instance['primitives'][0]['positions']
-        if 'indices' in primitive:
-            points = [points[i] for i in sorted({row[0] for row in m.decode_accessor(snapshot, primitive['indices']).value})]
-        index = instance['node']
+        evaluated = instance['primitives'][0]['positions']
+        used = sorted({row[0] for row in m.decode_accessor(snapshot, primitive['indices']).value}) if 'indices' in primitive \
+            else range(len(evaluated))
+        authored = m.decode_accessor(snapshot, primitive['attributes']['POSITION']).value
+        local, unskinned = [evaluated[i] for i in used], [authored[i] for i in used]
+        points, index = local, instance['node']
         while index is not None:
             t = matrix(nodes[index], dict(overrides.get(index, {})))
             points = [[sum(t[r][c] * p[c] for c in range(3)) + t[r][3] for r in range(3)] for p in points]
             index = parent.get(index)
-        out += points
+        out.append((instance['mesh'], 'skin' in nodes[instance['node']], points, local, unskinned))
     return out
 
 
@@ -141,54 +146,89 @@ def stack_names(data):
         lib.msf_fbx_close(handle)
 
 
+def explaining_meshes(snapshot):
+    """Mesh indices that a declared, point-changing loss names (through any node that instances the mesh)."""
+    paths = snapshot.source['node_paths']
+    meshes = {path: node['mesh'] for path, node in zip(paths, snapshot.document['nodes']) if 'mesh' in node}
+    return {meshes[d['ref']] for d in snapshot.source['losses'] if d['code'] in EXPLAINING and d['ref'] in meshes}
+
+
 def compare(fbx, obj, stack, seconds, frame_flags):
-    """('match' | 'differs' | 'refused' | 'skipped', detail, declared loss codes)."""
+    """('match' | 'differs' | 'explained' | 'refused' | 'skipped', detail, (OBJ, msf-tools) match fractions)."""
     import msf_tools as m
     points, directives = obj_file(obj)
     if 'transform_skin' in directives:
-        return 'skipped', 'the OBJ is in the bind pose space of the skin', set()
+        return 'skipped', 'the OBJ is in the bind pose space of the skin', None
     if 'NO_EXTRAPOLATE' in frame_flags:
-        return 'skipped', 'ufbx evaluates this frame with extrapolation off, which msf-tools does not use', set()
+        return 'skipped', 'ufbx evaluates this frame with extrapolation off, which msf-tools does not use', None
     data = fbx.read_bytes()
     options = {}
     if stack:
         options['animation'] = next(n for n in stack_names(data) if stack in n)
     result = m.inspect_asset(data, 'fbx', options=options or None)
     if not result.ok:
-        return 'refused', result.report.diagnostics[0].code, {d.code for d in result.report.diagnostics}
+        first = result.report.diagnostics[0]
+        return ('refused' if (first.code, first.message) == ('E_SOURCE_VALUE', 'Transform is singular.') else 'differs'), \
+            f'{first.code}: {first.message}', None
     snapshot = result.value
-    declared = {d['code'] for d in snapshot.source['losses']}
-    if seconds is None and snapshot.document.get('skins'):
-        return 'skipped', 'at rest the OBJ holds the unskinned mesh, which msf-tools evaluates skinned', declared
-    unit = next((float(d['message'].split()[1]) for d in snapshot.source['losses'] if d['code'] == 'I_UNITS_CONVERTED'), 1.0)
-    shift = next((float(d['message'].split()[4]) for d in snapshot.source['losses'] if d['code'] == 'W_TIME_SHIFTED'), 0.0)
-    ours = world_points(snapshot, None if seconds is None else seconds + shift)
-    if ours == 'E_GEOMETRY_EMPTY' and 'W_SKIPPED' in declared:
-        return 'skipped', 'every surface in the file is of a kind msf-tools skips and declares', declared
-    if isinstance(ours, str):
-        return 'differs', f'geometry refused with {ours}', declared
+    losses = snapshot.source['losses']
+    rotation, unit = axes_and_unit(data)
+    declared_unit = next((float(d['message'].split()[1]) for d in losses if d['code'] == 'I_UNITS_CONVERTED'), 1.0)
+    if not math.isclose(unit, declared_unit, rel_tol=1e-6):
+        return 'differs', f'the file header says {unit:g} metres per unit; msf-tools declared {declared_unit:g}', None
+    if (rotation not in (None, ((1, 0, 0), (0, 1, 0), (0, 0, 1)))) != any(d['code'] == 'I_AXES_CONVERTED' for d in losses):
+        return 'differs', 'the file header and msf-tools disagree about converting axes', None
+    rotation = rotation or ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+    shift = next((float(d['message'].split()[4]) for d in losses if d['code'] == 'W_TIME_SHIFTED'), 0.0)
+    instances = world_points(snapshot, None if seconds is None else seconds + shift)
+    if instances == 'E_GEOMETRY_EMPTY' and any(d['code'] == 'W_SKIPPED' for d in losses):
+        return 'skipped', 'every surface in the file is of a kind msf-tools skips and declares', None
+    if isinstance(instances, str):
+        return 'differs', f'geometry refused with {instances}', None
     scale = unit * (0.01 if 'SCALE_100' in frame_flags else 1.0)
     # ufbx multiplies both sides by position_scale before comparing, which only loosens its tolerance.
     tolerance = float(directives.get('tolerance', 0.001)) / float(directives.get('position_scale', 1.0)) * scale
-    sample = points[::max(1, len(points) // 200)]
-    best = max(ROTATIONS, key=lambda r: coverage([rotate(r, scale, p) for p in sample], ours, tolerance))
-    theirs = [rotate(best, scale, p) for p in points]
-    forward, backward = coverage(theirs, ours, tolerance), coverage(ours, theirs, tolerance)
-    detail = f'{forward:.3f} of OBJ points and {backward:.3f} of msf-tools points match'
-    return ('match' if forward == backward == 1.0 else 'differs'), detail, declared
+    theirs = [rotate(rotation, scale, p) for p in points]
+    ours = [p for _, _, world, _, _ in instances for p in world]
+    owner = [mesh for mesh, _, world, _, _ in instances for _ in world]
+    lost_obj, lost_ours = misses(theirs, ours, tolerance), misses(ours, theirs, tolerance)
+    fractions = (round(1 - len(lost_obj) / max(1, len(theirs)), 3), round(1 - len(lost_ours) / max(1, len(ours)), 3))
+    detail = f'{fractions[0]:.3f} of OBJ points and {fractions[1]:.3f} of msf-tools points match'
+    if not lost_obj and not lost_ours:
+        return 'match', detail, fractions
+    if seconds is None and any(skinned for _, skinned, _, _, _ in instances):
+        # At rest the OBJ holds the mesh as authored; msf-tools skins it with the rest pose, which differs when
+        # rest is not bind. Only then is a difference expected.
+        if any(any(math.dist(a, b) > 1e-6 for a, b in zip(local, unskinned))
+               for _, skinned, _, local, unskinned in instances if skinned):
+            return 'skipped', 'at rest, and the rest pose differs from the bind pose the OBJ holds', None
+    nearest = []
+    for k in lost_obj:
+        nearest.append(min(range(len(ours)), key=lambda i: math.dist(theirs[k], ours[i])))
+    blamed = {owner[i] for i in lost_ours} | {owner[i] for i in nearest}
+    if blamed <= explaining_meshes(snapshot):
+        return 'explained', detail, fractions
+    return 'differs', detail + f'; meshes {sorted(blamed - explaining_meshes(snapshot))} have no loss that explains it', fractions
 
 
 @unittest.skipUnless(PRESENT, 'set MSF_UFBX_CORPUS to an extracted ufbx 0.23.1 source tree to run this tier')
 class DccReferenceFrames(unittest.TestCase):
     def test_msf_geometry_matches_the_dcc_exported_frames(self):
-        outcomes, unexplained = {}, []
+        outcomes, unexplained, rows = {}, [], {}
         for fbx, obj, stack, seconds, flags in pairings():
-            outcome, detail, declared = compare(fbx, obj, stack, seconds, flags)
+            outcome, detail, fractions = compare(fbx, obj, stack, seconds, flags)
             outcomes[outcome] = outcomes.get(outcome, 0) + 1
-            # Singular transforms are refused by design; any other refusal or unexplained difference is a defect.
-            if outcome == 'differs' and not declared & EXPLAINING or outcome == 'refused' and detail != 'E_SOURCE_VALUE':
-                unexplained.append((fbx.name, obj.name, detail, sorted(declared)))
+            if outcome == 'differs':
+                unexplained.append((fbx.name, obj.name, detail))
+            if outcome == 'explained':
+                rows[f'{fbx.name} {obj.name} {stack} {seconds}'] = list(fractions)
+        if os.environ.get('MSF_DCC_RECORD'):
+            RECORDED.write_text(json.dumps(rows, indent=1, sort_keys=True) + '\n')
+        recorded = json.loads(RECORDED.read_text())
+        worse = [(key, recorded.get(key), now) for key, now in rows.items()
+                 if key not in recorded or any(n < r - 0.005 for n, r in zip(now, recorded[key]))]
         self.assertEqual(unexplained, [])
+        self.assertEqual(worse, [])
         self.assertGreater(outcomes.get('match', 0), 250, outcomes)
 
 

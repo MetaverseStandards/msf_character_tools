@@ -204,8 +204,10 @@ def main(output):
         '### DCC reference frames from the ufbx corpus',
         '',
         'The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools\' world points '
-        '(`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that changes points; "refused" rows are '
-        'singular transforms.',
+        '(`tests/test_source_fbx_dcc.py`), with the axes and unit read from each file\'s own header. "explained" rows '
+        'differ only on meshes that carry a declared loss that changes points; "refused" rows are singular transforms; '
+        '"skipped" rows are OBJ files in skin bind space, frames ufbx evaluates without extrapolation, files with only '
+        'skipped surface kinds, and skinned meshes at rest whose rest pose differs from the bind pose.',
         '',
         *dcc_rows(),
         '',

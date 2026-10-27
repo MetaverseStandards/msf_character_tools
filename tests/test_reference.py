@@ -394,6 +394,19 @@ class GeometryTests(Checks):
                 self.assertEqual(m.canonical_json(self.good(m.evaluate_geometry(eight,**kwargs))),
                                  m.canonical_json(self.good(m.evaluate_geometry(four,**kwargs))))
 
+    def test_unpaired_influence_sets_are_refused_at_inspection(self):
+        # Geometry counts sets from JOINTS_n alone; this refusal is what keeps a lone WEIGHTS_n from being ignored there.
+        for drop in ("JOINTS_1","WEIGHTS_1"):
+            with self.subTest(drop=drop):
+                doc=json.loads((FIX/"eight-influence.gltf").read_bytes())
+                skinned=[p for mesh in doc["meshes"] for p in mesh["primitives"] if drop in p["attributes"]]
+                self.assertTrue(skinned)
+                for primitive in skinned:
+                    del primitive["attributes"][drop]
+                r=asset(doc,m.LocalResolver(FIX))
+                self.bad(r,"E_ATTRIBUTE_SEMANTIC")
+                self.assertIn("paired",r.report.diagnostics[0].message)
+
     def test_shared_skin_output_matches_separate_skins(self):
         doc=json.loads((FIX/"combined.gltf").read_bytes());shared=self.good(asset(doc))
         doc["skins"].append(copy.deepcopy(doc["skins"][0]));doc["nodes"][6]["skin"]=1;separate=self.good(asset(doc))
@@ -543,6 +556,12 @@ class CLITests(Checks):
             (p/"annotations.json").write_text('{"bindings":[],"metadata":{"note":"original"}}')
             r=self.run_cli("annotate",FIX/"combined.gltf",p/"annotations.json","--output",p/"sidecar.json");self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads((p/"sidecar.json").read_bytes())["schema_version"],"1.0")
             r=self.run_cli("invalid-command");self.assertEqual(r.returncode,1);self.assertIn(b'E_CLI_ARGUMENT',r.stderr)
+
+
+class Capabilities(unittest.TestCase):
+    def test_geometry_declares_linear_blend_skinning_without_an_influence_count(self):
+        snapshot = m.inspect_asset((FIX / "eight-weighted.gltf").read_bytes(), "gltf").value
+        self.assertEqual(snapshot.to_dict()["capabilities"]["geometry"], ["POSITION", "relative_morph", "linear_blend_skinning"])
 
 
 class PackageMetadata(unittest.TestCase):

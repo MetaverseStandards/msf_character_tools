@@ -6,6 +6,10 @@ shortest-path quaternion SLERP, duration-scaled Hermite, relative POSITION morph
 four-influence mesh-local LBS and resolved scalar instructions. Asset parsing,
 reports, evidence validation and authoring compilation remain in Python.
 
+The `linear_blend_skinning` capability that inspection declares describes the
+Python reference evaluator, which uses every influence set. The pilot's
+`skin_positions` still takes exactly four joints and weights per vertex.
+
 ## Python surface and storage
 
 The optional `_msf_native` module exports `identity`, `multiply`, `inverse`,

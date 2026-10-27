@@ -159,7 +159,12 @@ class RealAssetRecipes(unittest.TestCase):
         self.assertEqual(wire['document'], json.loads(self.x.head_raw))
         self.assertEqual(wire['resources'], recipe['resources']['HEAD'])
         self.assertEqual((wire['chunks'], wire['channels'], wire['bindings']), ([], {}, []))
-        self.assertEqual(wire['capabilities'], recipe['capabilities'])
+        # Superseded by the approved N-influence change: the plan froze "four_influence_LBS" before evaluation covered
+        # every influence set, and the capability was renamed to say so.
+        expected = copy.deepcopy(recipe['capabilities'])
+        self.assertEqual(expected['geometry'], ['POSITION', 'relative_morph', 'four_influence_LBS'])
+        expected['geometry'][2] = 'linear_blend_skinning'
+        self.assertEqual(wire['capabilities'], expected)
         self.assertEqual(wire['asset_sha256'], self.x.spec['proposed_hashes']['asset_raw_sha256'])
 
     def case_H_DECODE(self):

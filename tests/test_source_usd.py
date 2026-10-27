@@ -571,6 +571,21 @@ class UsdAnimation(unittest.TestCase):
                 for a, e in zip(actual, expected):
                     self.assertLess(math.dist(a, e), 1e-5 * diagonal, (code, actual, expected))
 
+    def test_the_animation_value_limit_counts_time_codes_joints_and_blend_channels(self):
+        # rig.usda: 3 time codes x (2 joints x 16 matrix values + 1 blend weight) = 99 values.
+        data = (Path(__file__).parent / 'fixtures' / 'source' / 'rig.usda').read_bytes()
+        good(m.inspect_asset(data, 'usda', limits=SourceLimits(max_animation_values=99)))
+        result = m.inspect_asset(data, 'usda', limits=SourceLimits(max_animation_values=98))
+        self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_RESOURCE_LIMIT', '/')])
+        self.assertIn('max_animation_values', result.report.diagnostics[0].remediation)
+
+    def test_the_limit_is_checked_before_any_pose_is_sampled(self):
+        from msf_tools.sources import usd
+        data = (Path(__file__).parent / 'fixtures' / 'source' / 'rig.usda').read_bytes()
+        with unittest.mock.patch.object(usd, '_skeleton_poses', side_effect=AssertionError('sampled before the limit check')):
+            result = m.inspect_asset(data, 'usda', isolate=False, limits=SourceLimits(max_animation_values=98))
+        self.assertEqual([d.code for d in result.report.diagnostics], ['E_RESOURCE_LIMIT'])
+
     def test_animated_transforms_are_clipped_shifted_and_converted(self):
         header = ('upAxis = "Z"\n    metersPerUnit = 0.01\n    timeCodesPerSecond = 24\n'
                   '    startTimeCode = -24\n    endTimeCode = 24')

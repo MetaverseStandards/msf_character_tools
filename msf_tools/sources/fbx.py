@@ -16,7 +16,7 @@ from msf_tools_ufbx import ffi, lib
 
 from . import ReaderMismatch
 
-SHIM_ABI = 4
+SHIM_ABI = 5
 # A stale build would still load, since cffi compiled it against its own declarations, and then fill fewer fields.
 if getattr(lib, "msf_fbx_shim_abi", None) is None or lib.msf_fbx_shim_abi() != SHIM_ABI:
     raise ReaderMismatch(f"The installed msf-tools-ufbx does not match this msf-tools (it needs shim ABI {SHIM_ABI}).",
@@ -276,7 +276,8 @@ class _Scene:
 
     def skin(self, m, shim, points, path, index):
         sizes = ffi.new("uint32_t[2]")
-        lib.msf_fbx_skin_sizes(self.h, m, 0, sizes)
+        if not lib.msf_fbx_skin_sizes(self.h, m, 0, sizes):
+            fail("E_SOURCE_VALUE", path, "The FBX reader could not report a skin.")
         clusters, entries = sizes[0], sizes[1]
         offsets, which = ffi.new("uint32_t[]", points + 1), ffi.new("uint32_t[]", entries or 1)
         weights, bones = ffi.new("double[]", entries or 1), ffi.new("int32_t[]", clusters or 1)
@@ -325,7 +326,8 @@ class _Scene:
     def channel(self, m, c, path):
         """Blend channel c of mesh m: (deformer index, deformer name, channel name, keyframes, static weight)."""
         sizes = ffi.new("uint32_t[2]")
-        lib.msf_fbx_blend_sizes(self.h, m, c, sizes)
+        if not lib.msf_fbx_blend_sizes(self.h, m, c, sizes):
+            fail("E_SOURCE_VALUE", path, "The FBX reader could not report a blend channel.")
         keyframes, total = sizes[0], sizes[1]
         deformer, counts = ffi.new("uint32_t *"), ffi.new("uint32_t[]", keyframes or 1)
         indices, values = ffi.new("uint32_t[]", total or 1), ffi.new("double[]", 3 * total or 1)
@@ -404,7 +406,8 @@ class _Scene:
         names = []
         for s in range(stacks):
             stack = ffi.new("msf_fbx_stack *")
-            lib.msf_fbx_stack_get(self.h, s, stack)
+            if not lib.msf_fbx_stack_get(self.h, s, stack):
+                fail("E_SOURCE_VALUE", "/", "The FBX reader could not report an animation stack.")
             names.append((ffi.unpack(stack.name, stack.name_len).decode("utf-8", "replace"), stack.time_begin, stack.time_end))
         if isinstance(choice, str):
             found = [s for s, (name, _, _) in enumerate(names) if name == choice]
@@ -481,11 +484,13 @@ class _Scene:
             if m < 0 or m in self.empty:
                 continue
             sizes = ffi.new("uint32_t[8]")
-            lib.msf_fbx_mesh_sizes(self.h, m, sizes)
+            if not lib.msf_fbx_mesh_sizes(self.h, m, sizes):
+                fail("E_SOURCE_VALUE", "/", "The FBX reader could not report a mesh.")
             ids = []
             for c in range(sizes[5]):
                 cid = ffi.new("uint32_t *")
-                lib.msf_fbx_blend_channel_id(self.h, m, c, cid)
+                if not lib.msf_fbx_blend_channel_id(self.h, m, c, cid):
+                    fail("E_SOURCE_VALUE", "/", "The FBX reader could not identify a blend channel.")
                 ids.append(cid[0])
             if not ids:
                 continue

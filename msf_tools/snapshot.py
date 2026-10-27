@@ -94,7 +94,7 @@ class AssetSnapshot(OwnedRecord):
                   "document": thaw(self.document), "resources": [r.to_dict() for r in self.resources],
                   "chunks": [{"type": c.type, "byte_length": len(c.data), "sha256": digest(c.data)} for c in self.chunks],
                   "channels": thaw(self.channels or {}), "bindings": thaw(self.bindings),
-                  "capabilities": {"geometry": ["POSITION", "relative_morph", "four_influence_LBS"],
+                  "capabilities": {"geometry": ["POSITION", "relative_morph", "linear_blend_skinning"],
                                    "animations": ["STEP", "LINEAR", "CUBICSPLINE"],
                                    "supported_required_extensions": sorted(SUPPORTED_REQUIRED_EXTENSIONS)}}
         if self.source is not None:

@@ -197,7 +197,7 @@ class UsdAdapter:
             except Tf.ErrorException as exc:
                 raise SourceParseError(str(exc).strip()) from None
             try:
-                generated = _convert(stage, self, dependencies, external, options)
+                generated = _convert(stage, self, dependencies, external, options, limits)
                 _check_used_layers(stage, Path(tmp))
                 return generated
             finally:
@@ -443,7 +443,12 @@ def _blend_weights(anim, tokens, code):
     return tuple(float(weights[order[t]]) if t in order and order[t] < len(weights) else 0.0 for t in tokens)
 
 
-def _animate(stage, entries, skeletons, weighted, conversion):
+def _skeleton_poses(skeleton, codes):
+    # usd-core's matrix arrays keep each pose as contiguous doubles, far smaller than lists of Gf.Matrix4d objects.
+    return [skeleton.query.ComputeJointLocalTransforms(Usd.TimeCode(c)) for c in codes]
+
+
+def _animate(stage, entries, skeletons, weighted, conversion, limits):
     """One glTF animation sampling every animated node at the union of authored time codes."""
     moving = {i for i, (_, prim, _) in enumerate(entries) if prim is not None and prim.IsA(UsdGeom.Xformable)
               and UsdGeom.Xformable(prim).TransformMightBeTimeVarying()}
@@ -468,6 +473,14 @@ def _animate(stage, entries, skeletons, weighted, conversion):
     if shift < 0:
         losses.append(skinning.warning("W_TIME_SHIFTED", "/", f"Shifted time codes by {-shift:g} so the animation starts at 0 seconds."))
     times = tuple((c - shift) / rate for c in codes)
+    nodes = sum(1 for i, (_, _, joint) in enumerate(entries)
+                if i in moving or joint is not None and joint[0].query.GetAnimQuery())
+    channels = sum(len(tokens) for _, tokens in weighted.values())
+    values = len(codes) * (16 * nodes + channels)
+    if values > limits.max_animation_values:
+        fail("E_RESOURCE_LIMIT", "/", f"The animation needs {values} sampled values ({len(codes)} time codes of {nodes} nodes "
+             f"and {channels} blend channels), over the {limits.max_animation_values} limit.",
+             "Raise limits.max_animation_values, or narrow the stage's time code range.")
     poses = {}
     channels = []
     for i, (path, prim, joint) in enumerate(entries):
@@ -476,7 +489,7 @@ def _animate(stage, entries, skeletons, weighted, conversion):
             skeleton, j = joint
             if skeleton.query.GetAnimQuery():
                 if skeleton.owner not in poses:
-                    poses[skeleton.owner] = [list(skeleton.query.ComputeJointLocalTransforms(Usd.TimeCode(c))) for c in codes]
+                    poses[skeleton.owner] = _skeleton_poses(skeleton, codes)
                 matrices = [_checked(pose[j], path, conversion) for pose in poses[skeleton.owner]]
         elif i in moving:
             xformable = UsdGeom.Xformable(prim)
@@ -499,7 +512,7 @@ def _animate(stage, entries, skeletons, weighted, conversion):
     return ((glb.Animation(channels=tuple(channels)),) if channels else ()), losses
 
 
-def _convert(stage, adapter, dependencies, external, options):
+def _convert(stage, adapter, dependencies, external, options, limits):
     conversion = _Conversion(stage)
     skipped = Counter({"external asset dependency": external})
     every = [p for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies()) if p != stage.GetPseudoRoot()]
@@ -607,7 +620,7 @@ def _convert(stage, adapter, dependencies, external, options):
                               weights=static_weights, **trs))
     skins = [glb.Skin(joints=tuple(index[p] for p in skeletons[path].paths), inverse_bind_matrices=tuple(skeletons[path].inverse_binds))
              for path in skin_of]
-    animations, time_losses = _animate(stage, entries, skeletons, weighted, conversion)
+    animations, time_losses = _animate(stage, entries, skeletons, weighted, conversion, limits)
     try:
         raw = glb.write_glb(tuple(nodes), tuple(meshes), tuple(skins), animations, generator=f"{adapter.name} {adapter.version}")
     except ValueError as exc:

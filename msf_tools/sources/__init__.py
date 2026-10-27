@@ -50,8 +50,8 @@ class SourceLimits:
     re-validate generated snapshots against the generated defaults.
     `max_usdz_members`, `max_reader_memory` and `timeout_s` are enforced by the
     adapters and by isolated conversion. `max_animation_values` bounds the
-    values an adapter samples before converting them (FBX: samples x
-    (16 x nodes + blend channels)).
+    values an adapter samples before converting them: samples (FBX) or time
+    codes (USD) x (16 x animated nodes + blend channels).
     """
     max_source_bytes: int = 512 * 1024 * 1024
     max_dependency_bytes: int = 1024 * 1024 * 1024

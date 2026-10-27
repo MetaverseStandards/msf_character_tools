@@ -34,7 +34,7 @@ With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/act
 - Fox and AnimatedMorphCube from Khronos glTF-Sample-Assets;
 - `character-female-a.fbx`, Kenney's own GLB export of the same model (the tests use it as a second, independent export) and the pack's licence file, from Kenney's Mini Characters zip.
 
-Nothing downloaded is committed. On a corporate network that intercepts TLS, downloads fail with `CERTIFICATE_VERIFY_FAILED`. Point `SSL_CERT_FILE` at a CA bundle that includes your network's root, for example `export SSL_CERT_FILE=/etc/ssl/cert.pem` on macOS, and rerun.
+Nothing downloaded is committed. Kenney's download link includes a dated CDN path. If it stops working, or the pack is updated so the SHA-256 no longer matches, `fetch_assets.py` stops without saving anything. Download Mini Characters from kenney.nl by hand and put `character-female-a.fbx`, `character-female-a.glb` and `License.txt` (renamed `Kenney-Mini-Characters-License.txt`) in `examples/assets/`. The tests compare against the pinned hashes, so they only pass with the pinned pack. On a corporate network that intercepts TLS, downloads fail with `CERTIFICATE_VERIFY_FAILED`. Point `SSL_CERT_FILE` at a CA bundle that includes your network's root, for example `export SSL_CERT_FILE=/etc/ssl/cert.pem` on macOS, and rerun.
 
 ## Run
 
@@ -119,4 +119,4 @@ The Fox's CC-BY credits must be shown wherever renders of it are shown, which is
 - ufbx's own evaluation of the FBX cube with its shape key set to each mapped weight;
 - the Fox against the independent Decimal oracle, when `MSF_REAL_ASSETS` is set.
 
-It also checks that the command line rebuilds the glTF cube's files byte for byte. That one compares msf-tools with itself, so it is only a reproducibility check. The tests run when `MSF_EXAMPLE_ASSETS` names the folder `fetch_assets.py` downloaded into. `scripts/ci_local.sh` runs them when `$MSF/_viz/assets/examples` exists.
+It also checks that the command line rebuilds the glTF cube's files byte for byte. That one compares msf-tools with itself, so it is only a reproducibility check. The tests run when `MSF_EXAMPLE_ASSETS` names the folder `fetch_assets.py` downloaded into.

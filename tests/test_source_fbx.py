@@ -78,6 +78,17 @@ class FbxStatic(unittest.TestCase):
         close(self, [msf_world_points(snapshot, '/Root/Face', 0.0)[3]], [(0, 0, -0.02)])
         self.assertTrue(root)
 
+    def test_a_file_without_axis_settings_is_not_declared_as_converted(self):
+        # Old exports (FBX 5000 and earlier) have no GlobalSettings; ufbx then leaves the axes as they are.
+        text = face(unit_cm=100.0, up=2, front=1, front_sign=-1).text()
+        text = text if isinstance(text, bytes) else text.encode()
+        start = text.index(b'GlobalSettings:')
+        stripped = text[:start] + text[text.index(b'\n}\n', start) + 3:]
+        snapshot = good(m.inspect_asset(stripped, 'fbx'))
+        self.assertNotIn(('I_AXES_CONVERTED', '/'), codes(snapshot))
+        # Unconverted, the file's +Y stays +Y.
+        close(self, [msf_world_points(snapshot, '/Root/Face', 0.0)[3]], [(0, 0.02 * 0.01 * 100.0, 0)])
+
     def test_the_unit_reported_is_the_one_ufbx_converted_from(self):
         # 3ds Max writes OriginalUnitScaleFactor for the unit the scene was made in; ufbx converts by UnitScaleFactor.
         metres = good(m.inspect_asset(face(unit_cm=100.0, original_unit_cm=1.0).text(), 'fbx'))
@@ -441,6 +452,23 @@ class FbxAnimation(unittest.TestCase):
         good(m.inspect_asset(data, 'fbx', limits=m.sources.SourceLimits(max_animation_values=850)))
         result = m.inspect_asset(data, 'fbx', limits=m.sources.SourceLimits(max_animation_values=849))
         self.assertEqual(errors(result), [('E_RESOURCE_LIMIT', '/')])
+
+    def test_reader_calls_that_report_failure_are_refused(self):
+        from msf_tools.sources import fbx
+        real = fbx.lib
+
+        def failing(name):
+            class Proxy:
+                def __getattr__(self, attr):
+                    return (lambda *args: 0) if attr == name else getattr(real, attr)
+            return Proxy()
+
+        skinned, _ = skinned_scene()
+        for name, data in (('msf_fbx_skin_sizes', skinned.text()), ('msf_fbx_blend_sizes', animated().text()),
+                           ('msf_fbx_stack_get', animated().text()), ('msf_fbx_blend_channel_id', animated().text())):
+            with self.subTest(name=name), unittest.mock.patch.object(fbx, 'lib', failing(name)):
+                result = m.inspect_asset(data, 'fbx', isolate=False)
+                self.assertEqual([d.code for d in result.report.diagnostics], ['E_SOURCE_VALUE'])
 
     def test_animated_skin_matches_ufbx_skinning(self):
         scene, _ = skinned_scene()
