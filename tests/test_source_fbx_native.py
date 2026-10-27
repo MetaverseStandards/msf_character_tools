@@ -110,6 +110,36 @@ class UfbxShim(unittest.TestCase):
         self.assertEqual(lib.msf_fbx_mesh_fill(handle, 0, positions, count - 1, tri, triangles), 0)
         self.assertEqual(lib.msf_fbx_mesh_sizes(handle, 1, sizes), 0)
 
+    def test_skin_clusters_weights_and_bind_matrices(self):
+        from msf_tools_ufbx import ffi, lib
+        identity = [float(r == c) for c in range(4) for r in range(4)]
+        raised, lowered = identity[:12] + [0.0, 1.0, 0.0, 1.0], identity[:12] + [0.0, -1.0, 0.0, 1.0]
+        for skinning, method in (('Linear', 0), ('DualQuaternion', 2)):
+            with self.subTest(skinning=skinning):
+                scene = Scene()
+                root = scene.model('Root', kind='LimbNode')
+                arm = scene.model('Arm', root, kind='LimbNode', translation=(0, 1, 0))
+                body = scene.model('Body', kind='Mesh')
+                geometry = scene.mesh(body, 'Body', [(0, 0, 0), (1, 1, 0), (0, 2, 0)], [[0, 1, 2]])
+                scene.skin(geometry, [(root, [0, 1], [1.0, 0.5], identity, identity), (arm, [1, 2], [0.5, 1.0], lowered, raised)],
+                           skinning)
+                handle = self.scene(scene.text())
+                sizes = ffi.new('uint32_t[2]')
+                self.assertEqual(lib.msf_fbx_skin_sizes(handle, 0, 0, sizes), 1)
+                self.assertEqual(tuple(sizes), (2, 4))
+                offsets, which = ffi.new('uint32_t[4]'), ffi.new('uint32_t[4]')
+                weights, nodes = ffi.new('double[4]'), ffi.new('int32_t[2]')
+                bind, kind = ffi.new('double[32]'), ffi.new('int *')
+                self.assertEqual(lib.msf_fbx_skin_fill(handle, 0, 0, offsets, 3, which, weights, 4, nodes, bind, 2, kind), 1)
+                self.assertEqual(list(offsets), [0, 1, 3, 4])
+                rows = [sorted((which[k], weights[k]) for k in range(offsets[v], offsets[v + 1])) for v in range(3)]
+                self.assertEqual(rows, [[(0, 1.0)], [(0, 0.5), (1, 0.5)], [(1, 1.0)]])
+                names = [n['name'] for n in self.nodes(handle)]
+                self.assertEqual([names[i] for i in nodes], ['Root', 'Arm'])
+                self.assertAlmostEqual(bind[16 + 13], -1.0, places=9)
+                self.assertEqual(kind[0], method)
+                self.assertEqual(lib.msf_fbx_skin_sizes(handle, 0, 1, sizes), 0)
+
 
 class VendoredUfbx(unittest.TestCase):
     def test_vendored_files_match_the_source_lock(self):

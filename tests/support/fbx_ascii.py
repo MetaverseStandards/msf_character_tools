@@ -70,6 +70,22 @@ class Scene:
                 + _array("PolygonVertexIndex", indices, "\t\t") + "\t\tGeometryVersion: 124\n\t}\n")
         return self._add(text, model)
 
+    def skin(self, geometry, clusters, skinning="Linear"):
+        """clusters: (bone model id, point indices, weights, Transform 16, TransformLink 16), matrices column-major.
+
+        As in files FBX tools write, Transform maps the mesh at bind time into bone space (the inverse
+        of the bone's bind matrix times the mesh's), and TransformLink is the bone's bind matrix."""
+        skin = self._add(f'\tDeformer: @ID@, "Deformer::Skin", "Skin" {{\n\t\tVersion: 101\n\t\tLink_DeformAcuracy: 50\n'
+                         f'\t\tSkinningType: "{skinning}"\n\t}}\n', geometry)
+        for k, (bone, indexes, weights, transform, link) in enumerate(clusters):
+            text = (f'\tDeformer: @ID@, "SubDeformer::Cluster{k}", "Cluster" {{\n\t\tVersion: 100\n\t\tUserData: "", ""\n'
+                    + _array("Indexes", indexes, "\t\t") + _array("Weights", [float(w) for w in weights], "\t\t")
+                    + _array("Transform", [float(x) for x in transform], "\t\t")
+                    + _array("TransformLink", [float(x) for x in link], "\t\t") + "\t}\n")
+            cluster = self._add(text, skin)
+            self.connect(bone, cluster)
+        return skin
+
     def text(self):
         s = self.settings
         props = "".join(f'\t\tP: "{k}", "int", "Integer", "",{v}\n' for k, v in (

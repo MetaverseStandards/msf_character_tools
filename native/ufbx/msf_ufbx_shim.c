@@ -202,3 +202,47 @@ int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out) {
                             && s->settings.axes.front == UFBX_COORDINATE_AXIS_POSITIVE_Z);
     return 1;
 }
+
+static const ufbx_skin_deformer *skin_at(const msf_fbx *h, uint32_t m, uint32_t d) {
+    const ufbx_mesh *mesh = mesh_at(h, m);
+    if (!mesh || d >= mesh->skin_deformers.count) return NULL;
+    return mesh->skin_deformers.data[d];
+}
+
+int msf_fbx_skin_sizes(const msf_fbx *h, uint32_t m, uint32_t d, uint32_t sizes[2]) {
+    const ufbx_skin_deformer *skin = skin_at(h, m, d);
+    if (!skin || !sizes) return 0;
+    sizes[0] = (uint32_t)skin->clusters.count;
+    sizes[1] = (uint32_t)skin->weights.count;
+    return 1;
+}
+
+int msf_fbx_skin_fill(const msf_fbx *h, uint32_t m, uint32_t d, uint32_t *vertex_offsets, uint32_t points,
+                      uint32_t *cluster_of_entry, double *weights, uint32_t entries,
+                      int32_t *cluster_node, double *geometry_to_bone, uint32_t clusters, int *skinning_method) {
+    const ufbx_skin_deformer *skin = skin_at(h, m, d);
+    const ufbx_mesh *mesh = mesh_at(h, m);
+    if (!skin || !vertex_offsets || !cluster_of_entry || !weights || !cluster_node || !geometry_to_bone || !skinning_method) return 0;
+    if (points != mesh->vertices.count || entries != skin->weights.count || clusters != skin->clusters.count) return 0;
+    uint32_t written = 0;
+    for (uint32_t v = 0; v < points; v++) {
+        vertex_offsets[v] = written;
+        if (v >= skin->vertices.count) continue;
+        const ufbx_skin_vertex sv = skin->vertices.data[v];
+        for (uint32_t k = 0; k < sv.num_weights; k++) {
+            uint32_t at = sv.weight_begin + k;
+            if (at >= skin->weights.count || written >= entries) return 0;
+            cluster_of_entry[written] = skin->weights.data[at].cluster_index;
+            weights[written] = skin->weights.data[at].weight;
+            written++;
+        }
+    }
+    vertex_offsets[points] = written;
+    for (uint32_t c = 0; c < clusters; c++) {
+        const ufbx_skin_cluster *cluster = skin->clusters.data[c];
+        cluster_node[c] = shim_index(h, cluster->bone_node);
+        matrix16(&cluster->geometry_to_bone, geometry_to_bone + 16 * c);
+    }
+    *skinning_method = (int)skin->skinning_method;
+    return written == entries;
+}
