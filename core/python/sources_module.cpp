@@ -14,9 +14,12 @@
 
 #include "bridge.hpp"
 #include "msf/paths.hpp"
+#include "msf/pyerror.hpp"
+#include "msf/sources.hpp"
 
 namespace nb = nanobind;
 namespace paths = msf::paths;
+namespace sources = msf::sources;
 
 namespace {
 
@@ -30,6 +33,37 @@ nb::list components_to_python(const std::vector<paths::Component>& in) {
 
 std::string text_of(nb::handle s) { return bridge::wtf8_of(s); }
 
+sources::Matrix matrix_of(nb::handle m) {
+    sources::Matrix out{};
+    std::size_t i = 0;
+    for (nb::handle x : m) {
+        if (i == 16) throw nb::value_error("Matrices have 16 numbers.");
+        out[i++] = nb::cast<double>(nb::float_(x));
+    }
+    if (i != 16) throw nb::value_error("Matrices have 16 numbers.");
+    return out;
+}
+
+nb::tuple floats(const double* v, std::size_t n) {
+    nb::list out;
+    for (std::size_t i = 0; i < n; ++i) out.append(v[i]);
+    return nb::tuple(out);
+}
+
+nb::tuple diagnostics_of(const std::vector<msf::Diagnostic>& diagnostics) {
+    nb::list out;
+    for (const msf::Diagnostic& d : diagnostics)
+        out.append(nb::make_tuple(msf::info(d.code).name, msf::severity_name(d.severity()), bridge::decode(d.ref),
+                                  bridge::decode(d.message), bridge::decode(d.remediation)));
+    return nb::tuple(out);
+}
+
+sources::Influences influences_of(nb::handle pairs) {
+    sources::Influences out;
+    for (nb::handle pair : pairs) out.emplace_back(nb::cast<long long>(pair[0]), nb::cast<double>(nb::float_(pair[1])));
+    return out;
+}
+
 }  // namespace
 
 void bind_sources(nb::module_& m) {
@@ -41,7 +75,39 @@ void bind_sources(nb::module_& m) {
         } catch (const paths::Error& e) {
             nb::object args = nb::make_tuple(nb::str(e.kind.c_str()), bridge::decode(e.text));
             PyErr_SetObject(path_error, args.ptr());
+        } catch (const sources::Singular&) {
+            PyErr_SetString(PyExc_ValueError, "Transform is singular.");
+        } catch (const msf::PyError& e) {
+            PyObject* type = e.type == msf::PyError::Type::overflow        ? PyExc_OverflowError
+                             : e.type == msf::PyError::Type::zero_division ? PyExc_ZeroDivisionError
+                             : e.type == msf::PyError::Type::type          ? PyExc_TypeError
+                                                                           : PyExc_ValueError;
+            PyErr_SetString(type, e.message.c_str());
         }
+    });
+    m.def("_is_affine", [](nb::handle m) { return sources::is_affine(matrix_of(m)); });
+    m.def("_has_shear", [](nb::handle m) { return sources::has_shear(matrix_of(m)); });
+    m.def("_determinant", [](nb::handle m) { return sources::determinant(matrix_of(m)); });
+    m.def("_decompose", [](nb::handle m) {
+        sources::Trs trs = sources::decompose(matrix_of(m));
+        return nb::make_tuple(floats(trs.translation.data(), 3), floats(trs.rotation.data(), 4), floats(trs.scale.data(), 3));
+    });
+    m.def("_merge", [](nb::handle pairs, const std::string& path) {
+        nb::list out;
+        for (const auto& [joint, weight] : sources::merge(influences_of(pairs), path)) out.append(nb::make_tuple(joint, weight));
+        return out;
+    });
+    m.def("_influence_rows", [](nb::handle merged_rows, long long root, bool top4, const std::string& path, const std::string& unweighted_to) {
+        std::vector<sources::Influences> rows;
+        for (nb::handle row : merged_rows) rows.push_back(influences_of(row));
+        sources::Rows result = sources::influence_rows(rows, root, top4, path, unweighted_to);
+        nb::list out;
+        for (const auto& row : result.rows) {
+            nb::list pairs;
+            for (const auto& [joint, weight] : row) pairs.append(nb::make_tuple(joint, weight));
+            out.append(nb::tuple(pairs));
+        }
+        return nb::make_tuple(nb::tuple(out), diagnostics_of(result.losses));
     });
     m.def("_paths_escape", [](nb::handle name) { return bridge::decode(paths::escape(text_of(name))); });
     m.def("_paths_unescape", [](nb::handle text) { return bridge::decode(paths::unescape(text_of(text))); });
