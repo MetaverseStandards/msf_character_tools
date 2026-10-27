@@ -41,7 +41,7 @@ typedef struct {
 } msf_fbx_node;
 
 /* Bumped whenever a declaration or struct below changes; msf_tools refuses a shim with another value. */
-#define MSF_FBX_SHIM_ABI 2
+#define MSF_FBX_SHIM_ABI 3
 int msf_fbx_shim_abi(void);
 /* The compiled ufbx's ufbx_source_version: major * 1000000 + minor * 1000 + patch. */
 uint32_t msf_fbx_ufbx_version(void);
@@ -65,7 +65,8 @@ int msf_fbx_skin_fill(const msf_fbx *h, uint32_t m, uint32_t d, uint32_t *vertex
 /* Blend channel c of mesh m, counting channels across the mesh's blend deformers in order.
    sizes: keyframes, offsets summed over keyframes. */
 int msf_fbx_blend_sizes(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t sizes[2]);
-/* Keyframe k has key_counts[k] (point index, x/y/z offset) entries, in keyframe order, and a target weight
+/* Keyframe k has key_counts[k] (point index, x/y/z offset) entries, in keyframe order, with any per-offset
+   weights (Blender writes them) already applied, and a target weight
    (1.0 is the full shape). weight is the channel's static weight (DeformPercent / 100). names[0] and names[1]
    are the deformer and channel names, with lengths in name_lengths. */
 int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *deformer, uint32_t *key_counts,

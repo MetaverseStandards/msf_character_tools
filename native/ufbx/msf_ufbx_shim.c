@@ -325,10 +325,12 @@ int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *defor
         key_counts[k] = count;
         target_weights[k] = key.target_weight;
         for (uint32_t i = 0; i < count; i++) {
+            /* Blender writes a weight per offset; ufbx scales each offset by it when evaluating, so it is folded in here. */
+            double scale = i < key.shape->offset_weights.count ? key.shape->offset_weights.data[i] : 1.0;
             indices[written] = key.shape->offset_vertices.data[i];
-            offsets[3 * written + 0] = key.shape->position_offsets.data[i].x;
-            offsets[3 * written + 1] = key.shape->position_offsets.data[i].y;
-            offsets[3 * written + 2] = key.shape->position_offsets.data[i].z;
+            offsets[3 * written + 0] = key.shape->position_offsets.data[i].x * scale;
+            offsets[3 * written + 1] = key.shape->position_offsets.data[i].y * scale;
+            offsets[3 * written + 2] = key.shape->position_offsets.data[i].z * scale;
             written++;
         }
     }
