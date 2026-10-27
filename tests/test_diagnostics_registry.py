@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: MIT
+"""schemas/diagnostics.toml lists every diagnostic code the package can report.
+
+Run this file directly to list registered codes that no test mentions.
+"""
+import ast
+from pathlib import Path
+import re
+import tomllib
+import unittest
+from unittest.mock import patch
+
+import msf_tools as m
+from msf_tools import snapshot as snapshots
+from support import fake_adapter as fake
+
+ROOT = Path(__file__).resolve().parents[1]
+REGISTRY = ROOT / 'schemas/diagnostics.toml'
+SOURCES = sorted((ROOT / 'msf_tools').rglob('*.py'))
+CODE = re.compile(r'[EWI]_[A-Z][A-Z0-9_]*')
+SEVERITY = {'E': 'error', 'W': 'warning', 'I': 'info'}
+KEYS = {'severity', 'meaning', 'since', 'strict', 'reserved', 'removed'}
+RELEASES = ('0.1.0', '0.1.1', '0.2.0.dev0', '0.3.0')
+# Codes assembled at run time, keyed by the template the source builds them from.
+# 'E_{}' is the strict-losses rename of a warning; entries' `strict` fields cover it.
+BUILT = {'E_{}_COMPATIBILITY': ('E_NEUTRAL_COMPATIBILITY', 'E_SIDE_COMPATIBILITY', 'E_COUPLING_COMPATIBILITY'),
+         'E_{}': ()}
+
+
+def registry():
+    with REGISTRY.open('rb') as f:
+        return tomllib.load(f)
+
+
+def scan(paths):
+    """Where each literal code, and each template of a code built at run time, appears."""
+    literals, templates = {}, {}
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr) and node.values and isinstance(node.values[0], ast.Constant) \
+                    and re.match(r'[EWI]_', node.values[0].value):
+                templates.setdefault(''.join(v.value if isinstance(v, ast.Constant) else '{}' for v in node.values), set()).add(path)
+            elif isinstance(node, ast.BinOp) and isinstance(node.left, ast.Constant) \
+                    and type(node.left.value) is str and re.fullmatch(r'[EWI]_', node.left.value):
+                templates.setdefault(node.left.value + '{}', set()).add(path)
+            elif isinstance(node, ast.Constant) and type(node.value) is str and CODE.fullmatch(node.value):
+                literals.setdefault(node.value, set()).add(path)
+    return literals, templates
+
+
+class DiagnosticsRegistry(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.codes = registry()
+        cls.literals, cls.templates = scan(SOURCES)
+        cls.strict = {code: entry['strict'] for code, entry in cls.codes.items() if 'strict' in entry}
+
+    def test_entries_are_well_formed(self):
+        for code, entry in self.codes.items():
+            with self.subTest(code=code):
+                self.assertRegex(code, '^' + CODE.pattern + '$')
+                self.assertLessEqual(set(entry), KEYS)
+                self.assertEqual(entry['severity'], SEVERITY[code[0]])
+                self.assertIsInstance(entry['meaning'], str)
+                self.assertTrue(entry['meaning'].strip() and '\n' not in entry['meaning'])
+                self.assertIn(entry['since'], RELEASES)
+                if 'removed' in entry:
+                    self.assertGreater(RELEASES.index(entry['removed']), RELEASES.index(entry['since']))
+                if 'reserved' in entry:
+                    self.assertIs(entry['reserved'], True)
+                if 'strict' in entry:
+                    self.assertEqual(code[0], 'W')
+                    self.assertTrue(entry['strict'] in self.codes, f"{entry['strict']} is not registered")
+                    self.assertEqual(self.codes[entry['strict']]['since'], entry['since'])
+        targets = list(self.strict.values())
+        self.assertEqual(sorted(targets), sorted(set(targets)), 'two warnings share a strict code')
+
+    def test_every_code_in_the_source_is_registered(self):
+        for code, paths in sorted(self.literals.items()):
+            with self.subTest(code=code):
+                where = ', '.join(str(p.relative_to(ROOT)) for p in sorted(paths))
+                self.assertTrue(code in self.codes, f'{code} in {where} is not in {REGISTRY.name}')
+                self.assertNotIn('removed', self.codes[code], f'{code} is used again; drop its removed field')
+                self.assertNotIn('reserved', self.codes[code], f'{code} is now used; drop its reserved field')
+
+    def test_codes_built_at_run_time_are_known_and_registered(self):
+        self.assertEqual(set(self.templates), set(BUILT),
+                         'A code is built at run time from a new template; add the template and its codes to BUILT.')
+        for template, codes in BUILT.items():
+            pattern = '^' + re.escape(template).replace(r'\{\}', '[A-Z][A-Z0-9_]*') + '$'
+            for code in codes:
+                with self.subTest(code=code):
+                    self.assertRegex(code, pattern)
+                    self.assertTrue(code in self.codes, f'{code} is not registered')
+
+    def test_the_registry_has_no_orphans(self):
+        reachable = set(self.literals) | set(self.strict.values()) | {c for codes in BUILT.values() for c in codes}
+        for code, entry in self.codes.items():
+            with self.subTest(code=code):
+                if 'reserved' not in entry and 'removed' not in entry:
+                    self.assertTrue(code in reachable, f'{code} is registered but nothing reports it')
+
+    def test_exactly_the_source_adapter_warnings_have_strict_codes(self):
+        losses = {code for code, paths in self.literals.items()
+                  if code.startswith('W_') and any(p.parent.name == 'sources' for p in paths)}
+        self.assertEqual(set(self.strict), losses)
+
+    def test_strict_losses_refuse_with_the_registered_codes(self):
+        warnings = sorted(self.strict)
+        data = fake.source(fake.scene(losses=[[code, '/Root', 'A loss.'] for code in warnings]))
+        with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'support.fake_adapter'}):
+            result = m.inspect_asset(data, 'usda', fake.resolver, options={'losses': 'strict'})
+        self.assertEqual([(d.code, d.severity) for d in result.report.diagnostics],
+                         [(self.strict[code], 'error') for code in warnings])
+
+
+def unexercised():
+    """Registered codes that no test mentions; the strict codes are all exercised above."""
+    codes = registry()
+    tests = ' '.join(p.read_text(encoding='utf-8') for p in (ROOT / 'tests').rglob('*.py') if p.name != Path(__file__).name)
+    exercised = set(CODE.findall(tests)) | {entry['strict'] for entry in codes.values() if 'strict' in entry}
+    return sorted(code for code, entry in codes.items() if code not in exercised and 'removed' not in entry)
+
+
+if __name__ == '__main__':
+    codes = unexercised()
+    print(f"{len(codes)} registered codes no test mentions: {', '.join(codes) or 'none'}")
