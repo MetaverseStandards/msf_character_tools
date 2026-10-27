@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .common import thaw
+from .common import freeze, thaw
 from .pack import Pack
-from .snapshot import AssetSnapshot, _identity, _source_summary
+from .snapshot import AssetSnapshot, _identity, _record, _source_summary
 from .report import public, fail, Diagnostic, Result, Report, Loss
 from . import _native
 from .records import OwnedRecord, _admit
@@ -20,7 +20,8 @@ def profile_snapshot(pack, id):
         fail("E_PACK", "/", "Expected a compiled Pack and explicit profile ID.")
     pack._check_integrity()
     raw, sha256, doc, channels = pack._core.profile(id)
-    return _admit(AssetSnapshot("profile", raw, sha256, doc, channels=channels))
+    document = freeze(doc)
+    return _admit(_record(_core.profile_snapshot(raw, sha256, document), document, channels=freeze(channels)))
 
 
 @dataclass(frozen=True)

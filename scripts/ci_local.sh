@@ -9,15 +9,19 @@
 #               and RCEF's JSON goldens (MSF_RCEF_ROOT, MSF_RCEF_COMMIT)
 #   --sanitize  rebuild the core with ASan and UBSan, run the core and public
 #               suites on it, then restore the normal build
+#   --fuzz      run scripts/fuzz.sh, libFuzzer on the core's parsers, for
+#               MSF_FUZZ_SECONDS (default 300) per harness
 set -u
 cd "$(dirname "$0")/.." || exit 2
 gate=0
 sanitize=0
+fuzz=0
 for arg in "$@"; do
   case "$arg" in
     --gate) gate=1 ;;
     --sanitize) sanitize=1 ;;
-    *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize]" >&2; exit 2 ;;
+    --fuzz) fuzz=1 ;;
+    *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize] [--fuzz]" >&2; exit 2 ;;
   esac
 done
 MSF="${MSF:-$HOME/.local/share/msf}"
@@ -26,25 +30,8 @@ lines=()
 
 seconds() { python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.1f}")' "$1"; }
 
-# Reinstall the FBX shim from this checkout first: a stale build loads, then fills fewer fields or crashes.
 uv="${UV:-$MSF/_tools/boot/bin/uv}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$MSF/_tools/uv-cache}"
-for version in 3.11 3.12; do
-  var="MSF_PY${version/./}"
-  py="${!var:-$MSF/_tools/venv$version/bin/python}"
-  [ -x "$py" ] && "$py" -c 'import cffi' 2>/dev/null || continue
-  if [ -x "$uv" ]; then
-    install=("$uv" pip install --python "$py" --no-build-isolation --reinstall-package msf-tools-ufbx ./native/ufbx)
-  else
-    install=("$py" -m pip install --no-build-isolation --no-deps --force-reinstall ./native/ufbx)
-  fi
-  if "${install[@]}" >/dev/null 2>&1; then
-    lines+=("- msf-tools-ufbx for Python $version: reinstalled from native/ufbx")
-  else
-    lines+=("- msf-tools-ufbx for Python $version: REINSTALL FAILED")
-    failed=1
-  fi
-done
 
 # Build the C++ core in place for each Python, then require it in the suites.
 export PATH="$MSF/_tools/bin:$PATH"
@@ -146,8 +133,8 @@ if [ $gate -eq 1 ] && [ -x "$py312" ]; then
     py="${!var:-$MSF/_tools/venv$version/bin/python}"
     [ -x "$py" ] || continue
     start=$(python3 -c 'import time; print(time.time())')
-    output=$(MSF_GATE=1 suites "$py" '' 'test_core_[ajm]*.py')
-    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples; $(seconds "$start") s)" $? "$output"
+    output=$(MSF_GATE=1 suites "$py" '' 'test_core_*.py')
+    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples, 10^4 glTF assets, 2x10^4 each of node paths, matrices, influence sets and GLB scenes; $(seconds "$start") s)" $? "$output"
   done
 else
   lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")
@@ -171,13 +158,14 @@ def flat(suite):
     for test in suite:
         yield from flat(test) if isinstance(test, unittest.TestSuite) else [test]
 tests = [t for t in flat(loader.discover('tests/public', top_level_dir='tests/public')) if 'isolated_reader' not in t.id()]
-for pattern in ('test_core*.py', 'test_record_integrity_internal.py', 'test_diagnostics_registry.py'):
+for pattern in ('test_core*.py', 'test_record_integrity_internal.py', 'test_diagnostics_registry.py',
+                'test_source_fbx_native.py', 'test_source_fbx_internal.py'):
     tests += list(flat(loader.discover('tests/internal', pattern=pattern, top_level_dir='tests')))
 result = unittest.TextTestRunner(verbosity=0).run(unittest.TestSuite(tests))
 sys.exit(not result.wasSuccessful())
 PY
 )
-    tier "Sanitizer tier (ASan + UBSan core; public suite less 1 isolated-worker test, core and record tests)" $? "$output"
+    tier "Sanitizer tier (ASan + UBSan core with ufbx; public suite less 1 isolated-worker test, core, record and FBX tests)" $? "$output"
   else
     lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
     failed=1
@@ -185,6 +173,18 @@ PY
   cmake -E copy build/core-3.12/_core.*.so msf_tools/ >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
 else
   lines+=("- Sanitizer tier: SKIPPED (scripts/ci_local.sh --sanitize)")
+fi
+
+# Fuzz tier (--fuzz).
+if [ $fuzz -eq 1 ]; then
+  if output=$(scripts/fuzz.sh "${MSF_FUZZ_SECONDS:-300}" 2>&1); then
+    lines+=("- Fuzz tier (libFuzzer, ASan + UBSan, ${MSF_FUZZ_SECONDS:-300} s per harness): $(printf '%s' "$output" | tr '\n' ';' | sed 's/;$//; s/;/; /g')")
+  else
+    lines+=("- Fuzz tier: FAILED: $(printf '%s' "$output" | tr '\n' ' ')")
+    failed=1
+  fi
+else
+  lines+=("- Fuzz tier: SKIPPED (scripts/ci_local.sh --fuzz)")
 fi
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
@@ -198,20 +198,20 @@ fi
 
 # Optional tier on ufbx's own FBX corpus, kept out of the fast suite.
 corpus="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
-if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
+if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ]; then
   output=$(MSF_UFBX_CORPUS="$corpus" suites "$py312" '' 'test_source_fbx_[cd]*.py')
-  tier "ufbx corpus tier (loading, inspection, DCC reference frames)" $? "$output"
+  tier "ufbx corpus tier (loading, inspection, DCC reference frames, 0.3.0 oracle)" $? "$output"
 else
-  lines+=("- ufbx corpus tier: SKIPPED (needs msf-tools-ufbx installed and the corpus under \$MSF/_viz/assets/ufbx)")
+  lines+=("- ufbx corpus tier: SKIPPED (needs the corpus under \$MSF/_viz/assets/ufbx)")
 fi
 
 # Optional tier: Khronos sample assets re-authored as FBX, kept out of the fast suite.
 khronos="${MSF_KHRONOS_ASSETS:-$MSF/_viz/assets/khronos}"
-if [ -d "$khronos/Models" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
+if [ -d "$khronos/Models" ] && [ -x "$py312" ]; then
   output=$(MSF_KHRONOS_ASSETS="$khronos" suites "$py312" test_source_twins.py '')
   tier "Khronos FBX twins tier" $? "$output"
 else
-  lines+=("- Khronos FBX twins tier: SKIPPED (needs msf-tools-ufbx and \$MSF/_viz/assets/khronos)")
+  lines+=("- Khronos FBX twins tier: SKIPPED (needs \$MSF/_viz/assets/khronos)")
 fi
 
 # Optional tier: the 09K real-asset harness recipes, one test per CASE_MATRIX ID.

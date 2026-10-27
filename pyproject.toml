@@ -11,13 +11,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0"
 license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt",
-                 "LICENSES/BSL-1.0.txt", "LICENSES/PSF-2.0.txt", "core/third_party/fast_float/LICENSE-MIT"]
+                 "LICENSES/BSL-1.0.txt", "LICENSES/PSF-2.0.txt", "LICENSES/ufbx-MIT.txt", "core/third_party/fast_float/LICENSE-MIT"]
 authors = [{name = "MSF Tools contributors"}]
 dependencies = []
 
 [project.optional-dependencies]
 usd = ["usd-core>=25.11,<27"]
-fbx = ["msf-tools-ufbx>=0.1.6,<0.2"]
+# FBX support is compiled in; the empty extra keeps `msf-tools[fbx]` installs working.
+fbx = []
 
 [project.scripts]
 msf-tools = "msf_tools.cli:main"

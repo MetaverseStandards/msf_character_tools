@@ -7,6 +7,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct msf_fbx msf_fbx;
 typedef struct { size_t memory_limit, allocation_limit; } msf_fbx_limits;
 typedef struct {
@@ -84,4 +88,7 @@ int msf_fbx_evaluate(const msf_fbx *h, uint32_t s, double time, double *to_paren
    (s < 0 uses the scene's default animation). */
 int msf_fbx_skinned_points(const msf_fbx *h, int32_t s, double time, uint32_t m, double *world, uint32_t points,
                            char *err, size_t n);
+#ifdef __cplusplus
+}
+#endif
 #endif

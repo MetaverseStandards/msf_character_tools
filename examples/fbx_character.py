@@ -3,9 +3,8 @@
 
     python fbx_character.py [--assets DIR] [--out DIR]
 
-Needs msf-tools-ufbx (see the README). The character is `character-female-a.fbx`
-from Kenney's Mini Characters pack, exported with the Autodesk FBX SDK, fetched
-by fetch_assets.py. It has 32 animation stacks and no shape keys, so the binding
+The character is `character-female-a.fbx` from Kenney's Mini Characters pack,
+exported with the Autodesk FBX SDK, fetched by fetch_assets.py. It has 32 animation stacks and no shape keys, so the binding
 is refused and the poses come from its `walk` stack. The cube is the Khronos
 AnimatedMorphCube (CC0) written to FBX by the test writer
 (tests/public/make_example_fbx.py, committed as data/AnimatedMorphCube.writer.fbx): it

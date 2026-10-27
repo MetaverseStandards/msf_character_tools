@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: MIT
 """The format seam: generated snapshots, source identity and sidecar binding."""
-from dataclasses import replace
 from pathlib import Path
 import unittest
 
 import msf_tools as m
 from msf_tools import snapshot as snapshots
 from msf_tools.common import digest, freeze, thaw
-from msf_tools.records import _admit
 from msf_tools.report import Fault
 from msf_tools.sources import SourceLimits
 from internal.adapters import fake_adapter as fake
@@ -44,6 +42,13 @@ def generated(scene=None, adapter=None, **kwargs):
     data = fake.source(scene or fake.scene())
     kwargs.setdefault('resolver', fake.resolver)
     return data, snapshots._inspect_source(adapter or fake.FakeAdapter(), data, 'usda', **kwargs)
+
+
+def readmit(snapshot, source):
+    """Admit the snapshot's asset again with another source record, as inspection would."""
+    record = snapshots._record(snapshot._core.fork(), snapshot.document, snapshot.resources, snapshot.chunks,
+                               snapshot.channels, snapshot.bindings, freeze(source))
+    return snapshots._admit_snapshot(record, snapshot._component_caps())
 
 
 def good(result):
@@ -119,18 +124,20 @@ class GeneratedSnapshots(unittest.TestCase):
                       'losses': [{'code': 'W_SKIPPED', 'severity': 'error', 'ref': '/', 'message': 'm', 'remediation': 'r'}]}
         for key, value in bad_values.items():
             with self.subTest(key=key), self.assertRaises(Fault) as caught:
-                _admit(replace(self.snapshot, source=freeze(dict(thaw(self.snapshot.source), **{key: value}))))
-            self.assertEqual(caught.exception.diagnostic.code, 'E_RECORD_INTEGRITY')
+                readmit(self.snapshot, dict(thaw(self.snapshot.source), **{key: value}))
+            self.assertEqual((caught.exception.diagnostic.code, caught.exception.diagnostic.ref), ('E_RECORD_INTEGRITY', '/source'))
         for changed in ({**thaw(self.snapshot.source), 'extra': 1},
                         {k: v for k, v in thaw(self.snapshot.source).items() if k != 'losses'},
                         dict(thaw(self.snapshot.source), adapter='other')):
-            with self.subTest(changed=sorted(changed)), self.assertRaises(Fault):
-                _admit(replace(self.snapshot, source=freeze(changed)))
+            with self.subTest(changed=sorted(changed)), self.assertRaises(Fault) as caught:
+                readmit(self.snapshot, changed)
+            self.assertEqual(caught.exception.diagnostic.ref, '/source')
         for key, value in (('node_paths', ['/Root/Face', '/Root']), ('node_paths', ['Root', '/Root/Face']),
                            ('target_keys', [['smile', 'bl:ink']])):
             with self.subTest(grammar=value), self.assertRaises(Fault) as caught:
-                _admit(replace(self.snapshot, source=freeze(dict(thaw(self.snapshot.source), **{key: value}))))
-            self.assertEqual(caught.exception.diagnostic.code, 'E_RECORD_INTEGRITY')
+                readmit(self.snapshot, dict(thaw(self.snapshot.source), **{key: value}))
+            self.assertEqual((caught.exception.diagnostic.code, caught.exception.diagnostic.ref), ('E_RECORD_INTEGRITY', '/source'))
+        readmit(self.snapshot, thaw(self.snapshot.source))
         object.__setattr__(self.snapshot, 'source', freeze(dict(thaw(self.snapshot.source), byte_length=1)))
         with self.assertRaises(Fault):
             self.snapshot._check_integrity()

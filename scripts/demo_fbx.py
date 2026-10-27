@@ -3,7 +3,7 @@
 
 For each file it inspects in a separate reader process, lists declared losses,
 binds the first morph target if there is one, and prints the first mesh's
-world-space bounding box at three times of its animation. Needs msf-tools-ufbx.
+world-space bounding box at three times of its animation.
 Run from the repository root:
 
     python -B scripts/demo_fbx.py [more.fbx ...]

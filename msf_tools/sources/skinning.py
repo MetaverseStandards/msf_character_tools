@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: MIT
-"""Influence rows and their declared losses, shared by the source adapters."""
-import math
+"""Influence rows and their declared losses, shared by the source adapters.
 
-from ..report import Diagnostic, fail
+Implemented in the C++ core (core/src/source_helpers.cpp).
+"""
+from .. import _native
+from ..report import Diagnostic
+
+_core = _native.required()
 
 
 def count(n, one, many):
@@ -15,13 +19,7 @@ def warning(code, ref, message):
 
 def merge(pairs, path):
     """Sum (joint, weight) pairs per joint, dropping zero weights."""
-    merged = {}
-    for joint, weight in pairs:
-        if not math.isfinite(weight) or weight < 0:
-            fail("E_SOURCE_VALUE", path, "Joint influences need finite nonnegative weights.")
-        if weight > 0:
-            merged[joint] = merged.get(joint, 0.0) + weight
-    return merged
+    return dict(_core._merge(list(pairs), path))
 
 
 def influence_rows(merged_rows, root, mode, path, unweighted_to="the skeleton root joint"):
@@ -30,36 +28,8 @@ def influence_rows(merged_rows, root, mode, path, unweighted_to="the skeleton ro
     Unweighted points bind to `root`. With mode "top4", points keep their four
     largest weights (ties to the lower joint). The writer renormalizes the rows.
     """
-    rows, losses = [], []
-    normalized = unweighted = truncated = widest = 0
-    dropped = 0.0
-    for merged in merged_rows:
-        total = math.fsum(merged.values())
-        if total == 0:
-            unweighted += 1
-            merged = {root: 1.0}
-        elif abs(total - 1) > 1e-6:
-            normalized += 1
-        pairs = sorted(merged.items(), key=lambda jw: (-jw[1], jw[0]))
-        if len(pairs) > 4 and mode == "top4":
-            truncated += 1
-            dropped = max(dropped, pairs[4][1] / total)
-            pairs = pairs[:4]
-        widest = max(widest, len(pairs))
-        rows.append(tuple(sorted(pairs)))
-    if widest > 4:
-        losses.append(Diagnostic("I_INFLUENCES_N", "info", path, f"Vertices have up to {widest} joint influences, stored in "
-                                 f"{(widest + 3) // 4} JOINTS/WEIGHTS sets.", "No action needed."))
-    if truncated:
-        losses.append(warning("W_INFLUENCES_TRUNCATED", path, f"{count(truncated, 'vertex', 'vertices')} kept only their four "
-                              f"largest influences; the largest dropped weight is {dropped:.6g}."))
-    if normalized:
-        losses.append(warning("W_WEIGHTS_NORMALIZED", path, f"Normalized the weights of {count(normalized, 'vertex', 'vertices')} "
-                              "that did not sum to 1."))
-    if unweighted:
-        losses.append(warning("W_UNWEIGHTED_VERTICES", path,
-                              f"Bound {count(unweighted, 'unweighted vertex', 'unweighted vertices')} to {unweighted_to}."))
-    return tuple(rows), losses
+    rows, losses = _core._influence_rows([list(merged.items()) for merged in merged_rows], root, mode == "top4", path, unweighted_to)
+    return rows, [Diagnostic(*d) for d in losses]
 
 
 def method_loss(path, method):

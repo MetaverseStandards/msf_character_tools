@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import unittest
 
+from internal import oracle
 from internal.test_source_fbx_native import HAVE_UFBX, open_scene
 
 ROOT = Path(os.environ['MSF_UFBX_CORPUS']) if os.environ.get('MSF_UFBX_CORPUS') else None
@@ -23,13 +24,10 @@ DEEPER_THAN_THE_LIMIT = {'synthetic_id_collision_7500_ascii.fbx'}
 @unittest.skipUnless(PRESENT, 'set MSF_UFBX_CORPUS to an extracted ufbx 0.23.1 source tree to run this tier')
 class UfbxCorpus(unittest.TestCase):
     def test_corpus_loads_except_expected_failures(self):
-        from msf_tools_ufbx import lib
         unexpected = []
         files = sorted((ROOT / 'data').glob('*.fbx'))
         for path in files:
             handle, err = open_scene(path.read_bytes())
-            if handle is not None:
-                lib.msf_fbx_close(handle)
             expected_failure = ('_fail_' in path.name and path.name not in LOADS_WITHOUT_EXTERNAL_FILES
                                 or path.name in DEEPER_THAN_THE_LIMIT)
             if (handle is None) != expected_failure:
@@ -49,6 +47,35 @@ class UfbxCorpus(unittest.TestCase):
                 unexpected.append((path.name, code, result.report.diagnostics[0].message))
         self.assertEqual(unexpected, [])
         self.assertGreater(outcomes['ok'], 650, outcomes)
+
+
+OUTCOME = r"""
+def fbx_outcome(path, options):
+    from pathlib import Path
+    result = m.inspect_asset(Path(path).read_bytes(), 'fbx', options=options)
+    out = [encode(result)]
+    if result.ok:
+        s = result.value
+        out.append(encode(s.original_bytes))
+        out.append(attempt(lambda: m.evaluate_geometry(s)))
+        if s.document.get('animations'):
+            out.append(attempt(lambda: m.evaluate_geometry(s, animation_id=0, timestamp=0.5)))
+    return out
+"""
+
+
+@unittest.skipUnless(PRESENT, 'set MSF_UFBX_CORPUS to an extracted ufbx 0.23.1 source tree to run this tier')
+@unittest.skipIf(oracle.skip_reason(), oracle.skip_reason() or '')
+class AgainstTheOracle(unittest.TestCase):
+    def test_every_corpus_file_converts_as_0_3_0_did(self):
+        oracle.define(OUTCOME)
+        files = sorted(str(p) for p in (ROOT / 'data').glob('*.fbx'))
+        cases = [('fbx_outcome(path, options)', {'path': f, 'options': None}) for f in files]
+        cases += [('fbx_outcome(path, options)', {'path': f, 'options': {'influences': 'top4', 'animation': 1, 'sample_rate': 7.5}})
+                  for f in files[::7]]
+        differing = oracle.differ(cases)
+        self.assertEqual([(case[1]['path'], case[1]['options']) for case, _, _ in differing[:5]], [],
+                         f'{len(differing)} of {len(cases)} files differ')
 
 
 if __name__ == '__main__':

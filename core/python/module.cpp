@@ -26,6 +26,8 @@ namespace nb = nanobind;
 void bind_json(nb::module_& m);
 void bind_math3d(nb::module_& m);
 void bind_authoring(nb::module_& m);
+void bind_snapshot(nb::module_& m);
+void bind_sources(nb::module_& m);
 
 namespace {
 
@@ -428,4 +430,6 @@ NB_MODULE(_core, m) {
     bind_json(m);
     bind_math3d(m);
     bind_authoring(m);
+    bind_snapshot(m);
+    bind_sources(m);
 }
