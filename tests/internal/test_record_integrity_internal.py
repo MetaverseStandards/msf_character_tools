@@ -42,7 +42,7 @@ class CoreHandleTests(unittest.TestCase):
         for name, rewrite in rewrites.items():
             with self.subTest(name):
                 self.assertNotEqual(rewrite(self.compiled._core.document()), self.compiled._core.document())
-                stand_in = SimpleNamespace(compile=lambda spec: core.compile({**spec, 'document': rewrite(spec['document'])}))
+                stand_in = SimpleNamespace(**{**vars(core), 'compile': lambda spec: core.compile({**spec, 'document': rewrite(spec['document'])})})
                 with mock.patch.object(_native, 'core', stand_in):
                     self.rejected(m.compile_mapping(self.pack, self.source, self.target, 'wink'))
 

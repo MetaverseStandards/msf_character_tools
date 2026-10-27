@@ -7,10 +7,12 @@ import hashlib
 import json
 import math
 
+from . import _native
 from .report import fail
 
 # Sockets and driverless devices fail at open, before fstat can classify them.
 SPECIAL_FILE_ERRNOS = frozenset({errno.ENXIO, errno.ENODEV, errno.EOPNOTSUPP})
+_UTF8 = {"utf-8", "utf-8-sig"}
 
 
 def freeze(x):
@@ -34,6 +36,11 @@ def thaw(x):
 
 
 def canonical_json(value):
+    if _native.core is not None:
+        # None: a value only the reference path below can write or refuse exactly.
+        raw = _native.core.canonical_json(value)
+        if raw is not None:
+            return raw
     return (json.dumps(thaw(value), sort_keys=True, ensure_ascii=False,
                        allow_nan=False, indent=2) + "\n").encode("utf-8")
 
@@ -78,6 +85,11 @@ def json_value(value, ref="/", depth=0):
 
 
 def parse_json(data):
+    if _native.core is not None and (type(data) is str or type(data) is bytes and json.detect_encoding(data) in _UTF8):
+        # None: input only the reference path below reports exactly, such as invalid JSON.
+        parsed = _native.core.parse_json(data)
+        if parsed is not None:
+            return parsed[0]
     def parse_int(text):
         # More than 309 significant decimal digits cannot fit binary64. Avoid
         # Python's decimal integer digit ceiling and let json_value report its path.
