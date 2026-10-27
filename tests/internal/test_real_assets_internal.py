@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""The 09K recipe that watches private geometry internals (world matrices and skin palettes)."""
+"""The 09K recipe that watches the core's geometry internals (world matrices and skin palettes)."""
 import unittest
-from unittest import mock
 
 import msf_tools as m
 from msf_tools import geometry, math3d
@@ -16,24 +15,10 @@ class RealAssetInternals(unittest.TestCase):
 
     def test_F_WORLD_PALETTE_WITNESSES(self):
         tolerance = self.x.expect['Fox']
-        worlds, palettes = [], {}
-        real_worlds, real_skin = geometry._worlds, geometry._skin
-
-        def capture_worlds(*args):
-            result = real_worlds(*args)
-            worlds.append(result)
-            return result
-
-        def capture_skin(positions, joints, weights, mesh_inverse, node_worlds, skin_joints, ibms, ref):
-            # The palettes the core builds: one per joint index with a nonzero weight.
-            for vertex_joints, vertex_weights in zip(joints, weights):
-                for j, w in zip(vertex_joints, vertex_weights):
-                    if w and j not in palettes:
-                        palettes[j] = math3d.multiply(math3d.multiply(mesh_inverse, node_worlds[skin_joints[j]]), ibms[j])
-            return real_skin(positions, joints, weights, mesh_inverse, node_worlds, skin_joints, ibms, ref)
-
-        with mock.patch.object(geometry, '_worlds', capture_worlds), mock.patch.object(geometry, '_skin', capture_skin):
-            self.assertTrue(m.evaluate_geometry(self.x.fox).ok)
+        # The world matrices and the palettes the core builds: one per joint index with a nonzero weight.
+        self.assertTrue(m.evaluate_geometry(self.x.fox).ok)
+        world_matrices, palettes = self.x.fox._core._witness(0.0, None, geometry.MAX_EVALUATION_COMPONENTS)
+        worlds = [world_matrices]
         case = self.x.oracle('Fox')['cases'][0]
         self.assertEqual(len(worlds), 1)
         self.assertEqual(len(worlds[0]), 26)

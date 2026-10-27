@@ -10,7 +10,8 @@ except ImportError:
 core = built if os.environ.get("MSF_TOOLS_PURE") != "1" else None
 
 # Fixed at import, so records admitted with a handle stay checkable if `core` is swapped out.
-HANDLES = (built.CompiledRules, built.Frames, built.Document) if built is not None else ()
+HANDLES = ((built.CompiledRules, built.Frames, built.Document, built.Snapshot, built.Positions)
+           if built is not None else ())
 
 
 def required():

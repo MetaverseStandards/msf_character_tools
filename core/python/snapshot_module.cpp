@@ -129,7 +129,7 @@ struct Snapshot {
     std::shared_ptr<const gltf::Asset> asset;
     std::string format, sha256;
     nb::object original, document_view;
-    nb::object views;  // adopted once: the record's view fields, in order
+    nb::object views, items;  // adopted once: the record's view fields, and its resource and chunk fields
     mutable std::optional<std::string> state_;
 
     nb::object document() {
@@ -152,21 +152,35 @@ struct Snapshot {
         return nb::tuple(out);
     }
 
-    void adopt(nb::tuple record_views) {
+    void adopt(nb::tuple record_views, nb::tuple record_items) {
         if (views.is_valid()) raise(PyExc_RuntimeError, "Snapshot views are already adopted.");
         views = record_views;
+        items = record_items;
     }
 
-    // Identity, item by item: every adopted object is immutable or one this
-    // handle's record keeps, so the same objects mean the same state.
-    bool check(nb::handle record_views) const {
-        if (!views.is_valid() || !PyTuple_CheckExact(record_views.ptr())) return false;
-        Py_ssize_t n = PyTuple_GET_SIZE(views.ptr());
-        if (PyTuple_GET_SIZE(record_views.ptr()) != n) return false;
+    // A fresh handle on the same asset, for another record.
+    Snapshot fork() const {
+        Snapshot out;
+        out.asset = asset;
+        out.format = format;
+        out.sha256 = sha256;
+        out.original = original;
+        out.document_view = document_view;
+        return out;
+    }
+
+    // Identity, item by item: every adopted object is immutable or one the
+    // record keeps, so the same objects mean the same state.
+    static bool same(const nb::object& adopted, nb::handle candidate) {
+        if (!adopted.is_valid() || !PyTuple_CheckExact(candidate.ptr())) return false;
+        Py_ssize_t n = PyTuple_GET_SIZE(adopted.ptr());
+        if (PyTuple_GET_SIZE(candidate.ptr()) != n) return false;
         for (Py_ssize_t i = 0; i < n; ++i)
-            if (PyTuple_GET_ITEM(views.ptr(), i) != PyTuple_GET_ITEM(record_views.ptr(), i)) return false;
+            if (PyTuple_GET_ITEM(adopted.ptr(), i) != PyTuple_GET_ITEM(candidate.ptr(), i)) return false;
         return true;
     }
+    bool check(nb::handle record_views) const { return same(views, record_views); }
+    bool check_items(nb::handle record_items) const { return same(items, record_items); }
 
     nb::bytes state() const {
         if (!state_) state_ = format + "\n" + sha256;
@@ -221,14 +235,30 @@ struct Snapshot {
     }
 
     // (diagnostics, Positions or None)
-    nb::tuple evaluate(nb::handle timestamp, nb::handle animation_id, nb::handle morph_weights, nb::handle node_transforms) const {
+    nb::tuple evaluate(nb::handle timestamp, nb::handle animation_id, nb::handle morph_weights, nb::handle node_transforms,
+                       long long budget) const {
         gltf::Time t = time_of(timestamp);
         std::optional<Value> animation;
         if (!animation_id.is_none()) animation = index_value(animation_id);
         gltf::Overrides morph = overrides_of(morph_weights), transforms = overrides_of(node_transforms);
-        gltf::Geometry geometry = gltf::evaluate_geometry(*asset, t, animation ? &*animation : nullptr, morph, transforms);
+        gltf::Geometry geometry = gltf::evaluate_geometry(*asset, t, animation ? &*animation : nullptr, morph, transforms, budget);
         if (!geometry.diagnostics.empty()) return nb::make_tuple(diagnostics_of(geometry.diagnostics), nb::none());
         return nb::make_tuple(nb::tuple(), nb::cast(Positions{instances_view(geometry)}));
+    }
+
+    // Test hook: (world matrices, {joint: palette}) as evaluate built them.
+    nb::tuple witness(nb::handle timestamp, nb::handle animation_id, long long budget) const {
+        std::optional<Value> animation;
+        if (!animation_id.is_none()) animation = index_value(animation_id);
+        gltf::Geometry geometry = gltf::evaluate_geometry(*asset, time_of(timestamp), animation ? &*animation : nullptr, {}, {}, budget);
+        auto rows = [](const std::array<std::array<double, 4>, 4>& m) {
+            return nb::make_tuple(float_tuple(m[0].data(), 4), float_tuple(m[1].data(), 4), float_tuple(m[2].data(), 4), float_tuple(m[3].data(), 4));
+        };
+        nb::list worlds;
+        for (const auto& m : geometry.worlds) worlds.append(rows(m));
+        nb::dict palettes;
+        for (const auto& [j, m] : geometry.palettes) palettes[nb::int_(j)] = rows(m);
+        return nb::make_tuple(nb::tuple(worlds), palettes);
     }
 
     static nb::object instances_view(const gltf::Geometry& geometry) {
@@ -330,15 +360,18 @@ void bind_snapshot(nb::module_& m) {
         .def("resources", &Snapshot::resources)
         .def("chunks", &Snapshot::chunks)
         .def("adopt", &Snapshot::adopt)
+        .def("fork", &Snapshot::fork)
         .def("check", &Snapshot::check)
+        .def("check_items", &Snapshot::check_items)
         .def("__msf_state__", &Snapshot::state)
         .def("check_encodable", &Snapshot::check_encodable)
         .def("validate", &Snapshot::validate)
         .def("morph_counts", &Snapshot::morph_counts)
         .def("decode", &Snapshot::decode, nb::arg("index").none(), nb::arg("ref"))
         .def("sample", &Snapshot::sample, nb::arg("animation_id").none(), nb::arg("timestamp"))
+        .def("_witness", &Snapshot::witness, nb::arg("timestamp"), nb::arg("animation_id").none(), nb::arg("budget"))
         .def("evaluate", &Snapshot::evaluate, nb::arg("timestamp"), nb::arg("animation_id").none(), nb::arg("morph_weights").none(),
-             nb::arg("node_transforms").none());
+             nb::arg("node_transforms").none(), nb::arg("budget"));
     nb::class_<Positions>(m, "Positions")
         .def_ro("view", &Positions::view)
         .def("check_view", &Positions::check_view)

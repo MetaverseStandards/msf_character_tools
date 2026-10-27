@@ -163,11 +163,15 @@ struct Instance {
 struct Geometry {
     std::vector<Instance> instances;
     std::vector<Diagnostic> diagnostics;
+    // Witnesses for tests: every node's world matrix (rows), and each skin
+    // palette matrix as first built, keyed by joint index.
+    std::vector<std::array<std::array<double, 4>, 4>> worlds;
+    std::vector<std::pair<long long, std::array<std::array<double, 4>, 4>>> palettes;
 };
 
 // evaluate_geometry after its snapshot, timestamp and attributes checks;
-// animation_id is nullptr for None.
+// animation_id is nullptr for None, budget caps evaluated components.
 Geometry evaluate_geometry(const Asset& asset, const Time& t, const Value* animation_id, const Overrides& morph_weights,
-                           const Overrides& node_transforms);
+                           const Overrides& node_transforms, long long budget);
 
 }  // namespace msf::gltf

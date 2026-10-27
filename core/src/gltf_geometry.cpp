@@ -17,8 +17,6 @@ namespace m3 = msf::math3d;
 
 namespace {
 
-constexpr long long kMaxEvaluationComponents = kMaxTotalAccessorComponents;
-
 // One node's overrides, as the reference's dict: key -> value, in insertion order.
 using NodeOverride = std::vector<std::pair<std::string, m3::Vec>>;
 
@@ -182,7 +180,8 @@ Rows geometry_accessor(const Asset& asset, const Value& aid, const char* shape, 
 std::vector<std::array<double, 3>> skin(const std::vector<std::array<double, 3>>& positions, const std::vector<std::vector<double>>& joints,
                                         const std::vector<std::vector<double>>& weights, const m3::Mat& mesh_inverse,
                                         const std::map<std::size_t, m3::Mat>& worlds, const Value& skin_joints,
-                                        const std::vector<m3::Mat>& ibms, const std::string& ref) {
+                                        const std::vector<m3::Mat>& ibms, const std::string& ref,
+                                        std::vector<std::pair<long long, m3::Mat>>& built) {
     std::vector<std::pair<long long, m3::Mat>> palettes;
     std::vector<std::array<double, 3>> out;
     out.reserve(positions.size());
@@ -200,6 +199,7 @@ std::vector<std::array<double, 3>> skin(const std::vector<std::array<double, 3>>
                 m3::Mat first = m3::multiply(mesh_inverse, worlds.at(node));
                 palettes.emplace_back(j, m3::multiply(first, ibms[static_cast<std::size_t>(j)]));
                 palette = &palettes.back().second;
+                if (std::none_of(built.begin(), built.end(), [&](const auto& entry) { return entry.first == j; })) built.push_back(palettes.back());
             }
             m3::check_affine(*palette, 1e-7, "/transforms");
             contributions.emplace_back(w, m3::transform(*palette, positions[v].data()));
@@ -218,10 +218,9 @@ std::vector<std::array<double, 3>> skin(const std::vector<std::array<double, 3>>
 }  // namespace
 
 Geometry evaluate_geometry(const Asset& asset, const Time& ts, const Value* animation_id, const Overrides& morph_weights,
-                           const Overrides& node_transforms) {
+                           const Overrides& node_transforms, long long budget) {
     const Value& doc = asset.doc;
     BigInt components = evaluation_components(doc);
-    long long budget = asset.generated ? asset.caps.total : kMaxEvaluationComponents;
     if (components > BigInt(budget))
         fail(Code::E_RESOURCE_LIMIT, "/nodes",
              "Mesh instances need " + components.to_string() + " position and morph-target components; the budget is " +
@@ -272,6 +271,7 @@ Geometry evaluate_geometry(const Asset& asset, const Time& ts, const Value* anim
     }
     std::map<std::size_t, m3::Mat> world = worlds(doc, overrides);
     Geometry out;
+    for (const auto& entry : world) out.worlds.push_back(entry.second);
     std::map<std::string, std::pair<std::vector<m3::Mat>, bool>> skin_matrices;
     const Value* accessors = get(doc, "accessors");
     const Value* views = get(doc, "bufferViews");
@@ -372,7 +372,7 @@ Geometry evaluate_geometry(const Asset& asset, const Time& ts, const Value* anim
                             fail(Code::E_SKIN_WEIGHTS, ref,
                                  std::string(sets == 1 ? "Four" : "All") + " skin weights must be nonnegative and sum to one; no implicit normalization.");
                     }
-                    positions = skin(positions, joints, skin_weights, mesh_inverse, world, skin_joints, cached->second.first, ref);
+                    positions = skin(positions, joints, skin_weights, mesh_inverse, world, skin_joints, cached->second.first, ref, out.palettes);
                 }
                 for (const auto& p : positions)
                     for (double x : p)
