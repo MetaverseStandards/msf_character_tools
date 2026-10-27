@@ -7,9 +7,9 @@ msf-tools 0.1.1; usd-core 0.26.11; ufbx 0.23.1. Errors are the largest point dis
 
 ### Synthetic USD scenes
 
-Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core (world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written by the test FBX writer from msf-tools' reading of the USD and read back through the FBX adapter, so it shows that the two readers agree on what was carried over; it does not re-test the USD losses.
+Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core (world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written by the test FBX writer from msf-tools' reading of the USD and read back through the FBX adapter. That column is a consistency check (msf writer to msf reader), not an independent reference: it shows the two readers agree on what was carried over, and it does not re-test the USD losses.
 
-| Scene | USD losses or refusal | USDA, USDC, USDZ agree | vs usd-core | FBX twin vs USD | FBX twin losses |
+| Scene | USD losses or refusal | USDA, USDC, USDZ agree | vs usd-core (independent) | Round trip through msf's FBX writer (consistency only) | Round-trip losses |
 |---|---|---|---|---|---|
 | `rig` | none | yes | 9.3e-08 | 0.0e+00 | none |
 | `rig_zup_cm` | I_UNITS_CONVERTED, I_AXES_CONVERTED | yes | 6.9e-08 | 0.0e+00 | none |
@@ -31,11 +31,11 @@ Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ a
 | `layers` | none | yes | 0.0e+00 | 0.0e+00 | none |
 | `escape` | refused: E_SOURCE_REFERENCE | yes | | | |
 
-### Khronos sample assets: glTF against FBX twins
+### Khronos sample assets: round trip through msf's FBX writer
 
-Each asset re-authored as FBX with the same nodes, meshes, skins, morph targets and first animation (`tests/test_source_twins.py`).
+Each asset re-authored as FBX by msf-tools' test writer with the same nodes, meshes, skins, morph targets and first animation, then read back (`tests/test_source_twins.py`). This is a consistency check, not an independent reference.
 
-| Asset | Times compared | FBX twin vs glTF |
+| Asset | Times compared | Round trip through msf's FBX writer (consistency only) |
 |---|---|---|
 | AnimatedMorphCube | 8 | 1.9e-07 |
 | Fox | 8 | 4.8e-07 |
@@ -61,7 +61,22 @@ Pivots, offsets, pre- and post-rotation and the three inherit types are checked 
 
 ## Exporter tier
 
-Blender FBX twins of the Khronos assets (decision D4) have not been made, so there are no exporter-tier twins yet. The closest evidence is the OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that changes points; "refused" rows are singular transforms.
+Blender FBX twins of the Khronos assets (decision D4) have not been made yet.
+
+### Two exports of one model: Kenney's character as FBX and as GLB
+
+`character-female-a` from Kenney's Mini Characters pack (CC0), exported by Kenney as FBX (Autodesk FBX SDK) and as GLB, read through the FBX and glTF paths. Distances are divided by the bounding-box diagonal; the tests allow 1e-3. The exports key the walk clip differently, so they agree closely at shared keys and less between them.
+
+| Pose | FBX vertices | GLB vertices | Largest distance to the other export |
+|---|---|---|---|
+| rest | 553 | 1576 | 5.9e-09 |
+| walk 0.1 s | 553 | 1576 | 2.6e-07 |
+| walk 0.25 s | 553 | 1576 | 5.6e-04 |
+| walk 0.5 s | 553 | 1576 | 3.1e-08 |
+
+### DCC reference frames from the ufbx corpus
+
+The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that changes points; "refused" rows are singular transforms.
 
 | File prefix | differs | match | refused | skipped |
 |---|---|---|---|---|

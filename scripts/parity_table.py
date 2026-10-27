@@ -3,9 +3,10 @@
 
     python -B scripts/parity_table.py [output.md]
 
-Needs usd-core and msf-tools-ufbx. The Khronos, real-asset and ufbx corpus
-sections run when MSF_KHRONOS_ASSETS, MSF_REAL_ASSETS and MSF_UFBX_CORPUS name
-local copies (see docs/testing.md) and say "not run" otherwise. Every number is
+Needs usd-core and msf-tools-ufbx. The Khronos, real-asset, example-asset and
+ufbx corpus sections run when MSF_KHRONOS_ASSETS, MSF_REAL_ASSETS,
+MSF_EXAMPLE_ASSETS and MSF_UFBX_CORPUS name local copies (see docs/testing.md)
+and say "not run" otherwise. Every number is
 measured when the script runs; nothing is copied from earlier runs.
 """
 import math
@@ -44,7 +45,7 @@ def fbx_twin(snapshot, seconds):
 
 
 def strict_rows():
-    yield '| Scene | USD losses or refusal | USDA, USDC, USDZ agree | vs usd-core | FBX twin vs USD | FBX twin losses |'
+    yield '| Scene | USD losses or refusal | USDA, USDC, USDZ agree | vs usd-core (independent) | Round trip through msf\'s FBX writer (consistency only) | Round-trip losses |'
     yield '|---|---|---|---|---|---|'
     for name, (expected, codes) in strict.CASES.items():
         resolver = m.LocalResolver(strict.SOURCE) if name == 'layers' else None
@@ -72,7 +73,7 @@ def khronos_rows():
     if not root or not (Path(root) / 'Models').is_dir():
         yield 'Not run: set MSF_KHRONOS_ASSETS to a glTF-Sample-Assets checkout.'
         return
-    yield '| Asset | Times compared | FBX twin vs glTF |'
+    yield '| Asset | Times compared | Round trip through msf\'s FBX writer (consistency only) |'
     yield '|---|---|---|'
     for name in twins.MODELS:
         folder = Path(root) / 'Models' / name / 'glTF'
@@ -111,6 +112,25 @@ def real_rows():
                    f'{tolerance["absolute"]:g} absolute + {tolerance["relative"]:g} relative |')
 
 
+def kenney_rows():
+    root = os.environ.get('MSF_EXAMPLE_ASSETS')
+    if not root or not (Path(root) / 'character-female-a.glb').is_file():
+        yield 'Not run: set MSF_EXAMPLE_ASSETS to the folder examples/fetch_assets.py downloaded into.'
+        return
+    sys.path.insert(0, str(ROOT / 'examples'))
+    from example_pipeline import pose
+    fbx = m.inspect_asset((Path(root) / 'character-female-a.fbx').read_bytes(), 'fbx', options={'animation': 'walk'}).value
+    glb = m.inspect_asset((Path(root) / 'character-female-a.glb').read_bytes(), 'glb').value
+    walk = [a.get('name') for a in glb.document['animations']].index('walk')
+    yield '| Pose | FBX vertices | GLB vertices | Largest distance to the other export |'
+    yield '|---|---|---|---|'
+    for label, seconds in (('rest', None), ('walk 0.1 s', 0.1), ('walk 0.25 s', 0.25), ('walk 0.5 s', 0.5)):
+        a = pose(fbx, **({} if seconds is None else {'animation_id': 0, 'timestamp': seconds}))[0]
+        b = pose(glb, **({} if seconds is None else {'animation_id': walk, 'timestamp': seconds}))[0]
+        error = max(max(min(math.dist(p, q) for q in other) for p in one) for one, other in ((a, b), (b, a)))
+        yield f'| {label} | {len(a)} | {len(b)} | {error / diagonal(b):.1e} |'
+
+
 def dcc_rows():
     if not os.environ.get('MSF_UFBX_CORPUS'):
         yield 'Not run: set MSF_UFBX_CORPUS to the ufbx corpus checkout.'
@@ -145,15 +165,17 @@ def main(output):
         '',
         'Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core '
         '(world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written '
-        'by the test FBX writer from msf-tools\' reading of the USD and read back through the FBX adapter, so it shows '
-        'that the two readers agree on what was carried over; it does not re-test the USD losses.',
+        'by the test FBX writer from msf-tools\' reading of the USD and read back through the FBX adapter. That column is a '
+        'consistency check (msf writer to msf reader), not an independent reference: it shows the two readers agree on '
+        'what was carried over, and it does not re-test the USD losses.',
         '',
         *strict_rows(),
         '',
-        '### Khronos sample assets: glTF against FBX twins',
+        '### Khronos sample assets: round trip through msf\'s FBX writer',
         '',
-        'Each asset re-authored as FBX with the same nodes, meshes, skins, morph targets and first animation '
-        '(`tests/test_source_twins.py`).',
+        'Each asset re-authored as FBX by msf-tools\' test writer with the same nodes, meshes, skins, morph targets and '
+        'first animation, then read back (`tests/test_source_twins.py`). This is a consistency check, not an independent '
+        'reference.',
         '',
         *khronos_rows(),
         '',
@@ -169,10 +191,21 @@ def main(output):
         '',
         '## Exporter tier',
         '',
-        'Blender FBX twins of the Khronos assets (decision D4) have not been made, so there are no exporter-tier twins '
-        'yet. The closest evidence is the OBJ frames that each DCC exported alongside the ufbx corpus files, compared '
-        'with msf-tools\' world points (`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that '
-        'changes points; "refused" rows are singular transforms.',
+        'Blender FBX twins of the Khronos assets (decision D4) have not been made yet.',
+        '',
+        '### Two exports of one model: Kenney\'s character as FBX and as GLB',
+        '',
+        '`character-female-a` from Kenney\'s Mini Characters pack (CC0), exported by Kenney as FBX (Autodesk FBX SDK) and '
+        'as GLB, read through the FBX and glTF paths. Distances are divided by the bounding-box diagonal; the tests allow '
+        '1e-3. The exports key the walk clip differently, so they agree closely at shared keys and less between them.',
+        '',
+        *kenney_rows(),
+        '',
+        '### DCC reference frames from the ufbx corpus',
+        '',
+        'The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools\' world points '
+        '(`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that changes points; "refused" rows are '
+        'singular transforms.',
         '',
         *dcc_rows(),
         '',

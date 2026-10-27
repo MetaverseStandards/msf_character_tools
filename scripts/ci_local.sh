@@ -141,9 +141,10 @@ else
 fi
 
 # docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
-if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/Models" ] && [ -n "$corpus" ] && [ -x "$py312" ]; then
+if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/Models" ] && [ -n "$corpus" ] \
+    && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
   fresh="$MSF/_tools/parity.md"
-  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
+  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
       && cmp -s "$fresh" docs/parity.md; then
     lines+=("- docs/parity.md: matches a fresh measurement")
   else
@@ -151,7 +152,7 @@ if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/
     failed=1
   fi
 else
-  lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos and ufbx corpus inputs)")
+  lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")
 fi
 
 if ! command -v cmake >/dev/null 2>&1; then
