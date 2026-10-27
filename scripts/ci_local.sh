@@ -173,13 +173,22 @@ fi
 
 # Sanitizer tier (--sanitize). Isolated source readers start a worker with a
 # cleared environment, which cannot load the ASan runtime, so their one public
-# test is left out here.
+# test is left out here. MSF_SANITIZE_CC / MSF_SANITIZE_CXX choose the compiler
+# (for example a clang where the system compiler's libasan is not installed);
+# the runtime preloaded into Python is that compiler's.
 if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
+  san_cc="${MSF_SANITIZE_CC:-cc}"
+  compilers=()
+  [ -n "${MSF_SANITIZE_CC:-}" ] && compilers=(-DCMAKE_C_COMPILER="$MSF_SANITIZE_CC" -DCMAKE_CXX_COMPILER="${MSF_SANITIZE_CXX:-c++}")
   case "$(uname -s)" in
     Darwin) preload=(DYLD_INSERT_LIBRARIES="$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)") ;;
-    *) preload=(LD_PRELOAD="$(cc -print-file-name=libasan.so)") ;;
+    *) if "$san_cc" --version 2>/dev/null | grep -q clang; then
+         preload=(LD_PRELOAD="$("$san_cc" --print-runtime-dir)/libclang_rt.asan.so")
+       else
+         preload=(LD_PRELOAD="$("$san_cc" -print-file-name=libasan.so)")
+       fi ;;
   esac
-  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
+  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON "${compilers[@]}" >/dev/null 2>&1 \
       && cmake --build build/core-asan-3.12 >/dev/null 2>&1; then
     output=$(env "${preload[@]}" ASAN_OPTIONS=detect_leaks=0:strip_env=0 UBSAN_OPTIONS=print_stacktrace=1 "$py312" -B - <<'PY' 2>&1
 import sys, unittest

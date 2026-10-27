@@ -184,7 +184,9 @@ class Numbers(unittest.TestCase):
 
 
 def git(root, *args):
-    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, check=True).stdout
+    # The sanitizer tier preloads the ASan runtime into Python; git must not inherit it.
+    env = {k: v for k, v in os.environ.items() if k not in ('LD_PRELOAD', 'DYLD_INSERT_LIBRARIES')}
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, check=True, env=env).stdout
 
 
 def goldens(root=ROOT, commit=None):
