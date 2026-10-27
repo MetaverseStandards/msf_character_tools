@@ -130,20 +130,9 @@ def world_points(snapshot, seconds):
 
 
 def stack_names(data):
-    from msf_tools_ufbx import ffi, lib
     from internal.test_source_fbx_native import open_scene
-    handle, _ = open_scene(data)
-    try:
-        info = ffi.new('msf_fbx_info *')
-        lib.msf_fbx_info_get(handle, info)
-        names = []
-        for s in range(info.anim_stacks):
-            stack = ffi.new('msf_fbx_stack *')
-            lib.msf_fbx_stack_get(handle, s, stack)
-            names.append(ffi.unpack(stack.name, stack.name_len).decode('utf-8', 'replace'))
-        return names
-    finally:
-        lib.msf_fbx_close(handle)
+    scene, _ = open_scene(data)
+    return [scene.stack(s)[0].decode('utf-8', 'replace') for s in range(scene.info()['anim_stacks'])]
 
 
 def explaining_meshes(snapshot):

@@ -7,7 +7,7 @@
 namespace msf {
 
 struct PyError {
-    enum class Type { value, overflow, zero_division, type } type;
+    enum class Type { value, overflow, zero_division, type, index } type;
     std::string message;
 };
 
