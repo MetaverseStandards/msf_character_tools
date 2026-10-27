@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""Packaging metadata: the version is stated once per place and has a CHANGELOG section."""
+"""Packaging metadata: the version is stated once per place and has a CHANGELOG section; vendored code is pinned."""
+import hashlib
+import json
 from pathlib import Path
 import tomllib
 import unittest
@@ -22,6 +24,15 @@ class PackageMetadata(unittest.TestCase):
         self.assertIn('LICENSES/CC-BY-SA-4.0.txt', project['license-files'])
         for path in project['license-files']:
             self.assertTrue((ROOT / path).is_file(), path)
+
+    def test_every_vendored_file_matches_its_source_lock_pin(self):
+        pins = {}
+        for entry in json.loads((ROOT / 'docs/source-lock.json').read_text()):
+            pins.update(entry.get('vendored', {}))
+        vendored = {str(p.relative_to(ROOT)) for p in (ROOT / 'core/third_party').rglob('*') if p.is_file()}
+        self.assertEqual(sorted(vendored - set(pins)), [])
+        for name, digest in pins.items():
+            self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest, name)
 
 
 if __name__ == '__main__':

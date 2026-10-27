@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: MIT
 """The ufbx C shim compiled into the core, through its test hooks (msf_tools._core._fbx_open)."""
-import hashlib
-import json
 from pathlib import Path
 import unittest
 
@@ -158,14 +156,6 @@ class UfbxShim(unittest.TestCase):
         self.assertAlmostEqual(to_parent[12], 5.0, places=6)
         self.assertAlmostEqual(weights[channel], 0.5, places=6)
         self.assertIsInstance(handle.evaluate(0, 0.5, 2, 1, True), bytes)
-
-
-class VendoredUfbx(unittest.TestCase):
-    def test_vendored_files_match_the_source_lock(self):
-        root = Path(__file__).resolve().parents[2]
-        lock = next(e for e in json.loads((root / 'docs/source-lock.json').read_text()) if e['id'] == 'ufbx')
-        for name, digest in lock['vendored'].items():
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), digest, name)
 
 
 if __name__ == '__main__':
