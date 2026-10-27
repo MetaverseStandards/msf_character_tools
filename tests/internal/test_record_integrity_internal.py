@@ -53,6 +53,42 @@ class CoreHandleTests(unittest.TestCase):
                 object.__setattr__(record, name, view)
                 record.to_dict()
 
+    def test_equal_copies_of_snapshot_and_geometry_views_are_rejected(self):
+        glb = self.good(m.inspect_asset((integrity.ROOT / 'tests/public/fixtures/combined.glb').read_bytes(), 'glb'))
+        geometry = self.good(m.evaluate_geometry(self.asset))
+        mapping = lambda r: m.compile_mapping(self.pack, self.source, r, 'wink')
+        copies = [(self.asset, 'document', m.evaluate_geometry), (self.asset, 'resources', m.evaluate_geometry),
+                  (self.asset, 'original_bytes', m.evaluate_geometry), (glb, 'chunks', m.evaluate_geometry),
+                  (self.bound, 'channels', mapping), (self.bound, 'bindings', mapping),
+                  (self.source, 'document', lambda r: m.compile_mapping(self.pack, r, self.target, 'wink')),
+                  (self.source, 'channels', lambda r: m.compile_mapping(self.pack, r, self.target, 'wink')),
+                  (geometry, 'instances', None)]
+        for record, name, use in copies:
+            with self.subTest(record=type(record).__name__, view=name):
+                view = getattr(record, name)
+                copy = (MappingProxyType(dict(view)) if isinstance(view, MappingProxyType)
+                        else bytes(bytearray(view)) if isinstance(view, bytes) else tuple(list(view)))
+                self.assertEqual(copy, view)
+                self.assertIsNot(copy, view)
+                object.__setattr__(record, name, copy)
+                if use is not None:
+                    self.rejected(use(record))
+                self.refuses_export(record.to_dict)
+                object.__setattr__(record, name, view)
+                record.to_dict()
+
+    def test_equal_copies_of_resource_and_chunk_fields_are_rejected(self):
+        glb = self.good(m.inspect_asset((integrity.ROOT / 'tests/public/fixtures/combined.glb').read_bytes(), 'glb'))
+        for item, name in [(glb.resources[0], 'data'), (glb.resources[0], 'sha256'), (glb.chunks[0], 'data')]:
+            with self.subTest(item=type(item).__name__, field=name):
+                value = getattr(item, name)
+                copy = bytes(bytearray(value)) if isinstance(value, bytes) else ''.join(list(value))
+                self.assertEqual(copy, value)
+                object.__setattr__(item, name, copy)
+                self.rejected(m.decode_accessor(glb, 0))
+                object.__setattr__(item, name, value)
+                self.good(m.decode_accessor(glb, 0))
+
     def test_a_compiled_mapping_moved_to_another_pack_is_rejected(self):
         other = self.good(m.compile_pack(self.good(m.validate_authoring(integrity.document()))))
         object.__setattr__(self.compiled, '_core', self.good(m.compile_mapping(other, self.good(m.profile_snapshot(other, 'source')),
