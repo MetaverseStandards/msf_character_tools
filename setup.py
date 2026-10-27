@@ -13,26 +13,40 @@ def _git(root, *args):
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def source_commit(root):
-    """HEAD when root is the top of a Git checkout with no changes to tracked files, else None."""
+def checkout(root):
+    """Where root stands in Git: (True, HEAD or None) inside a checkout, (False, None) outside one.
+
+    HEAD is given only at the top of a checkout with no changes to tracked files and
+    no untracked files under msf_tools/, which setuptools would build into the wheel.
+    """
     try:
         top, head = _git(root, "rev-parse", "--show-toplevel", "HEAD").splitlines()
-        if Path(top).resolve() != Path(root).resolve() or _git(root, "status", "--porcelain", "--untracked-files=no"):
-            return None
-        return head
-    except (OSError, ValueError, subprocess.CalledProcessError):
-        return None
+    except (OSError, ValueError):
+        return False, None
+    except subprocess.CalledProcessError:
+        # Also fails inside a checkout with no commits yet.
+        try:
+            return _git(root, "rev-parse", "--is-inside-work-tree") == "true", None
+        except subprocess.CalledProcessError:
+            return False, None
+    if Path(top).resolve() != Path(root).resolve():
+        return True, None
+    for line in _git(root, "status", "--porcelain", "--untracked-files=all").splitlines():
+        if not line.startswith("?? ") or line[3:].lstrip('"').startswith("msf_tools/"):
+            return True, None
+    return True, head
 
 
 def build_info(root, version):
     """{"version", "commit"} for a build from root, or None when the source commit is unknown.
 
-    A clean checkout names its HEAD. An sdist has no .git, so it carries the record
-    its checkout wrote, which is used only if it names this version.
+    Inside a Git checkout only Git counts, so a record left in a dirty checkout is
+    never used. An sdist has no .git, so outside any checkout the record its
+    checkout wrote is used, if it names this version.
     """
-    commit = source_commit(root)
-    if commit is not None:
-        return {"version": version, "commit": commit}
+    inside, commit = checkout(root)
+    if inside:
+        return None if commit is None else {"version": version, "commit": commit}
     carried = Path(root) / BUILD_INFO
     try:
         info = json.loads(carried.read_text(encoding="utf-8"))
