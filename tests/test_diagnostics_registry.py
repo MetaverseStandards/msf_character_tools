@@ -6,6 +6,7 @@ Run this file directly to list registered codes that no test mentions.
 import ast
 from pathlib import Path
 import re
+import tempfile
 import tomllib
 import unittest
 from unittest.mock import patch
@@ -21,10 +22,10 @@ CODE = re.compile(r'[EWI]_[A-Z][A-Z0-9_]*')
 SEVERITY = {'E': 'error', 'W': 'warning', 'I': 'info'}
 KEYS = {'severity', 'meaning', 'since', 'strict', 'reserved', 'removed'}
 RELEASES = ('0.1.0', '0.1.1', '0.2.0.dev0', '0.3.0')
-# Codes assembled at run time, keyed by the template the source builds them from.
+# Codes assembled at run time: template -> (the one file that builds it, its codes).
 # 'E_{}' is the strict-losses rename of a warning; entries' `strict` fields cover it.
-BUILT = {'E_{}_COMPATIBILITY': ('E_NEUTRAL_COMPATIBILITY', 'E_SIDE_COMPATIBILITY', 'E_COUPLING_COMPATIBILITY'),
-         'E_{}': ()}
+BUILT = {'E_{}_COMPATIBILITY': ('mapping.py', ('E_NEUTRAL_COMPATIBILITY', 'E_SIDE_COMPATIBILITY', 'E_COUPLING_COMPATIBILITY')),
+         'E_{}': ('snapshot.py', ())}
 
 
 def registry():
@@ -41,12 +42,20 @@ def scan(paths):
             if isinstance(node, ast.JoinedStr) and node.values and isinstance(node.values[0], ast.Constant) \
                     and re.match(r'[EWI]_', node.values[0].value):
                 templates.setdefault(''.join(v.value if isinstance(v, ast.Constant) else '{}' for v in node.values), set()).add(path)
-            elif isinstance(node, ast.BinOp) and isinstance(node.left, ast.Constant) \
-                    and type(node.left.value) is str and re.fullmatch(r'[EWI]_', node.left.value):
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add) and isinstance(node.left, ast.Constant) \
+                    and type(node.left.value) is str and re.match(r'[EWI]_', node.left.value):
                 templates.setdefault(node.left.value + '{}', set()).add(path)
             elif isinstance(node, ast.Constant) and type(node.value) is str and CODE.fullmatch(node.value):
                 literals.setdefault(node.value, set()).add(path)
+            elif isinstance(node, ast.Constant) and type(node.value) is str and re.match(r'[EWI]_[A-Z0-9_]*[%{]', node.value):
+                templates.setdefault(node.value, set()).add(path)
     return literals, templates
+
+
+def unknown_builders(templates):
+    """Run-time code templates that are new, or built somewhere other than their one known file."""
+    return sorted(f'{template} in {path.name}' for template, paths in templates.items() for path in paths
+                  if template not in BUILT or path.name != BUILT[template][0])
 
 
 class DiagnosticsRegistry(unittest.TestCase):
@@ -85,17 +94,31 @@ class DiagnosticsRegistry(unittest.TestCase):
                 self.assertNotIn('reserved', self.codes[code], f'{code} is now used; drop its reserved field')
 
     def test_codes_built_at_run_time_are_known_and_registered(self):
-        self.assertEqual(set(self.templates), set(BUILT),
-                         'A code is built at run time from a new template; add the template and its codes to BUILT.')
-        for template, codes in BUILT.items():
+        self.assertEqual(unknown_builders(self.templates), [],
+                         'A code is built at run time in a new way or place; add the template, file and codes to BUILT.')
+        self.assertEqual(set(self.templates), set(BUILT))
+        for template, (_, codes) in BUILT.items():
             pattern = '^' + re.escape(template).replace(r'\{\}', '[A-Z][A-Z0-9_]*') + '$'
             for code in codes:
                 with self.subTest(code=code):
                     self.assertRegex(code, pattern)
                     self.assertTrue(code in self.codes, f'{code} is not registered')
 
+    def test_new_code_builders_are_caught_wherever_they_appear(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for line in ('fail("E_" + kind + "_UNITS", ref, "x")', 'fail("E_SOURCE_" + kind, ref, "x")',
+                         'fail("E_%s_UNITS" % kind, ref, "x")', 'fail("E_{}_UNITS".format(kind), ref, "x")',
+                         'fail(f"W_{kind}", ref, "x")'):
+                with self.subTest(line=line):
+                    path = Path(tmp) / 'mapping.py'
+                    path.write_text(line + '\n', encoding='utf-8')
+                    self.assertNotEqual(unknown_builders(scan([path])[1]), [])
+            path = Path(tmp) / 'snapshot.py'
+            path.write_text('code = "E_" + d.code.removeprefix("W_")\n', encoding='utf-8')
+            self.assertEqual(unknown_builders(scan([path])[1]), [])
+
     def test_the_registry_has_no_orphans(self):
-        reachable = set(self.literals) | set(self.strict.values()) | {c for codes in BUILT.values() for c in codes}
+        reachable = set(self.literals) | set(self.strict.values()) | {c for _, codes in BUILT.values() for c in codes}
         for code, entry in self.codes.items():
             with self.subTest(code=code):
                 if 'reserved' not in entry and 'removed' not in entry:
