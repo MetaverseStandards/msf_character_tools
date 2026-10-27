@@ -15,7 +15,7 @@ Each script takes real assets through the whole msf-tools chain and writes files
 
 The Fox and the Kenney character have no morph targets. For each of them the binding step is expected to fail with `E_BINDING_REFERENCE`, and the script says so and carries on. The mapping is then evaluated against the example pack's own target profile. The cubes show a successful binding.
 
-The FBX cube is written by msf-tools' own test FBX writer (`tests/make_example_fbx.py`), so it exercises the shape-key path but says nothing about how real exporters write FBX. The Kenney character is the real export.
+The FBX cube is written by msf-tools' own test FBX writer (`tests/public/make_example_fbx.py`), so it exercises the shape-key path but says nothing about how real exporters write FBX. The Kenney character is the real export.
 
 ## Set up from a clean environment
 
@@ -111,7 +111,7 @@ The Fox's CC-BY credits must be shown wherever renders of it are shown, which is
 
 ## Checks
 
-`tests/test_examples.py` runs every script in a subprocess and checks the outputs against references that do not come from msf-tools:
+`tests/public/test_examples.py` runs every script in a subprocess and checks the outputs against references that do not come from msf-tools:
 - the assets' hashes, counts and licence text;
 - the glTF cube's data read from the GLB with `struct`, with its target delta applied by hand;
 - usd-core's own skinning of the tube;

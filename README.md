@@ -5,11 +5,12 @@ Python 3.11+ standard library reference for validated signal mappings and immuta
 ## Run
 
 ```sh
-python3 -B -m unittest discover -s tests
+python3 -B -m unittest discover -s tests/public
+python3 -B -m unittest discover -s tests/internal -t tests
 python3 -B check.py
 python3 -B -m msf_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv
 python3 -B -m msf_tools evaluate examples/authoring wink examples/samples.json --source-profile source --target-profile target
-python3 -B -m msf_tools geometry tests/fixtures/combined.gltf --animation 0 --time 0.5
+python3 -B -m msf_tools geometry tests/public/fixtures/combined.gltf --animation 0 --time 0.5
 ```
 
 For installation in your chosen virtual environment:
@@ -41,7 +42,7 @@ Inspection retains original asset bytes, complete JSON, opaque attributes/extens
 
 The evaluator supports positions, relative Basis morph deltas with signed weights, LBS over every JOINTS_n/WEIGHTS_n set per instance, and one explicitly selected animation with STEP, LINEAR and CUBICSPLINE sampling. It rejects unsupported required extensions, unavailable resources, singular mesh transforms and requests for other attributes. It does not establish visual, contact, calibration or universal format equivalence. The [test plan](docs/testing.md) records actual gates and tolerances.
 
-The original [combined fixture](tests/fixtures/README.md) includes jaw/head deformation, wink/smile/corrective targets, an accessory joint, unknown weighted joint, two mesh instances and independent analytical goldens. Geometry tests run without completing any external signal taxonomy.
+The original [combined fixture](tests/public/fixtures/README.md) includes jaw/head deformation, wink/smile/corrective targets, an accessory joint, unknown weighted joint, two mesh instances and independent analytical goldens. Geometry tests run without completing any external signal taxonomy.
 
 ## Development and licenses
 

@@ -10,4 +10,4 @@ The pybind11 numerical pilot (`_msf_native`, C++17 kernels under `native/src` an
 pip install ./native/ufbx      # needs a C compiler; builds and installs msf_tools_ufbx
 ```
 
-Tests that need it skip when it is not installed. `tests/test_source_fbx_corpus.py` runs over ufbx's own test corpus when `MSF_UFBX_CORPUS` names an extracted ufbx source tree at the pinned commit; the corpus is never committed.
+Tests that need it skip when it is not installed. `tests/internal/test_source_fbx_corpus.py` runs over ufbx's own test corpus when `MSF_UFBX_CORPUS` names an extracted ufbx source tree at the pinned commit; the corpus is never committed.

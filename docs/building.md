@@ -25,7 +25,7 @@ Every built package contains `msf_tools/_build_info.json`:
 
 A checked-in file cannot work, because a commit cannot contain its own hash.
 
-`tests/test_build_info.py` covers these rules with Git's answers faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist and checks the record.
+`tests/internal/test_build_info.py` covers these rules with Git's answers faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist and checks the record.
 
 ## Tools
 
