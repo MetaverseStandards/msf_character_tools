@@ -25,11 +25,11 @@ validate_authoring(document) -> Result[ValidatedAuthoring]
 compile_pack(validated_authoring) -> Result[Pack]
 ```
 
-Authoring is a JSON-compatible mapping, usually loaded from TOML. Required top keys are `schema_version="1.0"`, `data_version` (independent semantic version), `operator_version="1.0"`, `id`, `license`, `signals`, `profiles`, `mappings`, `evidence`. Pack wire bytes contain the same validated document. `.document` is deeply immutable; `.to_dict()` returns a detached ordinary JSON value. `.to_bytes()` gives deterministic UTF-8; `.sha256` hashes those exact bytes. Raw dicts cannot be passed to `compile_pack`.
+Authoring is a JSON-compatible mapping, usually loaded from TOML. Required top keys are `schema_version` (`"1.0"` or `"1.1"`), `data_version` (independent semantic version), `operator_version` (`"1.0"` or `"1.1"`), `id`, `license`, `signals`, `profiles`, `mappings`, `evidence`. Pack wire bytes contain the same validated document. `.document` is deeply immutable; `.to_dict()` returns a detached ordinary JSON value. `.to_bytes()` gives deterministic UTF-8; `.sha256` hashes those exact bytes. Raw dicts cannot be passed to `compile_pack`.
 
 Required signal keys: `id`, `label`, `value_type="scalar"`, `units`, `domain={min?,max?}`, explicit `calibration`, `disposition`, `evidence` IDs, `evidence_status`. Optional keys: `region`, `side`, `neutral`, `native_default`, `coupling`, `native_id`, `surface`, `validity`, `confidence`, `time`, `metadata`. Neutral and storage default are independently optional values within domain. Units/calibration are explicit nonempty strings; identity mappings require the same calibration basis. Scalars exclude bool and all nonfinite values. Unbounded domains are `{}`. Survey text is never executable.
 
-Disposition: `mapped|unsupported|unresolved|excluded`. Evidence status: `verified_current|proposed|unresolved`. Coupling is a description or array of descriptions; confidence is a description or scalar in [0,1]; validity is bool or a description; time is a description. Format-specific inventoried structures belong inside explicit `metadata` objects. Unknown keys elsewhere fail.
+Disposition: `mapped|unsupported|unresolved|excluded`. Evidence status: `verified_current|proposed|unresolved`, plus `calibrated_software` from authoring schema 1.1 (any other schema version refuses it with `E_ENUM`). `calibrated_software` marks values fitted in software without measured people or devices; mapping compilation treats it exactly as `proposed`, so it never satisfies a `verified_current` record. Coupling is a description or array of descriptions; confidence is a description or scalar in [0,1]; validity is bool or a description; time is a description. Format-specific inventoried structures belong inside explicit `metadata` objects. Unknown keys elsewhere fail.
 
 Profiles require `id,label,signal_ids` with optional evidence and metadata. Evidence requires `id,claim,status`; public evidence has `url` (HTTPS), at least one of `revision,retrieved,sha256`, and `locator`. Original fixture evidence uses `license,authorship`. Optional evidence keys are exactly `url,revision,retrieved,sha256,locator,license,authorship`.
 
@@ -40,8 +40,12 @@ Mappings require `id,rules`. A rule has `id,inputs,outputs,operator,disposition,
 | identity | none | one scalar in/out | y=x |
 | affine | explicit finite scale, offset | one scalar in/out | y=scale*x+offset |
 | weighted_sum | explicit ordered finite weights | N scalar inputs, one output | y=sum(weights[i]*inputs[i]) in declared order |
+| piecewise_linear (operators 1.1) | `knots=[[x,y],...]`, at least two | one scalar in/out | y=y_i at a knot; otherwise y=y_i+t*(y_{i+1}-y_i), t=(x-x_i)/(x_{i+1}-x_i), in the segment holding x |
 
-Unary/weighted output domain is checked during evaluation. Identity requires equal declared domains. Compatible units are required; explicit affine unit conversion needs stated assumptions. No clamp, inverse, neutral substitution, bilateral expansion or synthesis is implied. Unresolved inventory compiles into a pack, but requesting an unresolved rule fails mapping compilation.
+Unary/weighted output domain is checked during evaluation. Identity requires equal declared domains.
+
+`piecewise_linear` needs `operator_version="1.1"`; a 1.0 document that uses it fails `E_OPERATOR_VERSION`. Knot x values must strictly increase and y values must be monotone in one direction, flat segments allowed; spans between neighbouring knots must be finite binary64 (`E_KNOTS`). Mapping compilation requires the first and last x to equal the input signal's declared `min` and `max` (`E_DOMAIN_COMPATIBILITY`), so there is no extrapolation. The segment formula uses the same checked binary64 arithmetic as `affine`, so an underflowing product is refused with `E_NONFINITE`, and the result is kept within the segment's two y values, which keeps the operator monotone across knots despite rounding. A one-sided split such as `[[-1,1],[0,0],[1,0]]` is exactly zero on its flat side, so two opposite splits of one signed value are never both nonzero.
+ Compatible units are required; explicit affine unit conversion needs stated assumptions. No clamp, inverse, neutral substitution, bilateral expansion or synthesis is implied. Unresolved inventory compiles into a pack, but requesting an unresolved rule fails mapping compilation.
 
 ### Fragment loader
 
