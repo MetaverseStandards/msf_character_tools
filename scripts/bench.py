@@ -70,6 +70,15 @@ def wide():
     return document([signal(s) for s in sources + targets], sources, targets, rules)
 
 
+def large(count=2000):
+    """A pack-sized document: `count` affine rules over 2 * count signals, for JSON and pack timings."""
+    sources = [f'in.{i:05}' for i in range(count)]
+    targets = [f'out.{i:05}' for i in range(count)]
+    rules = [rule(f'r{i:05}', [sources[i]], targets[i], {'id': 'affine', 'scale': 0.5 + i / count, 'offset': -i / (3 * count)})
+             for i in range(count)]
+    return document([signal(s, -1, 1) for s in sources] + [signal(s, -2, 2) for s in targets], sources, targets, rules)
+
+
 def frames(sources, count, seed=20261027):
     rng = random.Random(seed)
     return [{'timestamp': i / 60, 'values': {s: rng.random() for s in sources},
@@ -123,6 +132,12 @@ def main():
             'rules': len(doc['mappings'][0]['rules']), 'outputs': len(doc['profiles'][1]['signal_ids']),
             'compile_mapping_seconds': median_seconds(lambda: m.compile_mapping(pack, source, target, 'map'), args.runs),
             'evaluate_mapping_seconds': median_seconds(lambda: m.evaluate_mapping(compiled, samples), args.runs)}
+    validated = m.validate_authoring(large()).value
+    pack = m.compile_pack(validated).value
+    report['workloads']['pack'] = {
+        'rules': len(pack.document['mappings'][0]['rules']), 'canonical_json_bytes': len(pack.to_bytes()),
+        'canonical_json_seconds': median_seconds(lambda: m.canonical_json(pack.document), args.runs),
+        'compile_pack_seconds': median_seconds(lambda: m.compile_pack(validated), args.runs)}
     text = json.dumps(report, indent=2, sort_keys=True) + '\n'
     if args.output:
         args.output.write_text(text, encoding='utf-8')
