@@ -20,6 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - run: python -m pip install nanobind scikit-build-core cmake ninja
+      - run: cmake -S . -B build/core -G Ninja -DPython_EXECUTABLE="$(which python)" -DMSF_CORE_IN_PLACE=ON && cmake --build build/core
       - run: python -B -m unittest discover -s tests/public
+        env: {MSF_REQUIRE_CORE: '1'}
       - run: python -B -m unittest discover -s tests/internal -t tests
+        env: {MSF_REQUIRE_CORE: '1'}
+      - run: python -B -m unittest discover -s tests/public
+        env: {MSF_TOOLS_PURE: '1'}
       - run: python -B check.py

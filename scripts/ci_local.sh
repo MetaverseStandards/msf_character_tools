@@ -32,6 +32,24 @@ for version in 3.11 3.12; do
   fi
 done
 
+# Build the C++ core in place for each Python, then require it in the suites.
+export PATH="$MSF/_tools/bin:$PATH"
+for version in 3.11 3.12; do
+  var="MSF_PY${version/./}"
+  py="${!var:-$MSF/_tools/venv$version/bin/python}"
+  [ -x "$py" ] || continue
+  start=$(python3 -c 'import time; print(time.time())')
+  if cmake -S . -B "build/core-$version" -G Ninja -DPython_EXECUTABLE="$py" -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
+      && cmake --build "build/core-$version" >/dev/null 2>&1 \
+      && MSF_TOOLS_PURE= "$py" -B -c 'from msf_tools import _native; assert _native.core'; then
+    lines+=("- C++ core for Python $version: built in place and loaded in $(seconds "$start") s")
+  else
+    lines+=("- C++ core for Python $version: BUILD OR LOAD FAILED (cmake -S . -B build/core-$version -DMSF_CORE_IN_PLACE=ON)")
+    failed=1
+  fi
+done
+export MSF_REQUIRE_CORE=1
+
 # unittest prints "Ran N tests" and OK/FAILED last; without them the run died part way.
 verdict_of() {
   if ! printf '%s\n' "$1" | grep -qE '^Ran '; then echo "CRASHED (no unittest summary, exit $2)"; return; fi
@@ -97,6 +115,12 @@ if [ -x "$py312" ]; then
   fi
 fi
 
+# The reference path alone must still pass the public gate.
+if [ -x "$py312" ]; then
+  output=$(MSF_TOOLS_PURE=1 MSF_REQUIRE_CORE= suites "$py312" 'test*.py' '')
+  tier "Public suite on the pure-Python path (MSF_TOOLS_PURE=1, Python 3.12)" $? "$output"
+fi
+
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
 openusd="${MSF_OPENUSD_ASSETS:-$MSF/_viz/assets/openusd}"
 if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
@@ -157,24 +181,30 @@ else
   lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")
 fi
 
-# A wheel built from a clean clone of HEAD, through an sdist as `uv build` does, must record HEAD.
+# A wheel built from a clean clone of HEAD, through an sdist as `uv build` does, must record HEAD
+# and hold exactly the tracked modules plus the extension.
 if [ -x "$uv" ] && [ -x "$py312" ]; then
   scratch=$(mktemp -d)
   head=$(git rev-parse HEAD)
   if git clone -q --no-hardlinks . "$scratch/src" && git -C "$scratch/src" checkout -q "$head" \
       && (cd "$scratch/src" && "$uv" build -q --python "$py312" --out-dir "$scratch/dist" >/dev/null 2>&1) \
-      && "$py312" -I - "$scratch/dist" "$head" <<'PY'
+      && "$py312" -I - "$scratch/dist" "$head" $(git ls-files 'msf_tools/*.py') <<'PY'
 import json, sys, tomllib, zipfile
 from pathlib import Path
-dist, head = Path(sys.argv[1]), sys.argv[2]
+dist, head, modules = Path(sys.argv[1]), sys.argv[2], set(sys.argv[3:])
 version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
 [wheel] = dist.glob('*.whl')
-sys.exit(json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json')) != {'version': version, 'commit': head})
+names = set(zipfile.ZipFile(wheel).namelist())
+package = {n for n in names if n.startswith('msf_tools/')}
+extension = {n for n in package if n.startswith('msf_tools/_core.')}
+ok = (json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json')) == {'version': version, 'commit': head}
+      and len(extension) == 1 and package == modules | extension | {'msf_tools/_build_info.json'})
+sys.exit(not ok)
 PY
   then
-    lines+=("- Build record: a wheel built from HEAD via its sdist records HEAD")
+    lines+=("- Build record: a wheel built from HEAD via its sdist records HEAD and holds only tracked modules and _core")
   else
-    lines+=("- Build record: FAILED (rerun uv build in a clean clone and read msf_tools/_build_info.json)")
+    lines+=("- Build record: FAILED (rerun uv build in a clean clone; read msf_tools/_build_info.json and the wheel's file list)")
     failed=1
   fi
   rm -rf "$scratch"
@@ -182,8 +212,7 @@ else
   lines+=("- Build record: SKIPPED (needs uv and Python 3.12)")
 fi
 
-# cmake and ninja for the C++ core are uv tools under $MSF/_tools/bin; nothing builds with them yet.
-export PATH="$MSF/_tools/bin:$PATH"
+# cmake and ninja for the C++ core are uv tools under $MSF/_tools/bin, put first on PATH above.
 if command -v cmake >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1; then
   lines+=("- Build tools: cmake $(cmake --version | head -1 | cut -d' ' -f3), ninja $(ninja --version)")
 else
