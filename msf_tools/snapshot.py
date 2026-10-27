@@ -711,10 +711,14 @@ def _source_options(options, fmt):
 
 def _load_adapter(fmt):
     extra = "fbx" if fmt == "fbx" else "usd"
+    module = _ADAPTER_MODULES[fmt]
     try:
-        return importlib.import_module(_ADAPTER_MODULES[fmt]).ADAPTER
-    except ImportError:
-        fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} support.",
+        return importlib.import_module(module).ADAPTER
+    except ImportError as exc:
+        if exc.name == module:
+            fail("E_FORMAT_DEPENDENCY", "/", f"{extra.upper()} support is not installed in this build of msf-tools.",
+                 f"Use an msf-tools release that includes {extra.upper()} support.")
+        fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
              f"pip install 'msf-tools[{extra}]'")
 
 

@@ -98,7 +98,7 @@ Accessors support all core component types, matrix column padding, offsets, inte
 
 ### Source formats
 
-`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs an optional extra (`msf-tools[usd]` or `msf-tools[fbx]`); without it the result is `E_FORMAT_DEPENDENCY`. The adapters themselves are added separately; this section describes the shared contract.
+`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs the format's adapter and its reader library; without them the result is `E_FORMAT_DEPENDENCY`. The message says whether this build lacks the adapter altogether or only the optional reader, which `msf-tools[usd]` or `msf-tools[fbx]` installs. The adapters themselves are added separately; this section describes the shared contract.
 
 An adapter converts the source into an in-memory GLB with one glTF vertex per source point. The unchanged glTF inspector then admits it, and `original_bytes`, `sha256` and `format="glb"` describe that GLB. `source` records:
 - `format`, `sha256` and `byte_length` of the source; the source bytes are not kept;

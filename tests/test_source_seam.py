@@ -287,14 +287,19 @@ class PublicSourceDispatch(unittest.TestCase):
             with self.subTest(data=data[:8], fmt=fmt):
                 self.assertEqual(self.errors(self.inspect(data, fmt)), [('E_FORMAT_MISMATCH', '/')])
 
-    def test_missing_reader_is_a_dependency_diagnostic(self):
+    def test_missing_support_is_a_dependency_diagnostic(self):
         with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'support.no_such_adapter'}):
             result = self.inspect()
         self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
-        self.assertIn("msf-tools[usd]", result.report.diagnostics[0].remediation)
+        self.assertIn('USD support is not installed in this build', result.report.diagnostics[0].message)
+        self.assertNotIn('pip install', result.report.diagnostics[0].remediation)
         result = m.inspect_asset(b'Kaydara FBX Binary  \x00\x1a\x00', 'fbx')
         self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
-        self.assertIn("msf-tools[fbx]", result.report.diagnostics[0].remediation)
+        self.assertIn('FBX support is not installed in this build', result.report.diagnostics[0].message)
+        with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'support.adapter_missing_reader'}):
+            result = self.inspect()
+        self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
+        self.assertIn("pip install 'msf-tools[usd]'", result.report.diagnostics[0].remediation)
 
     def test_unknown_formats_and_gltf_source_arguments_are_refused(self):
         result = m.inspect_asset(self.data, 'obj')
