@@ -7,7 +7,8 @@
 #   scripts/fuzz.sh [SECONDS]   seconds per harness, run side by side (default 60)
 #
 # Compilers without the fuzzer runtime (Apple clang) need MSF_LIBFUZZER, a
-# libFuzzer.a built from compiler-rt; see docs/testing.md. Seeds come from the
+# libFuzzer.a built from compiler-rt; where the default compiler is GCC (Linux),
+# MSF_FUZZ_CC / MSF_FUZZ_CXX name a clang, such as an LLVM release; see docs/testing.md. Seeds come from the
 # tracked fixtures and, when present, the ufbx corpus (MSF_UFBX_CORPUS) and the
 # Khronos assets (MSF_KHRONOS_ASSETS), which default into the local workspace
 # $MSF as in scripts/ci_local.sh. MSF_PY312 (default python3.12, or the workspace
@@ -26,6 +27,8 @@ fi
 out=build/fuzz
 flags=(-DMSF_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DPython_EXECUTABLE="$py")
 [ -n "${MSF_LIBFUZZER:-}" ] && flags+=(-DMSF_LIBFUZZER="$MSF_LIBFUZZER")
+# A clang with the fuzzer runtime, where the default compiler is not one (GCC on Linux).
+[ -n "${MSF_FUZZ_CC:-}" ] && flags+=(-DCMAKE_C_COMPILER="$MSF_FUZZ_CC" -DCMAKE_CXX_COMPILER="${MSF_FUZZ_CXX:-clang++}")
 harnesses=(gltf data_uri paths fbx)
 cmake -S . -B "$out" -G Ninja "${flags[@]}" >/dev/null || exit 2
 cmake --build "$out" --target "${harnesses[@]/#/fuzz_}" >/dev/null || exit 2
