@@ -12,7 +12,7 @@ from test_source_strict import msf_world_points
 from test_source_usd import good
 from test_source_fbx import IDENTITY, animated, close, codes, errors, face, skinned_scene
 
-_core = _native.required()
+_core = _native.built
 
 
 def ufbx_skinned_world(data, mesh=0, stack=-1, time=0.0):

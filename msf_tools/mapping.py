@@ -11,7 +11,7 @@ from .report import public, fail, Diagnostic, Result, Report, Loss
 from . import _native
 from .records import OwnedRecord, _admit
 
-_core = _native.required()
+_core = _native.built
 
 
 @public

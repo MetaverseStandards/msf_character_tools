@@ -12,7 +12,7 @@ from .. import _native
 from ..report import Diagnostic
 from . import Generated, SourceParseError
 
-_core = _native.required()
+_core = _native.built
 UFBX_VERSION = _core.UFBX_VERSION
 
 

@@ -67,7 +67,6 @@ for version in 3.11 3.12; do
     failed=1
   fi
 done
-export MSF_REQUIRE_CORE=1
 # Differential tests against the 0.3.0 oracle (MSF_ORACLE_PYTHON) skip without it, except in a
 # workspace, where a missing oracle fails them; MSF_REQUIRE_ORACLE overrides either way.
 [ -n "$MSF" ] && export MSF_ORACLE_PYTHON="${MSF_ORACLE_PYTHON:-$MSF/_tools/oracle-venv/bin/python}"

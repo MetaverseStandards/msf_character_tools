@@ -16,8 +16,7 @@ from msf_tools import _native
 from internal import oracle
 
 GATE = os.environ.get('MSF_GATE') == '1'
-REQUIRED = os.environ.get('MSF_REQUIRE_CORE') == '1'
-core = _native.core
+core = _native.built
 TINY, HUGE = 2.0**-800, 1.5e308
 SCALARS = [0, 1, -1, 0.0, -0.0, 0.5, 2, 1e-300, 1e300, HUGE, -HUGE, TINY, 2**-1074, 2**-1022, 1e200, 1e-200,
            math.nan, math.inf, -math.inf, True, False, '1', None, 10**400, 2**53 + 1]
@@ -281,7 +280,6 @@ def scalar_float(rng):
     return float(x) if type(x) in (int, float) and abs(x) < 1e308 else rng.uniform(-1, 1)
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class ExactAlgorithms(unittest.TestCase):
     def hypot_mismatches(self, count, n, seed):
         rng = random.Random(seed)

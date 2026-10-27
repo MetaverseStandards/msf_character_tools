@@ -26,9 +26,8 @@ from msf_tools.report import Fault
 from internal import workspace
 
 ROOT = Path(__file__).resolve().parents[2]
-REQUIRED = os.environ.get('MSF_REQUIRE_CORE') == '1'
 GATE = os.environ.get('MSF_GATE') == '1'
-core = _native.core
+core = _native.built
 
 
 def outcome(fn, *args):
@@ -118,7 +117,6 @@ def hard_floats():
     return [x for v in values if math.isfinite(v) for x in (v, -v)]
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Floats(unittest.TestCase):
     def check(self, values):
         actual = core._repr_floats(array('d', values).tobytes()).decode().split('\n')
@@ -154,7 +152,6 @@ class Floats(unittest.TestCase):
                 self.assertTrue(expected is None and actual is None or same(actual, expected), (x, actual, expected))
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Numbers(unittest.TestCase):
     def test_exact_integers_from_lexemes_like_decimal(self):
         rng = random.Random(4)
@@ -204,7 +201,6 @@ def goldens(root=ROOT, commit=None):
         yield name, data
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Documents(unittest.TestCase):
     def assertSameOutcome(self, fn, *args):
         actual, expected = outcome(fn, *args), reference(fn, *args)
@@ -302,7 +298,6 @@ class Documents(unittest.TestCase):
                 parsed_alike(self, data)
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Unicode(unittest.TestCase):
     def test_fuzzed_strings_are_written_like_the_reference(self):
         rng = random.Random(7)

@@ -262,9 +262,4 @@ void bind_json(nb::module_& m) {
         if (!msf::json::to_float32(value, f)) return nb::none();
         return nb::float_(static_cast<double>(f));
     });
-    m.def("_parse_status", [](nb::bytes data) {
-        msf::json::ParseOutcome parsed = msf::json::parse(std::string_view(data.c_str(), data.size()));
-        static const char* names[] = {"ok", "syntax", "constant", "duplicate_key", "too_deep"};
-        return std::string(names[static_cast<int>(parsed.status)]);
-    });
 }

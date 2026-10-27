@@ -1,12 +1,10 @@
 # SPDX-License-Identifier: MIT
 """Record integrity through private state: the numeric predicate, the factory token and core handles."""
-import os
 from types import MappingProxyType
 import unittest
 from unittest import mock
 
 import msf_tools as m
-from msf_tools import _native
 from msf_tools.common import number
 import test_record_integrity as integrity
 
@@ -28,7 +26,6 @@ class FactoryToken(unittest.TestCase):
         integrity.IntegrityTests.refuses_export(self, copy.to_dict)
 
 
-@unittest.skipIf(_native.core is None and os.environ.get('MSF_REQUIRE_CORE') != '1', 'C++ core not built')
 class CoreHandleTests(unittest.TestCase):
     setUp = integrity.IntegrityTests.setUp
     good = integrity.IntegrityTests.good

@@ -23,15 +23,12 @@ from .sources import paths as source_paths
 from .sources import (SOURCE_FORMATS, ReaderMismatch, SourceLimits, SourceParseError,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
-_core = _native.required()
+_core = _native.built
 
 SUPPORTED_REQUIRED_EXTENSIONS = frozenset()  # Inventory is broader than evaluation.
 MAX_ASSET_BYTES = 64 * 1024 * 1024
-MAX_RESOURCE_BYTES = 64 * 1024 * 1024
-MAX_TOTAL_RESOURCE_BYTES = 256 * 1024 * 1024
 MAX_ACCESSOR_COMPONENTS = 1_000_000
 MAX_TOTAL_ACCESSOR_COMPONENTS = 4_000_000
-MAX_STRUCTURAL_OBJECTS = 100_000
 
 
 @dataclass(frozen=True)

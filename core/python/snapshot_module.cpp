@@ -355,7 +355,6 @@ void bind_snapshot(nb::module_& m) {
         .def_ro("format", &Snapshot::format)
         .def_ro("sha256", &Snapshot::sha256)
         .def_ro("original", &Snapshot::original)
-        .def_prop_ro("generated", [](const Snapshot& s) { return s.asset->generated; })
         .def("document", &Snapshot::document)
         .def("resources", &Snapshot::resources)
         .def("chunks", &Snapshot::chunks)

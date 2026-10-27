@@ -14,7 +14,7 @@ Implemented in the C++ core (core/src/paths.cpp).
 """
 from .. import _native
 
-_core = _native.required()
+_core = _native.built
 HELPER_KINDS = ("geometry", "scale")
 _MESSAGES = {"escape": "Bad or unnecessary escape in {!r}.", "unescaped": "Unescaped special character in {!r}.",
              "component": "Malformed path component {!r}.", "start": "Node path must start with '/': {!r}.",
