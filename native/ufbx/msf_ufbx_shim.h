@@ -33,6 +33,7 @@ typedef struct {
     int helper;              /* 0 none, 1 geometry-transform helper, 2 scale helper */
     int inherit_mode;        /* ufbx_inherit_mode after compensation */
     int original_inherit_mode;
+    int pivots;              /* nonzero when any pivot, offset or pre/post rotation is authored */
     double to_parent[16];    /* column-major 4x4 */
     double to_world[16];
 } msf_fbx_node;
@@ -69,4 +70,8 @@ int msf_fbx_blend_channel_id(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t 
    to_world is not NULL), 16 doubles each in node order, and every blend channel's weight. */
 int msf_fbx_evaluate(const msf_fbx *h, uint32_t s, double time, double *to_parent, double *to_world, uint32_t nodes,
                      double *channel_weights, uint32_t channels, char *err, size_t n);
+/* For tests: ufbx's own skinned positions of mesh m in world space, evaluated with stack s at `time` seconds
+   (s < 0 uses the scene's default animation). */
+int msf_fbx_skinned_points(const msf_fbx *h, int32_t s, double time, uint32_t m, double *world, uint32_t points,
+                           char *err, size_t n);
 #endif

@@ -223,7 +223,7 @@ def write_glb(nodes, meshes, skins=(), animations=(), *, generator):
         if mesh.weights:
             if len(mesh.weights) != len(mesh.targets):
                 raise ValueError("Default morph weights need one value per target.")
-            row["weights"] = [float(w) for w in mesh.weights]
+            row["weights"] = [_f32(float(w)) for w in mesh.weights]
         gltf_meshes.append(row)
     gltf_skins = []
     for skin in skins:
@@ -254,7 +254,7 @@ def write_glb(nodes, meshes, skins=(), animations=(), *, generator):
             if getattr(node, field) is not None:
                 row[field] = getattr(node, field)
         if node.weights is not None:
-            row["weights"] = [float(w) for w in node.weights]
+            row["weights"] = [_f32(float(w)) for w in node.weights]
         gltf_nodes.append(row)
     inputs = {}
     gltf_animations = [_animation(buffer, animation, nodes, meshes, inputs) for animation in animations]

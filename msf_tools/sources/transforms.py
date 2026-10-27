@@ -8,6 +8,7 @@ passed straight through.
 import math
 
 SHEAR_TOLERANCE = 1e-6
+TINY = 1e-150
 
 
 def columns(matrix):
@@ -75,4 +76,9 @@ def decompose(matrix):
         scale[0] = -scale[0]
     unit = [[x / s for x in a] for a, s in zip(axes, scale)]
     rotation = [[unit[c][r] for c in range(3)] for r in range(3)]
-    return tuple(matrix[12:15]), _quaternion(rotation), tuple(scale)
+    return _clean(matrix[12:15]), _clean(_quaternion(rotation)), _clean(scale)
+
+
+def _clean(values):
+    # Components this small are rounding noise; squaring them would underflow binary64 in later checks.
+    return tuple(0.0 if abs(x) < TINY else float(x) for x in values)

@@ -45,6 +45,8 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
     opts.geometry_transform_handling = UFBX_GEOMETRY_TRANSFORM_HANDLING_MODIFY_GEOMETRY;
     opts.inherit_mode_handling = UFBX_INHERIT_MODE_HANDLING_COMPENSATE;
     opts.pivot_handling = UFBX_PIVOT_HANDLING_ADJUST_TO_PIVOT;
+    /* Node paths grow with depth, so very deep hierarchies would make path handling quadratic. */
+    opts.node_depth_limit = 1024;
     opts.load_external_files = false;
     opts.ignore_embedded = true;
     if (limits) {
@@ -108,6 +110,13 @@ int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out) {
     out->helper = node->is_geometry_transform_helper ? 1 : node->is_scale_helper ? 2 : 0;
     out->inherit_mode = (int)node->inherit_mode;
     out->original_inherit_mode = (int)node->original_inherit_mode;
+    static const char *const pivot_props[] = {"RotationPivot", "ScalingPivot", "RotationOffset", "ScalingOffset",
+                                              "PreRotation", "PostRotation"};
+    ufbx_vec3 zero = {0.0, 0.0, 0.0};
+    for (size_t k = 0; k < sizeof(pivot_props) / sizeof(pivot_props[0]); k++) {
+        ufbx_vec3 v = ufbx_find_vec3(&node->props, pivot_props[k], zero);
+        if (v.x != 0.0 || v.y != 0.0 || v.z != 0.0) out->pivots = 1;
+    }
     matrix16(&node->node_to_parent, out->to_parent);
     matrix16(&node->node_to_world, out->to_world);
     return 1;
@@ -362,4 +371,40 @@ int msf_fbx_evaluate(const msf_fbx *h, uint32_t s, double time, double *to_paren
     for (uint32_t c = 0; c < channels; c++) channel_weights[c] = state->blend_channels.data[c]->weight;
     ufbx_free_scene(state);
     return written == nodes;
+}
+
+int msf_fbx_skinned_points(const msf_fbx *h, int32_t s, double time, uint32_t m, double *world, uint32_t points,
+                           char *err, size_t n) {
+    if (!h || !world || m >= h->scene->meshes.count || (s >= 0 && (size_t)s >= h->scene->anim_stacks.count)) {
+        set_error(err, n, "msf_fbx_skinned_points: bad argument");
+        return 0;
+    }
+    ufbx_evaluate_opts opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.evaluate_skinning = true;
+    ufbx_error error;
+    const ufbx_anim *anim = s >= 0 ? h->scene->anim_stacks.data[s]->anim : h->scene->anim;
+    ufbx_scene *state = ufbx_evaluate_scene(h->scene, anim, time, &opts, &error);
+    if (!state) {
+        char text[1024];
+        ufbx_format_error(text, sizeof(text), &error);
+        set_error(err, n, text);
+        return 0;
+    }
+    const ufbx_mesh *mesh = state->meshes.data[m];
+    int ok = points == mesh->num_vertices && mesh->skinned_position.values.count >= points && mesh->instances.count > 0;
+    if (ok) {
+        const ufbx_node *node = mesh->instances.data[0];
+        for (uint32_t v = 0; v < points; v++) {
+            ufbx_vec3 p = mesh->skinned_position.values.data[v];
+            if (mesh->skinned_is_local) p = ufbx_transform_position(&node->geometry_to_world, p);
+            world[3 * v + 0] = p.x;
+            world[3 * v + 1] = p.y;
+            world[3 * v + 2] = p.z;
+        }
+    } else {
+        set_error(err, n, "msf_fbx_skinned_points: mesh has no skinned positions for every point");
+    }
+    ufbx_free_scene(state);
+    return ok;
 }

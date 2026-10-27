@@ -293,7 +293,8 @@ class PublicSourceDispatch(unittest.TestCase):
         self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
         self.assertIn('USD support is not installed in this build', result.report.diagnostics[0].message)
         self.assertNotIn('pip install', result.report.diagnostics[0].remediation)
-        result = m.inspect_asset(b'Kaydara FBX Binary  \x00\x1a\x00', 'fbx')
+        with patch.dict(snapshots._ADAPTER_MODULES, {'fbx': 'support.no_such_adapter'}):
+            result = m.inspect_asset(b'Kaydara FBX Binary  \x00\x1a\x00', 'fbx')
         self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
         self.assertIn('FBX support is not installed in this build', result.report.diagnostics[0].message)
         with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'support.adapter_missing_reader'}):
