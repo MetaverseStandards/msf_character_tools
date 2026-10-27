@@ -8,6 +8,7 @@
 - An optional tier for the 09K real-asset recipes, and a generated cross-format parity table, `docs/parity.md`.
 
 ### Changed
+- Inspection declares the geometry capability `linear_blend_skinning` in place of `four_influence_LBS`, so the bytes of every inspect output change. The schema version stays 1.0. The capability describes the Python reference evaluator; the native C++ pilot is still limited to four influences.
 - Linear blend skinning uses every `JOINTS_n`/`WEIGHTS_n` set. Assets with more than four influences now evaluate instead of being refused with `E_INFLUENCE_LIMIT`. Outputs for four or fewer influences are byte-identical to 0.1.1. The geometry budget counts every influence set.
 - Authored quaternions are accepted within the glTF-Validator's unit-length tolerance (0.00769) and normalized, so assets such as Khronos SimpleSkin open.
 - Package licence fields are SPDX expressions; building needs setuptools 77 or newer.

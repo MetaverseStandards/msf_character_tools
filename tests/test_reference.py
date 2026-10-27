@@ -545,6 +545,12 @@ class CLITests(Checks):
             r=self.run_cli("invalid-command");self.assertEqual(r.returncode,1);self.assertIn(b'E_CLI_ARGUMENT',r.stderr)
 
 
+class Capabilities(unittest.TestCase):
+    def test_geometry_declares_linear_blend_skinning_without_an_influence_count(self):
+        snapshot = m.inspect_asset((FIX / "eight-weighted.gltf").read_bytes(), "gltf").value
+        self.assertEqual(snapshot.to_dict()["capabilities"]["geometry"], ["POSITION", "relative_morph", "linear_blend_skinning"])
+
+
 class PackageMetadata(unittest.TestCase):
     def test_versions_agree_and_licences_are_spdx_expressions(self):
         import tomllib
