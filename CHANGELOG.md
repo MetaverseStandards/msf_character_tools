@@ -4,12 +4,16 @@
 
 ### Added
 - `schemas/diagnostics.toml` lists every diagnostic code with its severity, strict-losses rename, meaning and the release that added it. A test keeps it in step with the source.
-- Operators 1.1: `piecewise_linear`, with monotone knots spanning the input domain exactly and no extrapolation. A document with `operator_version = "1.0"` that uses it fails `E_OPERATOR_VERSION`; new diagnostic `E_KNOTS`.
+- Operators 1.1: `piecewise_linear`, with monotone knots spanning the input domain exactly and no extrapolation; new diagnostic `E_KNOTS`.
 - Authoring schema 1.1 adds the evidence status `calibrated_software`, which mapping compilation treats as `proposed`.
 - The authoring and pack JSON schemas accept versions 1.0 and 1.1.
 
+### Changed
+- A rule naming `piecewise_linear` in a document with `operator_version = "1.0"` now fails with `E_OPERATOR_VERSION` alone, whatever its knots. It used to fail with `E_UNKNOWN_KEY` for its `knots` key, or `E_ENUM` without one.
+- The `E_ENUM` messages for unknown `schema_version` and `operator_version` values list `1.0, 1.1`.
+
 ### Unchanged
-- 1.0 documents give the same packs, outputs and goldens byte for byte. Refusal messages that list allowed values now include the 1.1 values.
+- 1.0 documents give the same packs, outputs and goldens byte for byte, and every other refusal of a 1.0 document keeps its code, reference and message.
 
 ## 0.2.0.dev0 (unreleased)
 
