@@ -29,6 +29,7 @@ import re
 import unittest
 
 from support.fbx_header import axes_and_unit
+from internal import oracle
 from internal.test_source_fbx_native import HAVE_UFBX
 
 ROOT = Path(os.environ['MSF_UFBX_CORPUS']) if os.environ.get('MSF_UFBX_CORPUS') else None
@@ -219,6 +220,39 @@ class DccReferenceFrames(unittest.TestCase):
         self.assertEqual(unexplained, [])
         self.assertEqual(worse, [])
         self.assertGreater(outcomes.get('match', 0), 250, outcomes)
+
+
+
+FRAME_OUTCOME = r"""
+def dcc_frame(path, animation, seconds):
+    from pathlib import Path
+    result = m.inspect_asset(Path(path).read_bytes(), 'fbx', options={'animation': animation} if animation else None)
+    out = [encode(result)]
+    if result.ok:
+        s = result.value
+        out.append(encode(s.original_bytes))
+        shift = next((float(d['message'].split()[4]) for d in s.source['losses'] if d['code'] == 'W_TIME_SHIFTED'), 0.0)
+        if seconds is not None and s.document.get('animations'):
+            out.append(attempt(lambda: m.sample_animation(s, 0, seconds + shift)))
+            out.append(attempt(lambda: m.evaluate_geometry(s, animation_id=0, timestamp=seconds + shift)))
+        else:
+            out.append(attempt(lambda: m.evaluate_geometry(s)))
+    return out
+"""
+
+
+@unittest.skipUnless(PRESENT, 'set MSF_UFBX_CORPUS to an extracted ufbx 0.23.1 source tree to run this tier')
+@unittest.skipIf(oracle.skip_reason(), oracle.skip_reason() or '')
+class DccFramesAgainstTheOracle(unittest.TestCase):
+    def test_every_dcc_frame_evaluates_as_0_3_0_did(self):
+        oracle.define(FRAME_OUTCOME)
+        frames = set()
+        for fbx, _, stack, seconds, _ in pairings():
+            animation = next(n for n in stack_names(fbx.read_bytes()) if stack in n) if stack else None
+            frames.add((str(fbx), animation, seconds))
+        cases = [('dcc_frame(path, animation, seconds)', {'path': f, 'animation': a, 'seconds': t}) for f, a, t in sorted(frames, key=repr)]
+        differing = oracle.differ(cases)
+        self.assertEqual([tuple(case[1].values()) for case, _, _ in differing[:5]], [], f'{len(differing)} of {len(cases)} frames differ')
 
 
 if __name__ == '__main__':
