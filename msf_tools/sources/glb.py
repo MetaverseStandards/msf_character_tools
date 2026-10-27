@@ -47,6 +47,24 @@ class Skin:
     skeleton: int | None = None
 
 
+@dataclass(frozen=True)
+class Channel:
+    """One sampler and channel. `values` holds one row per time: 3 numbers for
+    translation and scale, an xyzw quaternion for rotation, or one weight per
+    morph target of the node's mesh for weights."""
+    node: int
+    path: str
+    times: tuple
+    values: tuple
+    interpolation: str = "LINEAR"
+
+
+@dataclass(frozen=True)
+class Animation:
+    channels: tuple
+    name: str | None = None
+
+
 def _f32(value):
     if not math.isfinite(value):
         raise ValueError("Source data contains a non-finite number.")
@@ -154,7 +172,49 @@ def _primitive(buffer, mesh):
     return primitive
 
 
-def write_glb(nodes, meshes, skins=(), *, generator):
+_WIDTH = {"translation": 3, "rotation": 4, "scale": 3}
+
+
+def _animation(buffer, animation, nodes, meshes, inputs):
+    samplers, channels = [], []
+    for channel in animation.channels:
+        if type(channel.node) is not int or not 0 <= channel.node < len(nodes):
+            raise ValueError("Animation channels must target a node.")
+        if channel.interpolation not in ("LINEAR", "STEP"):
+            raise ValueError("Animation interpolation must be LINEAR or STEP.")
+        if channel.path == "weights":
+            mesh = nodes[channel.node].mesh
+            width = len(meshes[mesh].targets) if mesh is not None else 0
+            if not width:
+                raise ValueError("Weight channels need a node whose mesh has morph targets.")
+        elif channel.path in _WIDTH:
+            width = _WIDTH[channel.path]
+        else:
+            raise ValueError("Animation path must be translation, rotation, scale or weights.")
+        times = tuple(_f32(float(t)) for t in channel.times)
+        if not times or times[0] < 0 or any(a >= b for a, b in zip(times, times[1:])):
+            raise ValueError("Animation times must be nonnegative and strictly increasing in binary32.")
+        values = _vectors(channel.values, width, f"Animation {channel.path} values")
+        if len(values) != len(times):
+            raise ValueError("Animation channels need one value row per time.")
+        if times not in inputs:
+            view = buffer.view(struct.pack(f"<{len(times)}f", *times))
+            inputs[times] = buffer.accessor(bufferView=view, componentType=5126, type="SCALAR", count=len(times),
+                                            min=[times[0]], max=[times[-1]])
+        flat = [x for row in values for x in row]
+        view = buffer.view(struct.pack(f"<{len(flat)}f", *flat))
+        scalar = channel.path == "weights"
+        output = buffer.accessor(bufferView=view, componentType=5126, count=len(flat) if scalar else len(values),
+                                 type="SCALAR" if scalar else f"VEC{width}")
+        samplers.append({"input": inputs[times], "output": output, "interpolation": channel.interpolation})
+        channels.append({"sampler": len(samplers) - 1, "target": {"node": channel.node, "path": channel.path}})
+    row = {"samplers": samplers, "channels": channels}
+    if animation.name is not None:
+        row["name"] = animation.name
+    return row
+
+
+def write_glb(nodes, meshes, skins=(), animations=(), *, generator):
     """Return GLB bytes for nodes, meshes and skins given in final glTF index order."""
     buffer = _Buffer()
     gltf_meshes = []
@@ -196,11 +256,15 @@ def write_glb(nodes, meshes, skins=(), *, generator):
         if node.weights is not None:
             row["weights"] = [float(w) for w in node.weights]
         gltf_nodes.append(row)
+    inputs = {}
+    gltf_animations = [_animation(buffer, animation, nodes, meshes, inputs) for animation in animations]
     document = {"asset": {"version": "2.0", "generator": generator}, "scene": 0,
                 "scenes": [{"nodes": [i for i in range(len(gltf_nodes)) if i not in children]}],
                 "nodes": gltf_nodes, "meshes": gltf_meshes, "accessors": buffer.accessors}
     if gltf_skins:
         document["skins"] = gltf_skins
+    if gltf_animations:
+        document["animations"] = gltf_animations
     if buffer.data:
         while len(buffer.data) % 4:
             buffer.data.append(0)

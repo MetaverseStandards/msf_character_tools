@@ -224,12 +224,12 @@ def trs(node):
     return [[r[i][0] * sx, r[i][1] * sy, r[i][2] * sz, t[i]] for i in range(3)]
 
 
-def world_points(snapshot, path):
-    """Mesh points of the node at `path`, carried to world space through the glTF node TRS chain."""
+def world_points(snapshot, path, **kwargs):
+    """Mesh points of the node at `path`, carried to world space through the static glTF node TRS chain."""
     index = snapshot.source['node_paths'].index(path)
     nodes = snapshot.document['nodes']
     parent = {c: i for i, n in enumerate(nodes) for c in n.get('children', ())}
-    instances = good(m.evaluate_geometry(snapshot)).to_dict()['instances']
+    instances = good(m.evaluate_geometry(snapshot, **kwargs)).to_dict()['instances']
     points = next(i for i in instances if i['node'] == index)['primitives'][0]['positions']
     while index is not None:
         matrix = trs(nodes[index])
@@ -466,3 +466,80 @@ class UsdSkinning(unittest.TestCase):
             b'double3 xformOp:translate = (5, 0, 0)', SHEAR.encode()).replace(b'"xformOp:translate"', b'"xformOp:transform"')
         result = m.inspect_asset(data, 'usda')
         self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', '/Rig/Body')])
+
+
+ANIMATED_ARM = """        rel skel:animationSource = </Rig/Skel/Anim>
+        def SkelAnimation "Anim"
+        {
+            uniform token[] joints = ["root/arm"]
+            float3[] translations.timeSamples = {0: [(0, 100, 0)], 12: [(0, 150, 0)], 24: [(50, 100, 0)]}
+            quatf[] rotations.timeSamples = {0: [(1, 0, 0, 0)], 24: [(0.7071068, 0, 0, 0.7071068)]}
+            half3[] scales = [(1, 1, 1)]
+            uniform token[] blendShapes = ["lift"]
+            float[] blendShapeWeights.timeSamples = {0: [0], 24: [1]}
+        }
+"""
+
+LIFT = """        uniform token[] skel:blendShapes = ["lift"]
+        rel skel:blendShapeTargets = </Rig/Body/Lift>
+        def BlendShape "Lift"
+        {
+            uniform int[] pointIndices = [1]
+            uniform vector3f[] offsets = [(0, 50, 0)]
+        }
+"""
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdAnimation(unittest.TestCase):
+    codes = UsdMeshesAndTransforms.codes
+
+    def test_animated_skeleton_and_blend_weights_match_usd_bake_skinning(self):
+        header = 'upAxis = "Z"\n    metersPerUnit = 0.01\n    timeCodesPerSecond = 24'
+        data = rig(['root', 'root/arm'], '[0, 0, 0, 1, 1, 0]', '[1, 0, 0.5, 0.5, 1, 0]', 2, header=header,
+                   binds=[(0, 0, 0), (0, 100, 0)], rests=[(0, 0, 0), (0, 100, 0)], anim=ANIMATED_ARM, mesh_extra=LIFT,
+                   points='[(0, 0, 0), (100, 100, 0), (0, 200, 0)]')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('I_UNITS_CONVERTED', '/'), ('I_AXES_CONVERTED', '/')])
+        self.assertEqual(len(snapshot.document['animations']), 1)
+        # BakeSkinning writes points only at authored time codes, so compare there.
+        for code in (0, 12, 24):
+            with self.subTest(code=code):
+                expected = baked_world_points(data, '/Rig/Body', code)
+                actual = world_points(snapshot, '/Rig/Body', timestamp=code / 24, animation_id=0)
+                diagonal = math.dist([min(c) for c in zip(*expected)], [max(c) for c in zip(*expected)])
+                for a, e in zip(actual, expected):
+                    self.assertLess(math.dist(a, e), 1e-5 * diagonal, (code, actual, expected))
+
+    def test_animated_transforms_are_clipped_shifted_and_converted(self):
+        header = ('upAxis = "Z"\n    metersPerUnit = 0.01\n    timeCodesPerSecond = 24\n'
+                  '    startTimeCode = -24\n    endTimeCode = 24')
+        data = layer('def Xform "Mover"\n{\n    double3 xformOp:translate.timeSamples = {-24: (0, 0, 0), 24: (0, 0, 100),'
+                     ' 48: (0, 0, 900)}\n    uniform token[] xformOpOrder = ["xformOp:translate"]\n}\n', header)
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('I_UNITS_CONVERTED', '/'), ('I_AXES_CONVERTED', '/'), ('W_TIME_SHIFTED', '/')])
+        sampler = snapshot.document['animations'][0]['samplers'][0]
+        self.assertEqual(m.decode_accessor(snapshot, sampler['input']).value, ((0.0,), (2.0,)))
+        sample = m.sample_animation(snapshot, 0, 1.0).value
+        self.assertAlmostEqual(sample[0]['translation'][1], 0.5, places=6)
+
+    def test_shear_in_any_sample_is_refused(self):
+        data = layer('def Xform "Root"\n{\n    matrix4d xformOp:transform.timeSamples = {0: ((1, 0, 0, 0), (0, 1, 0, 0),'
+                     ' (0, 0, 1, 0), (0, 0, 0, 1)), 1: ((1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))}\n'
+                     '    uniform token[] xformOpOrder = ["xformOp:transform"]\n}\n', 'metersPerUnit = 1')
+        result = m.inspect_asset(data, 'usda')
+        self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', '/Root')])
+
+    def test_inbetweens_are_dropped_and_declared(self):
+        shape = ('    uniform token[] skel:blendShapes = ["smile"]\n    rel skel:blendShapeTargets = </Face/Smile>\n'
+                 '    def BlendShape "Smile"\n    {\n        uniform vector3f[] offsets = [(0, 1, 0), (0, 1, 0), (0, 1, 0)]\n'
+                 '        uniform vector3f[] inbetweens:half = [(0, 0.25, 0), (0, 0.25, 0), (0, 0.25, 0)] (\n'
+                 '            weight = 0.5\n        )\n    }\n')
+        face = mesh('Face', '[(0, 0, 0), (1, 0, 0), (0, 1, 0)]', '[3]', '[0, 1, 2]', shape).replace(
+            'def Mesh "Face"', 'def Mesh "Face" (prepend apiSchemas = ["SkelBindingAPI"])')
+        data = layer(face, 'metersPerUnit = 1')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('W_INBETWEENS_DROPPED', '/Face')])
+        self.assertEqual(positions(snapshot, morph_weights={0: [1.0]}), [[0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 2.0, 0.0]])
+        strict = m.inspect_asset(data, 'usda', options={'losses': 'strict'})
+        self.assertEqual([d.code for d in strict.report.diagnostics], ['E_INBETWEEN_UNSUPPORTED'])

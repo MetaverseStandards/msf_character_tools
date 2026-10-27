@@ -158,6 +158,8 @@ Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (inst
   - `dualQuaternion` skinning is stored as linear blend skinning (`W_SKINNING_METHOD`).
 
   A skinned mesh or joint with shear is `E_SHEAR_UNSUPPORTED`.
+- **Blend shapes** keep their point indices, so sparse shapes stay sparse in the GLB. In-between shapes are dropped and the main shape kept (`W_INBETWEENS_DROPPED`; `E_INBETWEEN_UNSUPPORTED` under strict losses).
+- **Animation:** one glTF animation samples every animated transform, skeleton and blend-weight channel at the union of their authored time codes, kept within the stage's start and end time codes when those are authored and divided by `timeCodesPerSecond`. Negative time codes are shifted so the animation starts at 0 (`W_TIME_SHIFTED`). Samplers are LINEAR, with quaternions kept in one hemisphere. Channels whose value never changes are left out. Shear in any sample is `E_SHEAR_UNSUPPORTED`.
 - **Skipped prims:** curves, points, NURBS, implicit surfaces, point instancers, cameras, lights and materials are counted by type in one `W_SKIPPED`, together with hole faces. Xformable ones still become nodes.
 
 Before a stage is opened, every layer named by a sublayer, reference or payload is gathered:

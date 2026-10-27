@@ -114,6 +114,42 @@ class GlbWriter(unittest.TestCase):
             with self.subTest(mesh=mesh), self.assertRaises(ValueError):
                 glb.write_glb((glb.Node(mesh=0),), (mesh,), generator='fake 1')
 
+    def animated(self, *channels):
+        mesh = glb.Mesh(points=TRIANGLE, triangles=(0, 1, 2), targets=(((0.0, 1.0, 0.0),) * 3, ((1.0, 0.0, 0.0),) * 3))
+        return glb.write_glb((glb.Node(mesh=0), glb.Node(name='j')), (mesh,), animations=(glb.Animation(channels=channels),),
+                             generator='fake 1')
+
+    def test_animation_samplers_round_trip_through_the_sampler(self):
+        half = math.sqrt(0.5)
+        snapshot = inspect(self.animated(
+            glb.Channel(node=1, path='translation', times=(0.0, 0.5, 1.0), values=((0, 0, 0), (1, 0, 0), (3, 0, 0))),
+            glb.Channel(node=1, path='rotation', times=(0.0, 1.0), values=((0, 0, 0, 1), (0, 0, half, half))),
+            glb.Channel(node=1, path='scale', times=(0.0, 1.0), values=((1, 1, 1), (2, 2, 2)), interpolation='STEP'),
+            glb.Channel(node=0, path='weights', times=(0.0, 1.0), values=((0, 0), (1, 0.5)))))
+        sampled = thaw_sample(m.sample_animation(snapshot, 0, 0.75))
+        self.assertEqual(sampled[1]['translation'], (2.0, 0.0, 0.0))
+        self.assertEqual(sampled[1]['scale'], (1.0, 1.0, 1.0))
+        self.assertAlmostEqual(sampled[1]['rotation'][2], math.sin(math.radians(33.75)), places=6)
+        self.assertEqual(sampled[0]['weights'], (0.75, 0.375))
+        self.assertEqual(thaw_sample(m.sample_animation(snapshot, 0, 1.0))[1]['scale'], (2.0, 2.0, 2.0))
+
+    def test_invalid_animation_channels_are_refused(self):
+        for channel in (glb.Channel(node=1, path='translation', times=(0.0, 0.0), values=((0, 0, 0), (1, 0, 0))),
+                        glb.Channel(node=1, path='translation', times=(-1.0, 0.0), values=((0, 0, 0), (1, 0, 0))),
+                        glb.Channel(node=1, path='translation', times=(0.0, 1.0), values=((0, 0, 0),)),
+                        glb.Channel(node=1, path='rotation', times=(0.0, 1.0), values=((0, 0, 0), (0, 0, 0))),
+                        glb.Channel(node=1, path='translation', times=(0.0, 1.0), values=((0, 0, 0), (1, 0, 0)), interpolation='CUBIC'),
+                        glb.Channel(node=1, path='weights', times=(0.0, 1.0), values=((0, 0), (1, 1))),
+                        glb.Channel(node=0, path='weights', times=(0.0, 1.0), values=((0,), (1,))),
+                        glb.Channel(node=2, path='scale', times=(0.0, 1.0), values=((1, 1, 1), (1, 1, 1))),
+                        glb.Channel(node=1, path='matrix', times=(0.0, 1.0), values=((1, 1, 1), (1, 1, 1)))):
+            with self.subTest(channel=channel), self.assertRaises(ValueError):
+                self.animated(channel)
+
+
+def thaw_sample(sample):
+    return {node: dict(paths) for node, paths in sample.value.items()}
+
 
 if __name__ == '__main__':
     unittest.main()

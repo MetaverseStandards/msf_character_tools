@@ -139,7 +139,7 @@ def _blend_shapes(prim, points, path):
     targets = list(binding.GetBlendShapeTargetsRel().GetTargets()) if tokens else []
     if len(tokens) != len(targets):
         fail("E_SOURCE_VALUE", path, "skel:blendShapes and skel:blendShapeTargets have different lengths.")
-    keys, offsets = [], []
+    keys, offsets, inbetweens = [], [], 0
     for token, target in zip(tokens, targets):
         shape = UsdSkel.BlendShape(prim.GetStage().GetPrimAtPath(target))
         if not shape:
@@ -158,7 +158,8 @@ def _blend_shapes(prim, points, path):
                 dense[i] = v
         keys.append(paths.target_key([(str(token), None)]))
         offsets.append(tuple(dense))
-    return keys, offsets
+        inbetweens += len(shape.GetInbetweens())
+    return [str(t) for t in tokens], keys, offsets, inbetweens
 
 
 class UsdAdapter:
@@ -309,6 +310,7 @@ class _Skeleton:
         if len(set(self.paths)) != len(self.paths):
             fail("E_SOURCE_VALUE", path, "Skeleton joint names must be unique.")
         self.owner = path
+        self.query = query
         self.tokens = {t: j for j, t in enumerate(tokens)}
         self.parents = list(query.GetTopology().GetParentIndices())
         self.root = next(j for j, parent in enumerate(self.parents) if parent < 0) if tokens else None
@@ -411,6 +413,76 @@ def _warning(code, ref, message):
     return Diagnostic(code, "warning", ref, message, "Review the declared loss.")
 
 
+def _quaternions(rows):
+    """Flip quaternions into the hemisphere of their predecessor so LINEAR slerp takes the short way."""
+    out = [rows[0]]
+    for q in rows[1:]:
+        out.append(q if math.fsum(a * b for a, b in zip(out[-1], q)) >= 0 else tuple(-x for x in q))
+    return out
+
+
+def _blend_weights(anim, tokens, code):
+    order = {str(t): k for k, t in enumerate(anim.GetBlendShapeOrder())}
+    weights = list(anim.ComputeBlendShapeWeights(code))
+    return tuple(float(weights[order[t]]) if t in order and order[t] < len(weights) else 0.0 for t in tokens)
+
+
+def _animate(stage, entries, skeletons, weighted, conversion):
+    """One glTF animation sampling every animated node at the union of authored time codes."""
+    moving = {i for i, (_, prim, _) in enumerate(entries) if prim is not None and prim.IsA(UsdGeom.Xformable)
+              and UsdGeom.Xformable(prim).TransformMightBeTimeVarying()}
+    codes = set()
+    for i in moving:
+        codes.update(UsdGeom.Xformable(entries[i][1]).GetTimeSamples())
+    for skeleton in skeletons.values():
+        anim = skeleton.query.GetAnimQuery()
+        if anim:
+            codes.update(anim.GetJointTransformTimeSamples())
+            codes.update(anim.GetBlendShapeWeightTimeSamples())
+    if stage.HasAuthoredTimeCodeRange():
+        codes = {c for c in codes if stage.GetStartTimeCode() <= c <= stage.GetEndTimeCode()}
+    codes = sorted(codes)
+    if len(codes) < 2:
+        return (), []
+    rate = float(stage.GetTimeCodesPerSecond())
+    if not math.isfinite(rate) or rate <= 0:
+        fail("E_SOURCE_VALUE", "/", "timeCodesPerSecond must be a positive finite number.")
+    shift = min(0.0, codes[0])
+    losses = []
+    if shift < 0:
+        losses.append(_warning("W_TIME_SHIFTED", "/", f"Shifted time codes by {-shift:g} so the animation starts at 0 seconds."))
+    times = tuple((c - shift) / rate for c in codes)
+    poses = {}
+    channels = []
+    for i, (path, prim, joint) in enumerate(entries):
+        matrices = None
+        if joint is not None:
+            skeleton, j = joint
+            if skeleton.query.GetAnimQuery():
+                if skeleton.owner not in poses:
+                    poses[skeleton.owner] = [list(skeleton.query.ComputeJointLocalTransforms(Usd.TimeCode(c))) for c in codes]
+                matrices = [_checked(pose[j], path, conversion) for pose in poses[skeleton.owner]]
+        elif i in moving:
+            xformable = UsdGeom.Xformable(prim)
+            matrices = [_checked(xformable.GetLocalTransformation(Usd.TimeCode(c)), path, conversion) for c in codes]
+        if matrices:
+            if any(transforms.has_shear(matrix) for matrix in matrices):
+                _shear(path)
+            samples = [_trs(matrix, path) for matrix in matrices]
+            for field in ("translation", "rotation", "scale"):
+                rows = [sample[field] for sample in samples]
+                if field == "rotation":
+                    rows = _quaternions(rows)
+                if any(row != rows[0] for row in rows):
+                    channels.append(glb.Channel(node=i, path=field, times=times, values=tuple(rows)))
+        if i in weighted:
+            anim, tokens = weighted[i]
+            rows = [_blend_weights(anim, tokens, Usd.TimeCode(c)) for c in codes]
+            if any(row != rows[0] for row in rows):
+                channels.append(glb.Channel(node=i, path="weights", times=times, values=tuple(rows)))
+    return ((glb.Animation(channels=tuple(channels)),) if channels else ()), losses
+
+
 def _convert(stage, adapter, dependencies, external, options):
     conversion = _Conversion(stage)
     skipped = Counter({"external asset dependency": external})
@@ -445,7 +517,7 @@ def _convert(stage, adapter, dependencies, external, options):
     skin_of = {}
     for path, skeleton in sorted(skeletons.items(), key=lambda item: index[item[1].owner]):
         skin_of[path] = len(skin_of)
-    nodes, meshes, target_keys, losses = [], [], [], []
+    nodes, meshes, target_keys, losses, weighted = [], [], [], [], {}
     for i, (path, prim, joint) in enumerate(entries):
         if joint is not None:
             skeleton, j = joint
@@ -468,7 +540,7 @@ def _convert(stage, adapter, dependencies, external, options):
             losses.append(_warning("W_SHEAR_BAKED", path, "Sheared transform baked into the mesh points."))
         elif local is not None and transforms.determinant(local) < 0:
             losses.append(Diagnostic("I_MIRRORED", "info", path, "Mirrored transform stored as a negative X scale.", "No action needed."))
-        mesh_index = skin_index = None
+        mesh_index = skin_index = static_weights = None
         if prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(prim)
             if mesh.GetSubdivisionSchemeAttr().Get() != UsdGeom.Tokens.none:
@@ -478,7 +550,10 @@ def _convert(stage, adapter, dependencies, external, options):
                 losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
             points = [conversion.point(tuple(map(float, p))) for p in mesh.GetPointsAttr().Get(_EARLIEST) or ()]
             if points:
-                keys, offsets = _blend_shapes(prim, points, path)
+                tokens, keys, offsets, inbetweens = _blend_shapes(prim, points, path)
+                if inbetweens:
+                    losses.append(_warning("W_INBETWEENS_DROPPED", path,
+                                           f"Dropped {_count(inbetweens, 'in-between shape', 'in-between shapes')}; the main shapes are kept."))
                 offsets = [tuple(conversion.point(o) for o in target) for target in offsets]
                 flip = left
                 if skinned is not None:
@@ -493,20 +568,28 @@ def _convert(stage, adapter, dependencies, external, options):
                     influences, found_losses = _influences(skinned[1], skeletons[skinned[0]], len(points), path, options["influences"])
                     losses += found_losses
                     skin_index = skin_of[skinned[0]]
+                    anim = skeletons[skinned[0]].query.GetAnimQuery()
+                    if tokens and anim and anim.GetBlendShapeOrder():
+                        weighted[i] = (anim, tokens)
+                        static_weights = _blend_weights(anim, tokens, _EARLIEST)
+                        if not any(static_weights):
+                            static_weights = None
                 mesh_index = len(meshes)
                 meshes.append(glb.Mesh(points=tuple(points), triangles=tuple(_triangles(mesh, path, flip, skipped)),
                                        targets=tuple(offsets), influences=influences))
                 target_keys.append(tuple(keys))
         trs = _trs(local, path) if local is not None else {}
-        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, skin=skin_index, **trs))
+        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, skin=skin_index,
+                              weights=static_weights, **trs))
     skins = [glb.Skin(joints=tuple(index[p] for p in skeletons[path].paths), inverse_bind_matrices=tuple(skeletons[path].inverse_binds))
              for path in skin_of]
+    animations, time_losses = _animate(stage, entries, skeletons, weighted, conversion)
     try:
-        raw = glb.write_glb(tuple(nodes), tuple(meshes), tuple(skins), generator=f"{adapter.name} {adapter.version}")
+        raw = glb.write_glb(tuple(nodes), tuple(meshes), tuple(skins), animations, generator=f"{adapter.name} {adapter.version}")
     except ValueError as exc:
         fail("E_SOURCE_VALUE", "/", str(exc))
     return Generated(glb=raw, node_paths=tuple(entry[0] for entry in entries), target_keys=tuple(target_keys),
-                     dependencies=dependencies, losses=tuple(conversion.losses + losses + _skipped(skipped)))
+                     dependencies=dependencies, losses=tuple(conversion.losses + time_losses + losses + _skipped(skipped)))
 
 
 ADAPTER = UsdAdapter()
