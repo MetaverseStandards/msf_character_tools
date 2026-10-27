@@ -10,7 +10,7 @@ description = "Validated signal mappings and immutable glTF reference evaluation
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT AND BSD-3-Clause"
-license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt"]
+license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt"]
 authors = [{name = "MSF Tools contributors"}]
 dependencies = []
 
