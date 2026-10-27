@@ -376,6 +376,18 @@ class FbxAnimation(unittest.TestCase):
         self.assertIn(('W_TIME_SHIFTED', '/'), codes(shifted))
         self.assertAlmostEqual(m.sample_animation(shifted, 0, 1.0).value[1]['translation'][0], 10.0, places=5)
 
+    def test_constant_animated_values_that_differ_from_the_static_pose_are_kept(self):
+        # Found by comparing with the DCC-exported OBJ frames in ufbx's corpus (blender_279_sausage "Base").
+        scene = face()
+        smile = next(int(o.split(':')[1].split(',')[0]) for o in scene.objects if '"SubDeformer::smile"' in o)
+        scene.animation('Hold', 0.0, 1.0, [
+            (1002, 'Lcl Translation', {'X': [(0.0, 5.0), (1.0, 5.0)], 'Y': [(0.0, 0.0), (1.0, 0.0)], 'Z': [(0.0, 0.0), (1.0, 0.0)]}),
+            (smile, 'DeformPercent', {'DeformPercent': [(0.0, 100.0), (1.0, 100.0)]})])
+        snapshot = good(m.inspect_asset(scene.text(), 'fbx'))
+        sample = m.sample_animation(snapshot, 0, 0.5).value
+        self.assertEqual(sample[1]['translation'], (5.0, 0.0, 0.0))
+        self.assertEqual(sample[1]['weights'], (1.0, 0.0))
+
     def test_long_clips_on_large_rigs_are_refused_before_sampling(self):
         from msf_tools.sources import fbx
         real = fbx.lib

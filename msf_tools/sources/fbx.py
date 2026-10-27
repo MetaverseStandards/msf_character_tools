@@ -59,6 +59,10 @@ def _matrix(values):
     return [float(x) for x in values]
 
 
+def _near(row, rest):
+    return all(abs(x - y) <= 1e-6 * max(1.0, abs(y)) for x, y in zip(row, rest))
+
+
 def _trs(matrix, path):
     if not all(math.isfinite(x) for x in matrix):
         fail("E_SOURCE_VALUE", path, "Transform has a non-finite number.")
@@ -311,27 +315,33 @@ class _Scene:
                 return slot
         return 0
 
+    def channel(self, m, c, path):
+        """Blend channel c of mesh m: (deformer index, deformer name, channel name, keyframes, static weight)."""
+        sizes = ffi.new("uint32_t[2]")
+        lib.msf_fbx_blend_sizes(self.h, m, c, sizes)
+        keyframes, total = sizes[0], sizes[1]
+        deformer, counts = ffi.new("uint32_t *"), ffi.new("uint32_t[]", keyframes or 1)
+        indices, values = ffi.new("uint32_t[]", total or 1), ffi.new("double[]", 3 * total or 1)
+        targets, weight = ffi.new("double[]", keyframes or 1), ffi.new("double *")
+        name_ptrs, name_lens = ffi.new("const char *[2]"), ffi.new("size_t[2]")
+        if not lib.msf_fbx_blend_fill(self.h, m, c, deformer, counts, indices, values, targets, keyframes, total,
+                                      weight, name_ptrs, name_lens):
+            fail("E_SOURCE_VALUE", path, "The FBX reader could not fill a blend channel.")
+        start, frames = 0, []
+        for k in range(keyframes):
+            frames.append((float(targets[k]), [(indices[start + i], tuple(values[3 * (start + i):3 * (start + i) + 3]))
+                                              for i in range(counts[k])]))
+            start += counts[k]
+        return (deformer[0], *(ffi.unpack(name_ptrs[k], name_lens[k]).decode("utf-8", "replace") for k in range(2)),
+                frames, float(weight[0]))
+
     def blend(self, m, channels, points, path):
         keys, offsets, weights = [], [], []
         dropped = partial = 0
         names = []
         for c in range(channels):
-            sizes = ffi.new("uint32_t[2]")
-            lib.msf_fbx_blend_sizes(self.h, m, c, sizes)
-            keyframes, total = sizes[0], sizes[1]
-            deformer, counts = ffi.new("uint32_t *"), ffi.new("uint32_t[]", keyframes or 1)
-            indices, values = ffi.new("uint32_t[]", total or 1), ffi.new("double[]", 3 * total or 1)
-            targets, weight = ffi.new("double[]", keyframes or 1), ffi.new("double *")
-            name_ptrs, name_lens = ffi.new("const char *[2]"), ffi.new("size_t[2]")
-            if not lib.msf_fbx_blend_fill(self.h, m, c, deformer, counts, indices, values, targets, keyframes, total,
-                                          weight, name_ptrs, name_lens):
-                fail("E_SOURCE_VALUE", path, "The FBX reader could not fill a blend channel.")
-            names.append((deformer[0], *(ffi.unpack(name_ptrs[k], name_lens[k]).decode("utf-8", "replace") for k in range(2))))
-            start, frames = 0, []
-            for k in range(keyframes):
-                frames.append((float(targets[k]), [(indices[start + i], tuple(values[3 * (start + i):3 * (start + i) + 3]))
-                                                  for i in range(counts[k])]))
-                start += counts[k]
+            deformer, deformer_name, channel_name, frames, weight = self.channel(m, c, path)
+            names.append((deformer, deformer_name, channel_name))
             dense = [(0.0, 0.0, 0.0)] * points
             if frames:
                 full = [f for f in frames if abs(f[0] - 1.0) < 1e-9]
@@ -348,7 +358,7 @@ class _Scene:
                         fail("E_SOURCE_VALUE", path, "A blend shape offset names a point the mesh does not have.")
                     dense[i] = tuple(x * scale for x in o)
             offsets.append(tuple(dense))
-            weights.append(float(weight[0]))
+            weights.append(weight)
         deformer_names = {}
         for d, deformer_name, _ in names:
             deformer_names.setdefault(d, deformer_name)
@@ -437,21 +447,26 @@ class _Scene:
             losses.append(skinning.warning("W_TIME_SHIFTED", "/", f"Shifted the animation by {-shift:g} seconds so it starts at 0."))
         seconds = tuple(t - shift for t in times)
         out, animated = [], set()
+        # A constant channel is left out only when it matches the static pose, since a stack can hold a node at a
+        # value that differs from it. Curves store float32, so matching allows float32 rounding.
         for k, shim in enumerate(order):
             path = node_paths[shim]
-            flat = matrices[shim]
-            if all(flat[j:j + 16] == flat[0:16] for j in range(16, len(flat), 16)):
+            flat, static = matrices[shim], array("d", self.nodes[shim]["to_parent"])
+            if all(flat[j:j + 16] == static for j in range(0, len(flat), 16)):
                 continue
             series = [list(flat[j:j + 16]) for j in range(0, len(flat), 16)]
             animated.add(shim)
             if any(transforms.has_shear(s) for s in series):
                 _shear(path)
             samples = [_trs(s, path) for s in series]
+            rest = _trs(self.nodes[shim]["to_parent"], path) if not transforms.has_shear(self.nodes[shim]["to_parent"]) else None
             for field in ("translation", "rotation", "scale"):
                 rows = [sample[field] for sample in samples]
                 if field == "rotation":
                     rows = _quaternions(rows)
-                if any(row != rows[0] for row in rows):
+                varies = any(row != rows[0] for row in rows)
+                if varies or rest is None or not (_near(rows[0], rest[field])
+                                                  or field == "rotation" and _near(rows[0], [-x for x in rest[field]])):
                     out.append(glb.Channel(node=k, path=field, times=seconds, values=tuple(rows)))
         for k, shim in enumerate(order):
             m = self.nodes[shim]["mesh"]
@@ -467,7 +482,8 @@ class _Scene:
             if not ids:
                 continue
             rows = [tuple(weight_values[r * channels + i] for i in ids) for r in range(len(times))]
-            if any(row != rows[0] for row in rows):
+            static = tuple(self.channel(m, c, node_paths[shim])[4] for c in range(sizes[5]))
+            if any(row != rows[0] for row in rows) or not _near(rows[0], static):
                 out.append(glb.Channel(node=k, path="weights", times=seconds, values=tuple(rows)))
         return ((glb.Animation(channels=tuple(out)),) if out else ()), losses, animated
 
