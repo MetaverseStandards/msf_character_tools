@@ -19,6 +19,7 @@
 namespace nb = nanobind;
 
 void bind_json(nb::module_& m);
+void bind_math3d(nb::module_& m);
 
 namespace {
 
@@ -352,4 +353,5 @@ NB_MODULE(_core, m) {
     m.def("compile", &compile, nb::arg("spec").none());
     m.def("piecewise_clamp", &msf::piecewise_clamp);
     bind_json(m);
+    bind_math3d(m);
 }

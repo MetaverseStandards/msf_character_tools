@@ -28,12 +28,12 @@ target_include_directories(ryu PUBLIC core/third_party/ryu)
 add_library(fast_float INTERFACE)
 target_include_directories(fast_float INTERFACE core/third_party/fast_float/include)
 
-add_library(msfcore STATIC core/src/diagnostics.cpp core/src/json.cpp core/src/program.cpp)
+add_library(msfcore STATIC core/src/diagnostics.cpp core/src/json.cpp core/src/math3d.cpp core/src/program.cpp)
 target_include_directories(msfcore PUBLIC core/include)
 target_link_libraries(msfcore PRIVATE ryu fast_float)
 set_target_properties(msfcore ryu PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-nanobind_add_module(_core NOMINSIZE core/python/module.cpp core/python/json_module.cpp)
+nanobind_add_module(_core NOMINSIZE core/python/module.cpp core/python/json_module.cpp core/python/math_module.cpp)
 target_link_libraries(_core PRIVATE msfcore)
 
 # Output bytes must match the Python reference: no fused multiply-add, never fast-math.
