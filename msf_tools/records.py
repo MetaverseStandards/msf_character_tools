@@ -3,6 +3,8 @@
 
 This protects API invariants, not a process from code using private internals.
 Admission is reset by dataclasses.replace; admission alone is never the check.
+A record built on a C++ handle fingerprints the handle's state in place of its
+_handle_views fields; the record's consistency check binds those views to it.
 """
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, is_dataclass, replace
@@ -10,10 +12,13 @@ import hashlib
 import struct
 from types import MappingProxyType
 
+from ._native import HANDLES
 from .report import fail
 
 
 def _owned(value):
+    if type(value) in HANDLES:
+        return value
     if isinstance(value, OwnedRecord):
         value._check_integrity()
         return value
@@ -52,8 +57,14 @@ def _fingerprint(record):
             for f in fields(value):
                 if f.name not in {"_integrity", "_record_id", "_token"}:
                     emit(b"field", f.name.encode())
+                    if _handle_view(value, f.name):
+                        emit(b"handle_view")
+                        continue
                     # The record wrapper is not an additional JSON nesting level.
                     visit(getattr(value, f.name), depth)
+        elif type(value) in HANDLES:
+            emit(b"handle", type(value).__name__.encode())
+            emit(b"state", value.__msf_state__())
         elif is_dataclass(value) and value.__dataclass_params__.frozen:
             emit(b"data", type(value).__name__.encode())
             for f in fields(value):
@@ -89,8 +100,14 @@ def _fingerprint(record):
     return hasher.hexdigest()
 
 
+def _handle_view(record, name):
+    return name in record._handle_views and getattr(record, "_core", None) is not None
+
+
 @dataclass(frozen=True)
 class OwnedRecord:
+    _handle_views = ()
+
     _integrity: str | None = field(default=None, init=False, repr=False, compare=False)
     _record_id: int | None = field(default=None, init=False, repr=False, compare=False)
 
@@ -107,7 +124,7 @@ class OwnedRecord:
 def _admit(record):
     """Called only after the factory has validated every semantic input."""
     for f in fields(record):
-        if f.name not in {"_integrity", "_record_id", "_token"}:
+        if f.name not in {"_integrity", "_record_id", "_token"} and not _handle_view(record, f.name):
             object.__setattr__(record, f.name, _owned(getattr(record, f.name)))
     object.__setattr__(record, "_integrity", _fingerprint(record))
     object.__setattr__(record, "_record_id", id(record))

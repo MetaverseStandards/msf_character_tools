@@ -15,7 +15,10 @@ class PackageMetadata(unittest.TestCase):
         self.assertEqual(project['version'], m.__version__)
         self.assertIn(f'## {m.__version__}', (ROOT / 'CHANGELOG.md').read_text())
         shim = tomllib.loads((ROOT / 'native' / 'ufbx' / 'pyproject.toml').read_text())['project']
-        self.assertEqual((project['license'], shim['license']), ('MIT', 'MIT'))
+        # The wheel's extension links nanobind (BSD-3-Clause); see NOTICE.md.
+        self.assertEqual((project['license'], shim['license']), ('MIT AND BSD-3-Clause', 'MIT'))
+        for path in project['license-files']:
+            self.assertTrue((ROOT / path).is_file(), path)
 
 
 if __name__ == '__main__':

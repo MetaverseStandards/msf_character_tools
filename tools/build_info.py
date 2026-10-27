@@ -1,17 +1,14 @@
 # SPDX-License-Identifier: MIT
-"""Builds record their source commit in msf_tools/_build_info.json; see docs/building.md."""
+"""The build record, msf_tools/_build_info.json; see docs/building.md."""
 import json
 from pathlib import Path
 import re
-import shutil
 import subprocess
 
-from setuptools import setup
-from setuptools.command.build_py import build_py
-from setuptools.command.sdist import sdist
-
 BUILD_INFO = Path("msf_tools", "_build_info.json")
-ROOT = Path(__file__).resolve().parent
+# Untracked files here would be built into the wheel: CMake installs every
+# msf_tools/*.py, and core/ holds the extension's sources.
+BUILT_DIRECTORIES = ("msf_tools/", "core/")
 
 
 def _git(root, *args):
@@ -22,7 +19,7 @@ def checkout(root):
     """Where root stands in Git: (True, HEAD or None) inside a checkout, (False, None) outside one.
 
     HEAD is given only at the top of a checkout with no changes to tracked files and
-    no untracked files under msf_tools/, which setuptools would build into the wheel.
+    no untracked files under BUILT_DIRECTORIES.
     """
     try:
         top, head = _git(root, "rev-parse", "--show-toplevel", "HEAD").splitlines()
@@ -37,7 +34,7 @@ def checkout(root):
     if Path(top).resolve() != Path(root).resolve():
         return True, None
     for line in _git(root, "status", "--porcelain", "--untracked-files=all").splitlines():
-        if not line.startswith("?? ") or line[3:].lstrip('"').startswith("msf_tools/"):
+        if not line.startswith("?? ") or line[3:].lstrip('"').startswith(BUILT_DIRECTORIES):
             return True, None
     return True, head
 
@@ -63,7 +60,8 @@ def build_info(root, version):
     return None
 
 
-def _write(path, info):
+def write(path, info):
+    """Write info to path, or remove path and warn when info is None."""
     path = Path(path)
     if info is None:
         path.unlink(missing_ok=True)
@@ -71,27 +69,3 @@ def _write(path, info):
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
-
-
-class BuildPy(build_py):
-    def run(self):
-        if not getattr(self, "editable_mode", False):
-            # setuptools reuses build/lib, so a module deleted since an earlier build would ship under this commit.
-            shutil.rmtree(Path(self.build_lib, "msf_tools"), ignore_errors=True)
-        super().run()
-        if not getattr(self, "editable_mode", False):
-            _write(Path(self.build_lib, BUILD_INFO), build_info(ROOT, self.distribution.get_version()))
-
-    def get_outputs(self, include_bytecode=True):
-        extra = Path(self.build_lib, BUILD_INFO)
-        return super().get_outputs(include_bytecode) + ([str(extra)] if extra.is_file() else [])
-
-
-class Sdist(sdist):
-    def make_release_tree(self, base_dir, files):
-        super().make_release_tree(base_dir, files)
-        _write(Path(base_dir, BUILD_INFO), build_info(ROOT, self.distribution.get_version()))
-
-
-if __name__ == "__main__":
-    setup(cmdclass={"build_py": BuildPy, "sdist": Sdist})

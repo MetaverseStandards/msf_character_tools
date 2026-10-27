@@ -2,6 +2,21 @@
 
 Original documentation: CC-BY-SA-4.0.
 
+## Package and C++ core
+
+`pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_tools._core` (C++17, nanobind), and installs it with every tracked `msf_tools/*.py` module and the build record. Wheels are therefore per Python version and platform. On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set; the wheel tag follows it. Building needs a C++17 compiler, CMake 3.24 or newer and Ninja or Make; the build front end fetches scikit-build-core and nanobind.
+
+The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Without the extension, or with `MSF_TOOLS_PURE=1`, msf-tools runs the pure-Python reference path.
+
+For work in a checkout, build the extension in place next to the modules:
+
+```sh
+cmake -S . -B build/core-3.12 -G Ninja -DPython_EXECUTABLE=$MSF/_tools/venv3.12/bin/python -DMSF_CORE_IN_PLACE=ON
+cmake --build build/core-3.12
+```
+
+`scripts/ci_local.sh` does this for each Python before running the suites. An editable install copies modules at install time, so prefer the in-place build.
+
 ## Build record
 
 Every built package contains `msf_tools/_build_info.json`:
@@ -15,17 +30,17 @@ Every built package contains `msf_tools/_build_info.json`:
 
 `version` is the package version and `commit` the Git commit the package was built from. RCEF's lock reads this file, and when an install also has Git `vcs_info` in `direct_url.json`, the two commits must agree.
 
-`setup.py` writes the file at build time, so it is never checked in (`.gitignore` lists it):
+`tools/build_backend.py` writes the file at build time, so it is never checked in (`.gitignore` lists it). The rules are in `tools/build_info.py`:
 
-- A build from the top of a Git checkout records `HEAD` when no tracked file has changed and no untracked file sits under `msf_tools/`, where setuptools would build it into the wheel. This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
+- A build from the top of a Git checkout records `HEAD` when no tracked file has changed and no untracked file sits under `msf_tools/` or `core/`, where it would be built into the wheel. This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
 - Inside a Git checkout only Git counts: a stray `msf_tools/_build_info.json` there is never used.
-- Each non-editable build clears `build/lib/msf_tools` first, so a module left there by an earlier build is never shipped under the new record.
-- An sdist has no `.git`, so building one writes the record into the sdist. A wheel built from that sdist outside any Git checkout copies it if its version matches.
+- CMake installs modules from the source tree into a fresh staging directory for each wheel, so a module left over from an earlier build is never shipped under the new record.
+- An sdist has no `.git`, so building one writes the record into the sdist. A wheel built from that sdist outside any Git checkout installs it if its version matches.
 - Any other build, such as one from a checkout with uncommitted changes or untracked package files, an editable install, or a source tree inside a checkout but not at its top, records no commit and omits the file; non-editable builds print a warning. RCEF then refuses the install, as it does for any install without a source commit.
 
 A checked-in file cannot work, because a commit cannot contain its own hash.
 
-`tests/internal/test_build_info.py` covers these rules with Git's answers faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist and checks the record.
+`tests/internal/test_build_info.py` covers these rules with Git and scikit-build-core faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist, checks the record, and checks that the wheel holds exactly the tracked modules and the extension.
 
 ## Tools
 
@@ -36,4 +51,4 @@ UV_TOOL_DIR=$MSF/_tools/uv-tools UV_TOOL_BIN_DIR=$MSF/_tools/bin uv tool install
 UV_TOOL_DIR=$MSF/_tools/uv-tools UV_TOOL_BIN_DIR=$MSF/_tools/bin uv tool install ninja
 ```
 
-`scripts/ci_local.sh` puts `$MSF/_tools/bin` first on `PATH` and reports both versions. Nothing builds with them until the C++ core lands. The FBX reader in `native/ufbx` is built with cffi and a C compiler, not CMake.
+`scripts/ci_local.sh` puts `$MSF/_tools/bin` first on `PATH` and reports both versions. The FBX reader in `native/ufbx` is built with cffi and a C compiler, not CMake.
