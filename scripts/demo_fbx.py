@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
+sys.path[:0] = [str(ROOT), str(ROOT / 'tests' / 'public')]
 import msf_tools as m  # noqa: E402
 from support.fbx_ascii import Scene  # noqa: E402
 

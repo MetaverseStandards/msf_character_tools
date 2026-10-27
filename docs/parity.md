@@ -7,7 +7,7 @@ msf-tools 0.2.0.dev0; usd-core 0.26.11; ufbx 0.23.1. Errors are the largest poin
 
 ### Synthetic USD scenes
 
-Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core (world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written by the test FBX writer from msf-tools' reading of the USD and read back through the FBX adapter. That column is a consistency check (msf writer to msf reader), not an independent reference: it shows the two readers agree on what was carried over, and it does not re-test the USD losses.
+Each scene from `tests/public/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core (world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written by the test FBX writer from msf-tools' reading of the USD and read back through the FBX adapter. That column is a consistency check (msf writer to msf reader), not an independent reference: it shows the two readers agree on what was carried over, and it does not re-test the USD losses.
 
 | Scene | USD losses or refusal | USDA, USDC, USDZ agree | vs usd-core (independent) | Round trip through msf's FBX writer (consistency only) | Round-trip losses |
 |---|---|---|---|---|---|
@@ -33,7 +33,7 @@ Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ a
 
 ### Khronos sample assets: round trip through msf's FBX writer
 
-Each asset re-authored as FBX by msf-tools' test writer with the same nodes, meshes, skins, morph targets and first animation, then read back (`tests/test_source_twins.py`). This is a consistency check, not an independent reference.
+Each asset re-authored as FBX by msf-tools' test writer with the same nodes, meshes, skins, morph targets and first animation, then read back (`tests/public/test_source_twins.py`). This is a consistency check, not an independent reference.
 
 | Asset | Times compared | Round trip through msf's FBX writer (consistency only) |
 |---|---|---|
@@ -57,7 +57,7 @@ Each asset re-authored as FBX by msf-tools' test writer with the same nodes, mes
 
 ### FBX behaviour with no USD counterpart
 
-Pivots, offsets, pre- and post-rotation and the three inherit types are checked against an independent FBX SDK transform formula and the archived affine witness points (`tests/test_source_fbx.py`). glTF and USD cannot express them, so there is nothing to compare across formats.
+Pivots, offsets, pre- and post-rotation and the three inherit types are checked against an independent FBX SDK transform formula and the archived affine witness points (`tests/public/test_source_fbx.py`). glTF and USD cannot express them, so there is nothing to compare across formats.
 
 ## Exporter tier
 
@@ -76,7 +76,7 @@ Blender FBX twins of the Khronos assets (decision D4) have not been made yet.
 
 ### DCC reference frames from the ufbx corpus
 
-The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/test_source_fbx_dcc.py`), with the axes and unit read from each file's own header. "explained" rows differ only on meshes that carry a declared loss that changes points; "refused" rows are singular transforms; "skipped" rows are OBJ files in skin bind space, frames ufbx evaluates without extrapolation, files with only skipped surface kinds, and skinned meshes at rest whose rest pose differs from the bind pose.
+The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/internal/test_source_fbx_dcc.py`), with the axes and unit read from each file's own header. "explained" rows differ only on meshes that carry a declared loss that changes points; "refused" rows are singular transforms; "skipped" rows are OBJ files in skin bind space, frames ufbx evaluates without extrapolation, files with only skipped surface kinds, and skinned meshes at rest whose rest pose differs from the bind pose.
 
 | File prefix | explained | match | refused | skipped |
 |---|---|---|---|---|

@@ -10,7 +10,7 @@
 # removed   the release that stopped reporting it.
 # meaning   one line; diagnostic messages carry the specifics.
 #
-# tests/test_diagnostics_registry.py checks this file against the source.
+# tests/internal/test_diagnostics_registry.py checks this file against the source.
 
 [E_ACCESSOR_ALIGNMENT]
 severity = "error"

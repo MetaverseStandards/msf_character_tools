@@ -38,6 +38,30 @@ verdict_of() {
   printf '%s\n' "$1" | grep -E '^(OK|FAILED)' | tail -1
 }
 
+# tests/public is the gate a reimplementation must keep passing unchanged; tests/internal covers private modules.
+# suites PYTHON PUBLIC_PATTERN INTERNAL_PATTERN runs the public and/or internal suite and prints both outputs.
+suites() {
+  local status=0
+  if [ -n "$2" ]; then "$1" -B -m unittest discover -s tests/public -p "$2" 2>&1 || status=1; fi
+  if [ -n "$3" ]; then "$1" -B -m unittest discover -s tests/internal -t tests -p "$3" 2>&1 || status=1; fi
+  return $status
+}
+ran_of() { printf '%s\n' "$1" | grep -E '^Ran ' | awk '{n += $2} END {print n + 0}'; }
+skipped_of() { printf '%s\n' "$1" | grep -oE 'skipped=[0-9]+' | awk -F= '{n += $2} END {print n + 0}'; }
+# tier NAME STATUS OUTPUT [RUNS] adds the summary line for an optional tier.
+tier() {
+  if [ "$2" -eq 0 ] && [ "$(printf '%s\n' "$3" | grep -cE '^Ran ')" -eq "${4:-1}" ]; then
+    lines+=("- $1: $(ran_of "$3") tests OK (skipped=$(skipped_of "$3"))")
+  else
+    lines+=("- $1: FAILED")
+    printf '%s\n' "$3" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+}
+
+# A missing or broken FBX or USD reader fails the suites instead of skipping their tests.
+export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx,usd}"
+
 for version in 3.11 3.12; do
   var="MSF_PY${version/./}"
   py="${!var:-$MSF/_tools/venv$version/bin/python}"
@@ -46,23 +70,27 @@ for version in 3.11 3.12; do
     continue
   fi
   exact=$("$py" -c 'import platform; print(platform.python_version())')
-  start=$(python3 -c 'import time; print(time.time())')
-  output=$("$py" -B -m unittest discover -s tests 2>&1)
-  status=$?
-  took=$(seconds "$start")
-  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  verdict=$(verdict_of "$output" $status)
-  if [ $status -ne 0 ] || [ "${verdict#CRASHED}" != "$verdict" ]; then
-    failed=1
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-  fi
+  summary=()
+  for suite in public internal; do
+    start=$(python3 -c 'import time; print(time.time())')
+    if [ $suite = public ]; then output=$(suites "$py" 'test*.py' '' 2>&1); else output=$(suites "$py" '' 'test*.py' 2>&1); fi
+    status=$?
+    took=$(seconds "$start")
+    ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+    verdict=$(verdict_of "$output" $status)
+    if [ $status -ne 0 ] || [ "${verdict#CRASHED}" != "$verdict" ]; then
+      failed=1
+      printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    fi
+    summary+=("$suite ${ran:-?} tests, ${verdict} in ${took} s")
+  done
   if "$py" -B check.py >/dev/null 2>&1; then check="check.py OK"; else check="check.py FAILED"; failed=1; fi
-  lines+=("- Python $exact: unittest ${ran:-?} tests, ${verdict} in ${took} s; $check")
+  lines+=("- Python $exact: unittest ${summary[0]}; ${summary[1]}; $check")
 done
 
 py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
 if [ -x "$py312" ]; then
-  if unexercised=$(PYTHONPATH=. "$py312" -B tests/test_diagnostics_registry.py 2>&1); then
+  if unexercised=$(PYTHONPATH=.:tests "$py312" -B tests/internal/test_diagnostics_registry.py 2>&1); then
     lines+=("- Diagnostics registry: $unexercised")
   else
     lines+=("- Diagnostics registry: listing FAILED")
@@ -72,15 +100,8 @@ fi
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
 openusd="${MSF_OPENUSD_ASSETS:-$MSF/_viz/assets/openusd}"
 if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
-  output=$(MSF_OPENUSD_ASSETS="$openusd" "$py312" -B -m unittest discover -s tests -p test_source_openusd.py 2>&1)
-  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- OpenUSD assets tier: ${ran:-?} tests OK")
-  else
-    lines+=("- OpenUSD assets tier: $(verdict_of "$output" 1)")
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-    failed=1
-  fi
+  output=$(MSF_OPENUSD_ASSETS="$openusd" suites "$py312" test_source_openusd.py '')
+  tier "OpenUSD assets tier" $? "$output"
 else
   lines+=("- OpenUSD assets tier: SKIPPED (no assets at $openusd)")
 fi
@@ -88,14 +109,8 @@ fi
 # Optional tier on ufbx's own FBX corpus, kept out of the fast suite.
 corpus="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
 if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
-  output=$(MSF_UFBX_CORPUS="$corpus" "$py312" -B -m unittest discover -s tests -p 'test_source_fbx_[cd]*.py' 2>&1)
-  if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- ufbx corpus tier (loading, inspection, DCC reference frames): OK")
-  else
-    lines+=("- ufbx corpus tier: $(verdict_of "$output" 1)")
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-    failed=1
-  fi
+  output=$(MSF_UFBX_CORPUS="$corpus" suites "$py312" '' 'test_source_fbx_[cd]*.py')
+  tier "ufbx corpus tier (loading, inspection, DCC reference frames)" $? "$output"
 else
   lines+=("- ufbx corpus tier: SKIPPED (needs msf-tools-ufbx installed and the corpus under \$MSF/_viz/assets/ufbx)")
 fi
@@ -103,15 +118,8 @@ fi
 # Optional tier: Khronos sample assets re-authored as FBX, kept out of the fast suite.
 khronos="${MSF_KHRONOS_ASSETS:-$MSF/_viz/assets/khronos}"
 if [ -d "$khronos/Models" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
-  output=$(MSF_KHRONOS_ASSETS="$khronos" "$py312" -B -m unittest discover -s tests -p 'test_source_twins.py' 2>&1)
-  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- Khronos FBX twins tier: ${ran:-?} tests OK")
-  else
-    lines+=("- Khronos FBX twins tier: $(verdict_of "$output" 1)")
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-    failed=1
-  fi
+  output=$(MSF_KHRONOS_ASSETS="$khronos" suites "$py312" test_source_twins.py '')
+  tier "Khronos FBX twins tier" $? "$output"
 else
   lines+=("- Khronos FBX twins tier: SKIPPED (needs msf-tools-ufbx and \$MSF/_viz/assets/khronos)")
 fi
@@ -119,15 +127,8 @@ fi
 # Optional tier: the 09K real-asset harness recipes, one test per CASE_MATRIX ID.
 real="${MSF_REAL_ASSETS:-$MSF/_viz/assets/real09K}"
 if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -x "$py312" ]; then
-  output=$(MSF_REAL_ASSETS="$real" "$py312" -B -m unittest discover -s tests -p 'test_real_assets.py' 2>&1)
-  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- Real-asset recipe tier: ${ran:-?} tests, $(printf '%s\n' "$output" | grep -E '^OK' | tail -1)")
-  else
-    lines+=("- Real-asset recipe tier: $(verdict_of "$output" 1)")
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-    failed=1
-  fi
+  output=$(MSF_REAL_ASSETS="$real" suites "$py312" test_real_assets.py test_real_assets_internal.py)
+  tier "Real-asset recipe tier" $? "$output" 2
 else
   lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at $real)")
 fi
@@ -135,15 +136,8 @@ fi
 # Optional tier: the end-to-end examples, run as scripts on the fetched assets.
 examples="${MSF_EXAMPLE_ASSETS:-$MSF/_viz/assets/examples}"
 if [ -f "$examples/Fox.glb" ] && [ -x "$py312" ]; then
-  output=$(MSF_EXAMPLE_ASSETS="$examples" MSF_REAL_ASSETS="$real" "$py312" -B -m unittest discover -s tests -p 'test_examples.py' 2>&1)
-  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- Examples tier: ${ran:-?} tests, $(printf '%s\n' "$output" | grep -E '^OK' | tail -1)")
-  else
-    lines+=("- Examples tier: $(verdict_of "$output" 1)")
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
-    failed=1
-  fi
+  output=$(MSF_EXAMPLE_ASSETS="$examples" MSF_REAL_ASSETS="$real" suites "$py312" test_examples.py test_examples_internal.py)
+  tier "Examples tier" $? "$output" 2
 else
   lines+=("- Examples tier: SKIPPED (run examples/fetch_assets.py --dest $examples)")
 fi

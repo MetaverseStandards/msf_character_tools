@@ -17,6 +17,7 @@
 - A rule naming `piecewise_linear` in a document with `operator_version = "1.0"` now fails with `E_OPERATOR_VERSION` alone, whatever its knots. It used to fail with `E_UNKNOWN_KEY` for its `knots` key, or `E_ENUM` without one.
 - The `E_ENUM` messages for unknown `schema_version` and `operator_version` values list `1.0, 1.1`.
 - `.github/workflows/check.yml` is dormant while GitHub Actions is blocked by account billing; it no longer lists Windows or the native job. `scripts/ci_local.sh` is the CI run.
+- Tests are split into `tests/public`, which uses only the public API and the CLI and is the gate a reimplementation must pass unchanged, and `tests/internal`, which covers private modules. `tests/public.sha256` freezes the public suite, and a test fails if it changes without updating the manifest or reaches past the public API. Fixtures moved to `tests/public/fixtures`. Run `python -m unittest discover -s tests/public` and `python -m unittest discover -s tests/internal -t tests`; see `docs/testing.md`.
 
 ### Unchanged
 - 1.0 documents give the same packs, outputs and goldens byte for byte, and every other refusal of a 1.0 document keeps its code, reference and message.
