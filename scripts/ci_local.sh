@@ -80,9 +80,9 @@ fi
 # Optional tier on ufbx's own FBX corpus, kept out of the fast suite.
 corpus="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
 if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
-  output=$(MSF_UFBX_CORPUS="$corpus" "$py312" -B -m unittest discover -s tests -p 'test_source_fbx_corpus.py' 2>&1)
+  output=$(MSF_UFBX_CORPUS="$corpus" "$py312" -B -m unittest discover -s tests -p 'test_source_fbx_[cd]*.py' 2>&1)
   if printf '%s\n' "$output" | grep -qE '^OK'; then
-    lines+=("- ufbx corpus tier: OK")
+    lines+=("- ufbx corpus tier (loading, inspection, DCC reference frames): OK")
   else
     lines+=("- ufbx corpus tier: $(verdict_of "$output" 1)")
     printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
