@@ -8,6 +8,8 @@ struct msf_fbx {
     ufbx_scene *scene;
     msf_fbx_limits limits;
     uint32_t *shim_of_element; /* element_id -> shim node index, UINT32_MAX for the root and non-nodes */
+    const ufbx_node **node_of_shim; /* shim node index -> node */
+    uint32_t node_count;
 };
 
 static int32_t shim_index(const msf_fbx *h, const ufbx_node *node) {
@@ -72,7 +74,8 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
     h->scene = scene;
     if (limits) h->limits = *limits;
     h->shim_of_element = (uint32_t *)malloc(sizeof(uint32_t) * (scene->elements.count + 1));
-    if (!h->shim_of_element) {
+    h->node_of_shim = (const ufbx_node **)malloc(sizeof(ufbx_node *) * (scene->nodes.count + 1));
+    if (!h->shim_of_element || !h->node_of_shim) {
         msf_fbx_close(h);
         set_error(err, n, "msf_fbx_open: out of memory");
         return 0;
@@ -81,20 +84,17 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
     uint32_t next = 0;
     for (size_t i = 0; i < scene->nodes.count; i++) {
         const ufbx_node *node = scene->nodes.data[i];
-        if (!node->is_root) h->shim_of_element[node->element_id] = next++;
+        if (node->is_root) continue;
+        h->node_of_shim[next] = node;
+        h->shim_of_element[node->element_id] = next++;
     }
+    h->node_count = next;
     *out = h;
     return 1;
 }
 
 static const ufbx_node *node_at(const msf_fbx *h, uint32_t i) {
-    uint32_t seen = 0;
-    for (size_t k = 0; k < h->scene->nodes.count; k++) {
-        const ufbx_node *node = h->scene->nodes.data[k];
-        if (node->is_root) continue;
-        if (seen++ == i) return node;
-    }
-    return NULL;
+    return i < h->node_count ? h->node_of_shim[i] : NULL;
 }
 
 int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out) {
@@ -208,6 +208,7 @@ void msf_fbx_close(msf_fbx *h) {
     if (!h) return;
     ufbx_free_scene(h->scene);
     free(h->shim_of_element);
+    free(h->node_of_shim);
     free(h);
 }
 
@@ -409,6 +410,10 @@ int msf_fbx_skinned_points(const msf_fbx *h, int32_t s, double time, uint32_t m,
     ufbx_evaluate_opts opts;
     memset(&opts, 0, sizeof(opts));
     opts.evaluate_skinning = true;
+    opts.temp_allocator.memory_limit = h->limits.memory_limit;
+    opts.temp_allocator.allocation_limit = h->limits.allocation_limit;
+    opts.result_allocator.memory_limit = h->limits.memory_limit;
+    opts.result_allocator.allocation_limit = h->limits.allocation_limit;
     ufbx_error error;
     const ufbx_anim *anim = s >= 0 ? h->scene->anim_stacks.data[s]->anim : h->scene->anim;
     ufbx_scene *state = ufbx_evaluate_scene(h->scene, anim, time, &opts, &error);
