@@ -268,16 +268,37 @@ else
 fi
 
 # docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
+# It is measured on macOS arm64, and usd-core's own arithmetic differs elsewhere, so on other platforms
+# the fresh table is compared with 0.3.0's table measured on the same machine instead: MSF_ORACLE_SOURCE,
+# a v0.3.0 checkout (default $MSF/_tools/oracle-src), run by the oracle interpreter with usd-core.
 if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -n "$khronos" ] && [ -d "$khronos/Models" ] \
     && [ -d "$corpus/data" ] && [ -n "$examples" ] && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
   mkdir -p build
   fresh=build/parity.md
-  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
-      && cmp -s "$fresh" docs/parity.md; then
-    lines+=("- docs/parity.md: matches a fresh measurement")
-  else
-    lines+=("- docs/parity.md: STALE or generator failed (rerun python -B scripts/parity_table.py with the asset variables set)")
+  assets=(MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples")
+  oracle_source="${MSF_ORACLE_SOURCE:-$(workspace _tools/oracle-src)}"
+  if ! env "${assets[@]}" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1; then
+    lines+=("- docs/parity.md: generator FAILED (rerun python -B scripts/parity_table.py with the asset variables set)")
     failed=1
+  elif [ "$(uname -s)" = Darwin ]; then
+    if cmp -s "$fresh" docs/parity.md; then
+      lines+=("- docs/parity.md: matches a fresh measurement")
+    else
+      lines+=("- docs/parity.md: STALE (rerun python -B scripts/parity_table.py with the asset variables set)")
+      failed=1
+    fi
+  elif [ -n "$oracle_source" ] && [ -f "$oracle_source/scripts/parity_table.py" ] && [ -x "${MSF_ORACLE_PYTHON:-}" ] \
+      && "$MSF_ORACLE_PYTHON" -c 'import pxr' 2>/dev/null; then
+    root=$(pwd)
+    if (cd "$oracle_source" && env "${assets[@]}" "$MSF_ORACLE_PYTHON" -B scripts/parity_table.py "$root/build/parity-0.3.0.md" >/dev/null 2>&1) \
+        && cmp -s <(grep -v '^msf-tools ' "$fresh") <(grep -v '^msf-tools ' build/parity-0.3.0.md); then
+      lines+=("- docs/parity.md: a fresh measurement matches 0.3.0's on this machine ($(diff -q "$fresh" docs/parity.md >/dev/null && echo 'and the macOS table' || echo "usd-core's last digits differ from the macOS table"))")
+    else
+      lines+=("- docs/parity.md: a fresh measurement DIFFERS from 0.3.0's on this machine (compare build/parity.md and build/parity-0.3.0.md)")
+      failed=1
+    fi
+  else
+    lines+=("- docs/parity.md: NOT CHECKED (measured on macOS; elsewhere needs MSF_ORACLE_SOURCE and usd-core in the oracle)")
   fi
 else
   lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")
