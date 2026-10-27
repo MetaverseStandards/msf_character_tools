@@ -89,7 +89,7 @@ class _Scene:
                                "to_parent": _matrix(node.to_parent),
                                "skipped": ffi.string(node.skipped).decode() if node.skipped != ffi.NULL else None})
         self.losses, self.skipped = [], {"empty mesh": 0, "hole face": 0, "point or line face": 0}
-        sizes = ffi.new("uint32_t[6]")
+        sizes = ffi.new("uint32_t[7]")
         self.empty = {m for m in range(self.info.meshes) if lib.msf_fbx_mesh_sizes(self.h, m, sizes) and sizes[0] == 0}
         self.skipped["empty mesh"] = len(self.empty)
 
@@ -228,12 +228,15 @@ class _Scene:
         return meshes, mesh_of_shim, skins, target_keys
 
     def mesh(self, m, shim, path, index):
-        sizes = ffi.new("uint32_t[6]")
+        sizes = ffi.new("uint32_t[7]")
         if not lib.msf_fbx_mesh_sizes(self.h, m, sizes):
             fail("E_SOURCE_VALUE", path, "The FBX reader could not report a mesh.")
         points, triangles = sizes[0], sizes[1]
         self.skipped["hole face"] += sizes[2]
         self.skipped["point or line face"] += sizes[3]
+        if sizes[6]:
+            self.losses.append(skinning.warning("W_POINTS_ANIMATION_DROPPED", path,
+                                                "Dropped the vertex cache animation; the mesh's own points are used."))
         positions = ffi.new("double[]", 3 * points or 1)
         tri = ffi.new("uint32_t[]", 3 * triangles or 1)
         if not lib.msf_fbx_mesh_fill(self.h, m, positions, points, tri, triangles):
@@ -433,7 +436,7 @@ class _Scene:
             m = self.nodes[shim]["mesh"]
             if m < 0 or m in self.empty:
                 continue
-            sizes = ffi.new("uint32_t[6]")
+            sizes = ffi.new("uint32_t[7]")
             lib.msf_fbx_mesh_sizes(self.h, m, sizes)
             ids = []
             for c in range(sizes[5]):

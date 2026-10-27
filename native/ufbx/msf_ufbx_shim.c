@@ -146,7 +146,7 @@ static int usable_face(const ufbx_mesh *mesh, size_t f) {
     return !hole && mesh->faces.data[f].num_indices >= 3;
 }
 
-int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[6]) {
+int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[7]) {
     const ufbx_mesh *mesh = mesh_at(h, m);
     if (!mesh || !sizes) return 0;
     uint32_t triangles = 0, holes = 0, small = 0;
@@ -163,12 +163,13 @@ int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[6]) {
     sizes[3] = small;
     sizes[4] = (uint32_t)mesh->skin_deformers.count;
     sizes[5] = channels;
+    sizes[6] = (uint32_t)mesh->cache_deformers.count;
     return 1;
 }
 
 int msf_fbx_mesh_fill(const msf_fbx *h, uint32_t m, double *positions, uint32_t points, uint32_t *tri_points, uint32_t triangles) {
     const ufbx_mesh *mesh = mesh_at(h, m);
-    uint32_t sizes[6];
+    uint32_t sizes[7];
     if (!mesh || !positions || !tri_points || !msf_fbx_mesh_sizes(h, m, sizes)) return 0;
     if (points != sizes[0] || triangles != sizes[1]) return 0;
     for (size_t v = 0; v < mesh->vertices.count; v++) {

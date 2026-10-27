@@ -117,6 +117,15 @@ class FbxStatic(unittest.TestCase):
         self.assertEqual(thaw(snapshot.source['losses'])[0]['message'], 'Skipped 1 camera, 1 light and 1 material.')
         self.assertIn('/Cam', snapshot.source['node_paths'])
 
+    def test_vertex_caches_are_declared_as_dropped_point_animation(self):
+        scene = face()
+        scene.cache(1003, 'Face')  # the Face geometry
+        snapshot = good(m.inspect_asset(scene.text(), 'fbx'))
+        self.assertEqual(codes(snapshot), [('W_POINTS_ANIMATION_DROPPED', '/Root/Face')])
+        self.assertEqual(positions(snapshot), [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+        strict = m.inspect_asset(scene.text(), 'fbx', options={'losses': 'strict'})
+        self.assertEqual(errors(strict), [('E_POINTS_ANIMATION_DROPPED', '/Root/Face')])
+
     def test_unreadable_files_and_reader_memory(self):
         self.assertEqual(errors(m.inspect_asset(b'; FBX 7.4.0 project file\nObjects: { garbage', 'fbx')), [('E_SOURCE_PARSE', '/')])
         result = m.inspect_asset(face().text(), 'fbx', limits=m.sources.SourceLimits(max_reader_memory=4096))
@@ -260,7 +269,7 @@ def ufbx_skinned_world(data, mesh=0, stack=-1, time=0.0):
     from msf_tools_ufbx import ffi, lib
     handle, err = open_scene(data)
     try:
-        sizes = ffi.new('uint32_t[6]')
+        sizes = ffi.new('uint32_t[7]')
         lib.msf_fbx_mesh_sizes(handle, mesh, sizes)
         out, text = ffi.new('double[]', 3 * sizes[0]), ffi.new('char[256]')
         assert lib.msf_fbx_skinned_points(handle, stack, time, mesh, out, sizes[0], text, 256), ffi.string(text)

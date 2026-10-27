@@ -110,6 +110,14 @@ class Scene:
                 self._add(shape, channel)
         return ids
 
+    def cache(self, geometry, channel):
+        """A vertex cache deformer on a geometry, with its cache file object; the file itself is never read."""
+        deformer = self._add(f'\tDeformer: @ID@, "Deformer::{channel}Cache", "VertexCacheDeformer" {{\n\t\tVersion: 100\n'
+                             f'\t\tProperties70:  {{\n\t\t\tP: "ChannelName", "KString", "", "", "{channel}"\n\t\t}}\n\t}}\n', geometry)
+        self._add(f'\tCache: @ID@, "Cache::{channel}", "" {{\n\t\tVersion: 100\n\t\tProperties70:  {{\n'
+                  f'\t\t\tP: "CacheFileName", "KString", "", "", "{channel}.xml"\n\t\t}}\n\t}}\n', deformer)
+        return deformer
+
     def animation(self, name, start, stop, curves):
         """One stack and layer. curves: (object id, property, {component: [(seconds, value), ...]}), where property is
         "Lcl Translation"/"Lcl Rotation"/"Lcl Scaling" (components X, Y, Z) or "DeformPercent" on a blend channel."""

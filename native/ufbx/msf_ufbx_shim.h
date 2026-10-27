@@ -44,8 +44,9 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
 void msf_fbx_close(msf_fbx *h);
 int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out);
 int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out);
-/* sizes: points, triangles, hole faces, faces with fewer than 3 corners, skin deformers, blend channels */
-int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[6]);
+/* sizes: points, triangles, hole faces, faces with fewer than 3 corners, skin deformers, blend channels,
+   vertex cache deformers (their cache files are never read) */
+int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[7]);
 /* Points as x,y,z; triangles ear-clipped by ufbx, as point indices. The counts must equal msf_fbx_mesh_sizes. */
 int msf_fbx_mesh_fill(const msf_fbx *h, uint32_t m, double *positions, uint32_t points, uint32_t *tri_points, uint32_t triangles);
 /* Skin deformer d of mesh m. sizes: clusters, weight entries. */

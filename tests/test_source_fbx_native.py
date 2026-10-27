@@ -97,10 +97,10 @@ class UfbxShim(unittest.TestCase):
         scene.mesh(body, 'Body', points, [[0, 1, 2, 3], [1, 4, 2], [4, 5, 6, 7, 2]])
         handle = self.scene(scene.text())
         self.assertEqual(self.nodes(handle)[0]['mesh'], 0)
-        sizes = ffi.new('uint32_t[6]')
+        sizes = ffi.new('uint32_t[7]')
         self.assertEqual(lib.msf_fbx_mesh_sizes(handle, 0, sizes), 1)
         count, triangles = sizes[0], sizes[1]
-        self.assertEqual((count, triangles, sizes[2], sizes[3]), (8, 6, 0, 0))
+        self.assertEqual((count, triangles, sizes[2], sizes[3], sizes[6]), (8, 6, 0, 0, 0))
         positions = ffi.new('double[]', 3 * count)
         tri = ffi.new('uint32_t[]', 3 * triangles)
         self.assertEqual(lib.msf_fbx_mesh_fill(handle, 0, positions, count, tri, triangles), 1)
@@ -109,6 +109,9 @@ class UfbxShim(unittest.TestCase):
         self.assertTrue(all(set(tri[3 * t:3 * t + 3]) <= faces[t] for t in range(triangles)))
         self.assertEqual(lib.msf_fbx_mesh_fill(handle, 0, positions, count - 1, tri, triangles), 0)
         self.assertEqual(lib.msf_fbx_mesh_sizes(handle, 1, sizes), 0)
+        scene.cache(1002, 'Body')  # the Body geometry
+        self.assertEqual(lib.msf_fbx_mesh_sizes(self.scene(scene.text()), 0, sizes), 1)
+        self.assertEqual(sizes[6], 1)
 
     def test_skin_clusters_weights_and_bind_matrices(self):
         from msf_tools_ufbx import ffi, lib
