@@ -9,3 +9,5 @@ dist/
 examples/assets/
 examples/out/
 msf_tools/_build_info.json
+msf_tools/_core*.so
+msf_tools/_core*.pyd
