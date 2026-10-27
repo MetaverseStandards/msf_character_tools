@@ -108,6 +108,22 @@ else
   lines+=("- Khronos FBX twins tier: SKIPPED (needs msf-tools-ufbx and \$MSF/_viz/assets/khronos)")
 fi
 
+# Optional tier: the 09K real-asset harness recipes, one test per CASE_MATRIX ID.
+real="${MSF_REAL_ASSETS:-$MSF/_viz/assets/real09K}"
+if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -x "$py312" ]; then
+  output=$(MSF_REAL_ASSETS="$real" "$py312" -B -m unittest discover -s tests -p 'test_real_assets.py' 2>&1)
+  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- Real-asset recipe tier: ${ran:-?} tests, $(printf '%s\n' "$output" | grep -E '^OK' | tail -1)")
+  else
+    lines+=("- Real-asset recipe tier: $(verdict_of "$output" 1)")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at $real)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then

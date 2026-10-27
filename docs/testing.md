@@ -16,7 +16,7 @@ Final local gate:30 tests passed on Python3.12.15 and the installed Python3.11.1
 | Tracking | Signed valid input; invalid/missing/type/domain/time failures; no neutral substitution; output domain failure |
 | Assets | Original GLB bytes/chunks/unknown extensions/attributes retained; malformed headers/bounds/NaN; interleaved normalized padded matrices; sparse indices/values; bounded zero accessors |
 | Resource/sidecar | No remote fetch; resolver traversal/symlink/budget rejection; stale asset/resource/sparse hashes, structural destination validation, canonical idempotence |
-| Geometry | Two instances; relative signed/>1 morphs before four nonzero skin influences; head/jaw/accessory/unknown joint; rest versus bind; separate morph and skin; eight influence and singular refusal |
+| Geometry | Two instances; relative signed/>1 morphs before four nonzero skin influences; head/jaw/accessory/unknown joint; rest versus bind; separate morph and skin; eight influences evaluated against direct equations; singular refusal |
 | Curves/hierarchy | STEP, endpoints, component LINEAR, shortest quaternion slerp; duration-scaled Hermite with raw quaternion tangents; shear/singular reparent rejection |
 | CLI preservation | Annotate/check output aliases, hardlinks/symlinks refused before any replacement; source bytes unchanged |
 
@@ -35,6 +35,10 @@ Fixture generation is deterministic. Regenerating fixtures must leave checked-in
 
 `scripts/ci_local.sh` runs the same commands as `.github/workflows/check.yml` on local Python 3.11 and 3.12 environments (`$MSF/_tools/venv3.11` and `venv3.12` by default, or `MSF_PY311` / `MSF_PY312`). It also runs the native build and CTest when `cmake` and a C++ compiler are present, and otherwise reports them as SKIPPED. It ends with a summary block for pull-request descriptions and exits nonzero if any check fails. Use it while hosted CI is unavailable.
 
+## Real-asset recipe tier
+
+`tests/test_real_assets.py` has one test per case in the 09K real-asset harness plan's `CASE_MATRIX.json`. It runs when `MSF_REAL_ASSETS` names a local copy of the plan, the pinned Fox, RobotExpressiveHead and RobotExpressive assets and the independent Decimal oracles (see the module docstring for the layout), and skips otherwise; none of it is committed. Exact bytes are compared with the plan's frozen pack, exports, sidecar, mapping, evaluated samples and refusal reports, and geometry with the oracles at the tolerances in their `EXPECTATION_SPEC.json`. Cases that need installed artifacts, consumer repositories, DCC hosts or cost literals frozen elsewhere are skipped with the reason. The eight-influence item in GEOMETRY-STRICT-TWINS is superseded by N-influence skinning: it now checks that the twin evaluates.
+
 ## USD strict tier and demo
 
 `tests/test_source_strict.py` reads each synthetic USD fixture in `tests/fixtures/source` (written by `python -B tests/make_source_fixtures.py`) as USDA, as USDC exported by usd-core and as a stored USDZ. All three must give the same glTF document and the declared losses or refusal listed for the case. The answers come from usd-core opening the fixture itself: triangles from its face counts, holes and orientation; world-space points at every authored time code, through `ComputeLocalToWorldTransform` or, for skinned meshes, `BakeSkinning` in linear-blend mode; and normalized skin weights. Positions must agree within 1e-5 of the bounding-box diagonal and weights within 1e-6. The tests skip when usd-core is not installed.
@@ -49,7 +53,7 @@ Fixture generation is deterministic. Regenerating fixtures must leave checked-in
 
 ## Limits of acceptance
 
-Numerical agreement covers the explicitly supported positions/curves and declared fixtures. It does not prove contacts, visual quality, general tracking calibration, performance on arbitrary production models, required extension support, normals or material parity. No full taxonomy completion gates geometry. Real host tests and native ownership/numerical tests have separate owners and evidence; syntax/source inspection cannot count as host execution. Later geometry formats, eight influences, DQS, geometry rewriting, simultaneous clips and universal calibration need new capabilities and tests.
+Numerical agreement covers the explicitly supported positions/curves and declared fixtures. It does not prove contacts, visual quality, general tracking calibration, performance on arbitrary production models, required extension support, normals or material parity. No full taxonomy completion gates geometry. Real host tests and native ownership/numerical tests have separate owners and evidence; syntax/source inspection cannot count as host execution. Later geometry formats, DQS, geometry rewriting, simultaneous clips and universal calibration need new capabilities and tests.
 
 ## Package 0.1.1 record and diagnostic regression gate
 
