@@ -144,6 +144,10 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 
 glTF formats refuse `limits` and `options` with `E_SOURCE_OPTIONS`.
 
+#### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
+
+Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Local transforms come from the earliest authored time and must be affine, free of shear and nonsingular. A layer with sublayers, references or payloads is refused with `E_SOURCE_REFERENCE` for now, and reader errors are `E_SOURCE_PARSE`.
+
 ## Mapping and samples
 
 ```python

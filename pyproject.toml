@@ -12,6 +12,9 @@ license = {text = "MIT"}
 authors = [{name = "MSF Tools contributors"}]
 dependencies = []
 
+[project.optional-dependencies]
+usd = ["usd-core>=25.11,<27"]
+
 [project.scripts]
 msf-tools = "msf_tools.cli:main"
 
