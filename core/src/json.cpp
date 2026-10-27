@@ -455,8 +455,8 @@ std::string python_repr(double value) {
 
 namespace {
 
-void append_string(std::string& out, const std::string& s) {
-    if (has_surrogate(s)) throw std::domain_error("strings with lone surrogates cannot be encoded as UTF-8");
+void append_string(std::string& out, const std::string& s, bool wtf8) {
+    if (!wtf8 && has_surrogate(s)) throw std::domain_error("strings with lone surrogates cannot be encoded as UTF-8");
     static const char hex[] = "0123456789abcdef";
     out += '"';
     for (char ch : s) {
@@ -482,7 +482,7 @@ void append_string(std::string& out, const std::string& s) {
     out += '"';
 }
 
-void write(std::string& out, const Value& v, int level) {
+void write(std::string& out, const Value& v, int level, bool wtf8) {
     switch (v.kind) {
         case Value::Kind::null: out += "null"; return;
         case Value::Kind::boolean: out += v.boolean ? "true" : "false"; return;
@@ -495,7 +495,7 @@ void write(std::string& out, const Value& v, int level) {
             else
                 append_python_repr(out, v.number);
             return;
-        case Value::Kind::string: append_string(out, v.text); return;
+        case Value::Kind::string: append_string(out, v.text, wtf8); return;
         case Value::Kind::array: {
             if (v.items.empty()) {
                 out += "[]";
@@ -505,7 +505,7 @@ void write(std::string& out, const Value& v, int level) {
             for (std::size_t i = 0; i < v.items.size(); ++i) {
                 out += i ? ",\n" : "\n";
                 out.append(static_cast<std::size_t>(2 * (level + 1)), ' ');
-                write(out, v.items[i], level + 1);
+                write(out, v.items[i], level + 1, wtf8);
             }
             out += '\n';
             out.append(static_cast<std::size_t>(2 * level), ' ');
@@ -526,25 +526,141 @@ void write(std::string& out, const Value& v, int level) {
             for (std::size_t i = 0; i < sorted.size(); ++i) {
                 out += i ? ",\n" : "\n";
                 out.append(static_cast<std::size_t>(2 * (level + 1)), ' ');
-                append_string(out, sorted[i]->first);
+                append_string(out, sorted[i]->first, wtf8);
                 out += ": ";
-                write(out, sorted[i]->second, level + 1);
+                write(out, sorted[i]->second, level + 1, wtf8);
             }
             out += '\n';
             out.append(static_cast<std::size_t>(2 * level), ' ');
             out += '}';
             return;
         }
+        case Value::Kind::other:
+            throw std::domain_error("value without a JSON type");
     }
 }
 
 }  // namespace
 
-std::string write_canonical(const Value& value) {
+namespace {
+
+void write_compact(std::string& out, const Value& v) {
+    switch (v.kind) {
+        case Value::Kind::null: out += "null"; return;
+        case Value::Kind::boolean: out += v.boolean ? "true" : "false"; return;
+        case Value::Kind::integer: out += v.text; return;
+        case Value::Kind::real:
+            if (!std::isfinite(v.number)) throw std::domain_error("Out of range float values are not JSON compliant");
+            append_python_repr(out, v.number);
+            return;
+        case Value::Kind::string:
+            out += '"';
+            for (char ch : v.text) {
+                if (ch == '"' || ch == '\\') out += '\\';
+                out += ch;
+            }
+            out += '"';
+            return;
+        case Value::Kind::array:
+            out += v.is_list ? '[' : '(';
+            for (std::size_t i = 0; i < v.items.size(); ++i) {
+                if (i) out += ',';
+                write_compact(out, v.items[i]);
+            }
+            out += v.is_list ? ']' : ')';
+            return;
+        case Value::Kind::object:
+            out += '{';
+            for (std::size_t i = 0; i < v.members.size(); ++i) {
+                if (i) out += ',';
+                write_compact(out, Value::make_string(v.members[i].first));
+                out += ':';
+                write_compact(out, v.members[i].second);
+            }
+            out += '}';
+            return;
+        case Value::Kind::other:
+            throw std::domain_error("value without a JSON type");
+    }
+}
+
+}  // namespace
+
+std::string write_exact(const Value& value) {
     std::string out;
-    write(out, value, 0);
+    write_compact(out, value);
+    return out;
+}
+
+std::string write_canonical(const Value& value, bool allow_surrogates) {
+    std::string out;
+    write(out, value, 0, allow_surrogates);
     out += '\n';
     return out;
+}
+
+// ---------------------------------------------------------------- lookups
+
+const Value* find(const Value& object, std::string_view key) {
+    for (const auto& member : object.members)
+        if (member.first == key) return &member.second;
+    return nullptr;
+}
+
+namespace {
+
+// Decimal digits of a finite, integer-valued double of magnitude >= 2**53.
+std::string integer_digits(double value) {
+    int exponent;
+    double mantissa = std::frexp(std::fabs(value), &exponent);
+    auto bits = static_cast<std::uint64_t>(std::ldexp(mantissa, 53));
+    exponent -= 53;
+    std::vector<std::uint32_t> limbs;  // base 10**9, least significant first
+    for (; bits; bits /= 1000000000U) limbs.push_back(static_cast<std::uint32_t>(bits % 1000000000U));
+    for (int i = 0; i < exponent; ++i) {
+        std::uint64_t carry = 0;
+        for (auto& limb : limbs) {
+            std::uint64_t x = static_cast<std::uint64_t>(limb) * 2 + carry;
+            limb = static_cast<std::uint32_t>(x % 1000000000U);
+            carry = x / 1000000000U;
+        }
+        if (carry) limbs.push_back(static_cast<std::uint32_t>(carry));
+    }
+    std::string out = value < 0 ? "-" : "";
+    out += std::to_string(limbs.back());
+    for (std::size_t i = limbs.size() - 1; i-- > 0;) {
+        std::string part = std::to_string(limbs[i]);
+        out.append(9 - part.size(), '0');
+        out += part;
+    }
+    return out;
+}
+
+int compare_digits(const std::string& a, const std::string& b) {
+    bool na = !a.empty() && a[0] == '-', nb = !b.empty() && b[0] == '-';
+    if (na != nb) return na ? -1 : 1;
+    std::size_t la = a.size() - na, lb = b.size() - nb;
+    int magnitude = la != lb ? (la < lb ? -1 : 1) : a.compare(na, std::string::npos, b, nb, std::string::npos);
+    magnitude = magnitude < 0 ? -1 : magnitude > 0 ? 1 : 0;
+    return na ? -magnitude : magnitude;
+}
+
+int compare_int_real(const Value& i, double f) {
+    double r = i.number;  // correctly rounded, so on the same side of f unless equal
+    if (r < f) return -1;
+    if (r > f) return 1;
+    if (std::fabs(f) < 9007199254740992.0) return 0;
+    return compare_digits(i.text, integer_digits(f));
+}
+
+}  // namespace
+
+int compare_numbers(const Value& a, const Value& b) {
+    bool ai = a.kind == Value::Kind::integer, bi = b.kind == Value::Kind::integer;
+    if (ai && bi) return compare_digits(a.text, b.text);
+    if (ai) return compare_int_real(a, b.number);
+    if (bi) return -compare_int_real(b, a.number);
+    return a.number < b.number ? -1 : a.number > b.number ? 1 : 0;
 }
 
 // ---------------------------------------------------------------- numbers
