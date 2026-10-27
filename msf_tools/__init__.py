@@ -11,7 +11,7 @@ from .geometry import (evaluate_geometry, sample_animation, export_geometry_gold
                        reparent_local, GeometryValues)
 from .common import canonical_json
 
-__version__ = "0.2.0.dev0"
+__version__ = "0.3.0"
 __all__ = ["validate_authoring", "compile_pack", "inspect_asset", "compile_mapping",
            "evaluate_mapping", "annotate_asset", "Result", "Report", "Diagnostic", "Loss",
            "load_authoring", "profile_snapshot", "canonical_json", "decode_accessor",
