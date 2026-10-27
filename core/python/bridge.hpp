@@ -21,6 +21,14 @@ std::string wtf8_of(nb::handle str);
 // that str.encode("utf-8") raises for the decoded text.
 nb::bytes utf8_bytes(const std::string& wtf8);
 
+// Any Python value as validate_authoring sees it: exact JSON types keep their
+// kind, Mappings are objects, lists and tuples (and subclasses) are arrays,
+// anything else is Kind::other. Contents past depth 129 are left out.
+void from_any(PyObject* o, msf::json::Value& v, int depth = 0);
+
+// What records._owned made of a valid document: proxies, tuples, scalars.
+nb::object frozen(const msf::json::Value& v);
+
 // Plain dicts, lists and scalars.
 nb::object to_python(const msf::json::Value& v);
 

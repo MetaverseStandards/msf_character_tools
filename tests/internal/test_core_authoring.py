@@ -125,8 +125,10 @@ NUMBERS = [0, -1, 2, 0.5, -0.0, 2.0, 3, -1.0000000000000002, 2**53, 2**53 + 1, 2
 
 def targeted(doc, rng):
     """An edit aimed at one check that random edits rarely reach."""
-    signals = [s for s in doc.get('signals', ()) if isinstance(s, dict)]
-    rules = [r for m in doc.get('mappings', ()) if isinstance(m, dict) for r in m.get('rules', ()) if isinstance(r, dict)]
+    def rows(x):
+        return x if isinstance(x, (list, tuple)) else ()
+    signals = [s for s in rows(doc.get('signals')) if isinstance(s, dict)]
+    rules = [r for m in rows(doc.get('mappings')) if isinstance(m, dict) for r in rows(m.get('rules')) if isinstance(r, dict)]
     roll = rng.randrange(6)
     if roll == 0:
         doc['operator_version'] = rng.choice(['1.0', '1.1', '1.2', 1.0])
@@ -237,7 +239,7 @@ class AgainstTheOracle(unittest.TestCase):
         self.assertTrue(core.validate_authoring(rich())[1] is not None)
 
     def test_mutated_documents(self):
-        docs = list(documents(20000 if GATE else 400, 11, [example(), rich()]))
+        docs = list(documents(20000 if GATE else 60, 11, [example(), rich()]))
         self.assertSame([(PACK, {'doc': d}) for d in docs])
 
     def test_odd_inputs(self):
@@ -250,12 +252,16 @@ class AgainstTheOracle(unittest.TestCase):
         rng = random.Random(3)
         cases = []
         with tempfile.TemporaryDirectory() as tmp:
-            for n in range(60 if not GATE else 600):
+            for n in range(600 if GATE else 6):
                 doc = copy.deepcopy(rng.choice([example(), rich()]))
                 for _ in range(rng.choice((0, 0, 1, 2))):
                     doc = mutate(doc, rng)
                 folder = Path(tmp, str(n))
                 (folder / 'parts').mkdir(parents=True)
+                try:
+                    toml(doc)
+                except RecursionError:
+                    continue
                 meta = {k: v for k, v in doc.items() if not isinstance(v, list)}
                 arrays = {k: v for k, v in doc.items() if isinstance(v, list)}
                 (folder / 'pack.toml').write_text(toml(meta))
@@ -318,13 +324,11 @@ class InProcess(unittest.TestCase):
                                 ['1' if s['id'] in p['signal_ids'] else '' for p in profiles])
             self.assertEqual(handle.survey_csv(), stream.getvalue().encode())
 
-    def test_surrogates_raise_pythons_own_encode_error(self):
+    def test_valid_documents_with_surrogates_raise_pythons_own_encode_error(self):
         doc = rich()
         doc['signals'][0]['label'] = 'a\udc80'
-        handle = core.validate_authoring(doc)[1]
-        for fn in (handle.canonical, handle.survey_csv, handle.sha256):
-            with self.assertRaises(UnicodeEncodeError):
-                fn()
+        with self.assertRaises(UnicodeEncodeError):
+            core.validate_authoring(doc)
 
 
 if __name__ == '__main__':

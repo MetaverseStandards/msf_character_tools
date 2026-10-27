@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "msf/pack.hpp"
 
+#include "msf/diagnostics.hpp"
+
 #include <array>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -51,16 +54,6 @@ Value object() {
 Value integer(std::size_t n) { return Value::make_integer(std::to_string(n)); }
 
 void put(Value& obj, const char* key, Value value) { obj.members.emplace_back(key, std::move(value)); }
-
-// common.thaw: tuples become lists and -0.0 becomes 0.0.
-Value thaw(const Value& v) {
-    Value out = v;
-    if (out.kind == Kind::real && out.number == 0.0) out = Value::make_real(0.0);
-    out.is_list = true;
-    for (Value& item : out.items) item = thaw(item);
-    for (auto& member : out.members) member.second = thaw(member.second);
-    return out;
-}
 
 Value ids(const std::vector<const Value*>& rows) {
     Value out = array();
@@ -115,6 +108,41 @@ Value metadata(const Value& row) {
 }
 
 }  // namespace
+
+Value thaw(const Value& v) {
+    Value out = v;
+    if (out.kind == Kind::real && out.number == 0.0) out = Value::make_real(0.0);
+    out.is_list = true;
+    for (Value& item : out.items) item = thaw(item);
+    for (auto& member : out.members) member.second = thaw(member.second);
+    return out;
+}
+
+Profile profile_snapshot(const Value& document, const std::string& id, const std::string& pack_sha256) {
+    const Value* profile = nullptr;
+    for (const Value& p : at(document, "profiles").items)
+        if (at(p, "id").text == id) {
+            profile = &p;
+            break;
+        }
+    if (!profile) fail(Code::E_PROFILE, "/profiles", "Unknown profile " + id + ".");
+    std::unordered_map<std::string, const Value*> signals;
+    for (const Value& s : at(document, "signals").items) signals[at(s, "id").text] = &s;
+    Profile out;
+    out.channels = object();
+    for (const Value& sid : at(*profile, "signal_ids").items) {
+        const Value* signal = signals.at(sid.text);
+        Value channel = object();
+        for (const char* k : {"id", "value_type", "units", "domain", "calibration"}) put(channel, k, at(*signal, k));
+        out.channels.members.emplace_back(sid.text, std::move(channel));
+    }
+    out.document = object();
+    put(out.document, "schema_version", Value::make_string("1.0"));
+    put(out.document, "profile", thaw(*profile));
+    put(out.document, "pack_sha256", Value::make_string(pack_sha256));
+    put(out.document, "channels", thaw(out.channels));
+    return out;
+}
 
 std::string survey_csv(const Value& document) {
     const Value& profiles = at(document, "profiles");

@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "bridge.hpp"
+#include "document.hpp"
 #include "msf/authoring.hpp"
 #include "msf/diagnostics.hpp"
 #include "msf/json.hpp"
@@ -20,18 +21,19 @@ namespace nb = nanobind;
 using msf::json::Value;
 using Kind = Value::Kind;
 
-namespace {
+namespace bridge {
 
 // json_value refuses anything at depth 129 before looking inside it, and no
 // other check reaches that deep, so deeper contents (or cycles) never matter.
 constexpr int kDeepest = 129;
 
-PyObject* mapping_abc() {
-    static nb::object abc = nb::module_::import_("collections.abc").attr("Mapping");
-    return abc.ptr();
+static PyObject* mapping_abc() {
+    // Never released: a static nb::object would be released after interpreter shutdown.
+    static PyObject* abc = nb::object(nb::module_::import_("collections.abc").attr("Mapping")).release().ptr();
+    return abc;
 }
 
-bool is_mapping(PyObject* o) {
+static bool is_mapping(PyObject* o) {
     if (PyDict_Check(o) || Py_TYPE(o) == &PyDictProxy_Type) return true;
     int found = PyObject_IsInstance(o, mapping_abc());
     if (found < 0) throw nb::python_error();
@@ -123,45 +125,30 @@ nb::object frozen(const Value& v) {
     }
 }
 
-struct Document {
-    Value value;
-    mutable nb::object view_;
-    mutable std::optional<std::string> sha256_;
+}  // namespace bridge
 
-    explicit Document(Value v) : value(std::move(v)) {}
+namespace {
 
-    nb::object view() const {
-        if (!view_.is_valid()) view_ = frozen(value);
-        return view_;
+using bridge::from_any;
+using bridge::frozen;
+
+const std::string* first_surrogate(const Value& v) {
+    if (v.kind == Kind::string) return msf::json::has_surrogate(v.text) ? &v.text : nullptr;
+    for (const auto& [key, child] : v.members) {
+        if (msf::json::has_surrogate(key)) return &key;
+        if (const std::string* found = first_surrogate(child)) return found;
     }
-
-    // The view is deeply immutable (proxies, tuples, scalars), so being the
-    // object this handle built binds it to the handle's value.
-    bool check_view(nb::handle candidate) const { return view_.is_valid() && candidate.ptr() == view_.ptr(); }
-
-    nb::bytes state() const {
-        std::string out = msf::json::write_exact(value);
-        return nb::bytes(out.data(), out.size());
-    }
-
-    nb::bytes canonical() const { return bridge::utf8_bytes(msf::json::write_canonical(value, true)); }
-
-    std::string sha256() const {
-        if (!sha256_) {
-            nb::bytes raw = canonical();
-            sha256_ = msf::sha256_hex(std::string_view(raw.c_str(), raw.size()));
-        }
-        return *sha256_;
-    }
-
-    nb::bytes survey_csv() const { return bridge::utf8_bytes(msf::pack::survey_csv(value)); }
-
-    nb::object coverage() const { return bridge::to_python(msf::pack::coverage(value, sha256())); }
-};
+    for (const Value& item : v.items)
+        if (const std::string* found = first_surrogate(item)) return found;
+    return nullptr;
+}
 
 // (diagnostics, Document or None), diagnostics as (code, severity, ref, message, remediation).
 nb::tuple outcome(Value document) {
     msf::Report report = msf::authoring::validate(document);
+    // 0.3.0 hashed a valid document's strings as UTF-8 when admitting it.
+    if (report.ok())
+        if (const std::string* text = first_surrogate(document)) bridge::utf8_bytes(*text);
     nb::list diagnostics;
     for (const msf::Diagnostic& d : report.diagnostics)
         diagnostics.append(nb::make_tuple(msf::info(d.code).name, msf::severity_name(d.severity()), bridge::decode(d.ref),
@@ -197,7 +184,13 @@ void bind_authoring(nb::module_& m) {
         .def("canonical", &Document::canonical)
         .def("sha256", &Document::sha256)
         .def("survey_csv", &Document::survey_csv)
-        .def("coverage", &Document::coverage);
+        .def("coverage", &Document::coverage)
+        .def("profile", [](const Document& d, nb::handle id) {
+            msf::pack::Profile p = msf::pack::profile_snapshot(d.value, bridge::wtf8_of(id), d.sha256());
+            std::string raw = msf::json::write_canonical(p.document, true);
+            nb::bytes encoded = bridge::utf8_bytes(raw);
+            return nb::make_tuple(encoded, msf::sha256_hex(raw), bridge::to_python(p.document), bridge::to_python(p.channels));
+        });
     nb::class_<Merger>(m, "Merger")
         .def(nb::init<>())
         .def("add", &Merger::add, nb::arg("relative"), nb::arg("fragment").none())
