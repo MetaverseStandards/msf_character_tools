@@ -9,7 +9,9 @@ diagnostic, other exceptions by type, Results by value and report. Messages
 of E_INPUT and E_INTERNAL diagnostics are not compared; every other registry
 code must match in code, ref, message and remediation.
 
-Expressions see `m` (msf_tools), `h` (msf_tools.math3d) and `math`.
+Expressions see `m` (msf_tools), `h` (msf_tools.math3d), `math`, `attempt(thunk)`
+(a thunk's encoded outcome) and whatever define() added, with the case's names
+as globals so nested lambdas see them.
 """
 import atexit
 import os
@@ -62,13 +64,21 @@ def encode(value):
         return ('record', t.__name__, encode(value.to_dict()))
     return ('object', t.__name__)
 
-def outcome(expression, names):
+# Names are globals of the expression, so nested lambdas see them; define() adds helpers here.
+NAMESPACE = {'m': m, 'h': h, 'math': math}
+
+def attempt(thunk):
     try:
-        return ('value', encode(eval(expression, {'m': m, 'h': h, 'math': math}, dict(names))))
+        return ('value', encode(thunk()))
     except Fault as exc:
         return ('fault', diagnostic(exc.diagnostic))
     except Exception as exc:
         return ('error', type(exc).__name__)
+
+NAMESPACE.update(attempt=attempt, encode=encode)
+
+def outcome(expression, names):
+    return attempt(lambda: eval(expression, {**NAMESPACE, **names}))
 '''
 
 SERVER = ENCODER + r'''
@@ -78,8 +88,12 @@ while True:
     header = read.read(8)
     if len(header) < 8:
         break
-    cases = pickle.loads(read.read(struct.unpack('>Q', header)[0]))
-    data = pickle.dumps([outcome(e, n) for e, n in cases], protocol=4)
+    message = pickle.loads(read.read(struct.unpack('>Q', header)[0]))
+    if isinstance(message, tuple) and message[0] == 'define':
+        exec(message[1], NAMESPACE)
+        data = pickle.dumps(None, protocol=4)
+    else:
+        data = pickle.dumps([outcome(e, n) for e, n in message], protocol=4)
     write.write(struct.pack('>Q', len(data)) + data)
     write.flush()
 '''
@@ -104,16 +118,32 @@ if AVAILABLE:
     _start()
 
 
-def _oracle(cases):
+def _send(message):
     if _process is None:
         _start()
-    data = pickle.dumps(list(cases), protocol=4)
+    data = pickle.dumps(message, protocol=4)
     _process.stdin.write(struct.pack('>Q', len(data)) + data)
     _process.stdin.flush()
     header = _process.stdout.read(8)
     if len(header) < 8:
         raise RuntimeError(f'the oracle at {PYTHON} exited')
     return pickle.loads(_process.stdout.read(struct.unpack('>Q', header)[0]))
+
+
+def _oracle(cases):
+    return _send(list(cases))
+
+
+_defined = []
+
+
+def define(source):
+    """Run `source` (helper definitions) here and in the oracle; expressions can then call them."""
+    if source in _defined:
+        return
+    exec(source, _local['NAMESPACE'])
+    _send(('define', source))
+    _defined.append(source)
 
 
 def differ(cases, normalize=lambda outcome: outcome):
