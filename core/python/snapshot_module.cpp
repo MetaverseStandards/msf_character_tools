@@ -2,6 +2,7 @@
 // glTF snapshots across the boundary: inspection with the caller's resolver,
 // the immutable Snapshot handle AssetSnapshot records own, and geometry.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 
 #include <memory>

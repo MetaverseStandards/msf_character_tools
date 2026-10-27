@@ -3,6 +3,7 @@
 // inputs exactly as the 0.3.0 module did (_number, _vector, _matrix), in its
 // order, before the C++ maths runs.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 

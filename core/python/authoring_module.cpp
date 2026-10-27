@@ -2,6 +2,7 @@
 // Authoring and pack across the boundary: any Python value to json::Value for
 // validation, and the Document handle that validated and compiled packs own.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 
 #include <cmath>

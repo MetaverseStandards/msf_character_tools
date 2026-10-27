@@ -1,5 +1,6 @@
 [build-system]
-requires = ["scikit-build-core>=0.11", "nanobind>=2.4"]
+# Exact pins keep release wheels reproducible; NOTICE.md names the nanobind version linked in.
+requires = ["scikit-build-core==1.1.1", "nanobind==3.1.0"]
 build-backend = "build_backend"
 backend-path = ["tools"]
 
@@ -30,5 +31,7 @@ minimum-version = "build-system.requires"
 cmake.build-type = "Release"
 # CMakeLists.txt installs the package: msf_tools/*.py, the extension and the build record.
 wheel.packages = []
+# One abi3 wheel for CPython 3.12 and later (nanobind's minimum for the stable ABI); 3.11 gets its own cp311 wheel.
+wheel.py-api = "cp312"
 sdist.include = ["msf_tools/_build_info.json"]
 sdist.exclude = ["build", "native", "tests", "examples", "scripts"]

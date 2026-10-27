@@ -2,6 +2,7 @@
 // JSON across the boundary: Python objects to json::Value and back, and the
 // translation of msf::Fault into msf_tools.report.Fault.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 
 #include <array>

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # msf_tools._core, the C++ core behind the Python API. scikit-build-core drives
 # this for wheels; scripts/ci_local.sh builds it in place for the test suites.
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.26)
 project(msf_tools_core LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -11,7 +11,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module)
+# Development.SABIModule (Python 3.12+) lets nanobind build against the stable ABI, in place as in wheels.
+find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development.Module OPTIONAL_COMPONENTS Development.SABIModule)
 execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
                 OUTPUT_VARIABLE nanobind_ROOT OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 find_package(nanobind CONFIG REQUIRED)
@@ -56,7 +57,8 @@ target_include_directories(msfcore PUBLIC core/include)
 target_link_libraries(msfcore PRIVATE ryu fast_float msfufbx)
 set_target_properties(msfcore ryu msfufbx PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-nanobind_add_module(_core NOMINSIZE core/python/module.cpp core/python/authoring_module.cpp core/python/json_module.cpp
+# STABLE_ABI applies only where nanobind supports it, Python 3.12 and later; 3.11 gets a version-specific build.
+nanobind_add_module(_core STABLE_ABI NOMINSIZE core/python/module.cpp core/python/authoring_module.cpp core/python/json_module.cpp
                     core/python/math_module.cpp core/python/snapshot_module.cpp core/python/sources_module.cpp)
 target_link_libraries(_core PRIVATE msfcore msfufbx)
 
@@ -90,6 +92,8 @@ endif()
 
 option(MSF_CORE_IN_PLACE "Copy the built extension into msf_tools/ for running tests from the checkout" OFF)
 if(MSF_CORE_IN_PLACE)
+  # Python prefers a version-specific extension to abi3, so an older one for this interpreter must go.
   add_custom_command(TARGET _core POST_BUILD
+                     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/msf_tools/_core.${Python_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
                      COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:_core>" "${CMAKE_SOURCE_DIR}/msf_tools/")
 endif()

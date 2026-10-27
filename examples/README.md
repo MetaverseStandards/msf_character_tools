@@ -28,7 +28,7 @@ uv pip install '.[usd]'
 python examples/fetch_assets.py
 ```
 
-With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install '.[usd]'`, then fetch the assets as above. Installing compiles msf-tools' C++ core, FBX reader included, so you need a C++17 compiler and CMake 3.24 or newer (see `docs/building.md`). Without the `usd` extra, `usd_tube.py` is the only script you cannot run.
+With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install '.[usd]'`, then fetch the assets as above. Installing compiles msf-tools' C++ core, FBX reader included, so you need a C++17 compiler and CMake 3.26 or newer (see `docs/building.md`). Without the `usd` extra, `usd_tube.py` is the only script you cannot run.
 
 `fetch_assets.py` downloads the assets at pinned revisions into `examples/assets/` and checks each SHA-256:
 - Fox and AnimatedMorphCube from Khronos glTF-Sample-Assets;
