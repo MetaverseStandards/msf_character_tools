@@ -6,7 +6,7 @@ Original documentation: CC-BY-SA-4.0.
 
 `pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_tools._core` (C++17, nanobind), and installs it with every tracked `msf_tools/*.py` module and the build record. Wheels are therefore per Python version and platform. On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set; the wheel tag follows it. Building needs a C++17 compiler, CMake 3.24 or newer and Ninja or Make; the build front end fetches scikit-build-core and nanobind.
 
-The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Without the extension, or with `MSF_TOOLS_PURE=1`, msf-tools runs the pure-Python reference path.
+The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Authoring, packs, mappings and `math3d` exist only in the core, so msf-tools needs the extension; `MSF_TOOLS_PURE=1` skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths and the remaining Python reference paths.
 
 For work in a checkout, build the extension in place next to the modules:
 

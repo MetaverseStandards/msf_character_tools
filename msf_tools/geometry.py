@@ -7,13 +7,14 @@ from dataclasses import dataclass
 import bisect
 
 from .common import freeze, thaw, number, integer
-from .authoring import keys
+from .checks import keys
 from .snapshot import (AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS,
                        MAX_TOTAL_ACCESSOR_COMPONENTS, _identity, _source_summary)
-from .math3d import (IDENTITY, matrix, multiply, inverse, trs, transform, slerp, normalize,
+from .math3d import (IDENTITY, matrix, multiply, inverse, trs, slerp, normalize,
                      column_major, affine, validate_trs, authored_quaternion, linear, hermite,
                      _add, _sub, _product, _divide, _sum)
 from .report import public, fail, Result, Report, Fault
+from ._core import _skin
 from .records import OwnedRecord, _admit
 from .gltf_semantics import morph_count, animation_layout, CORE_PATHS
 
@@ -274,17 +275,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                             fail("E_JOINT_BOUNDS", ref, "Joint index exceeds skin palette; unknown weighted joints are never deleted.")
                         if any(w < 0 for w in ws) or abs(_sub(_sum(ws, ref), 1.0, ref)) > 1e-6:
                             fail("E_SKIN_WEIGHTS", ref, ("Four" if sets == 1 else "All") + " skin weights must be nonnegative and sum to one; no implicit normalization.")
-                    palettes, skinned = {}, []
-                    for p, js, ws in zip(positions, joints, skinweights):
-                        contributions = []
-                        for j, w in zip(js, ws):
-                            if w == 0:
-                                continue
-                            if j not in palettes:
-                                palettes[j] = multiply(multiply(mesh_inverse, worlds[skin["joints"][j]]), ibms[j])
-                            contributions.append((w, transform(palettes[j], p)))
-                        skinned.append([_sum((_product(w,q[k],ref) for w,q in contributions),ref) for k in range(3)])
-                    positions = skinned
+                    positions = _skin(positions, joints, skinweights, mesh_inverse, worlds, skin["joints"], ibms, ref)
                 if not all(number(x) for p in positions for x in p):
                     fail("E_NONFINITE", ref, "Geometry result overflows binary64.")
                 primitives.append(freeze({"primitive": pi, "positions": positions}))

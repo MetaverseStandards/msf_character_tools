@@ -15,9 +15,12 @@
 namespace msf::json {
 
 struct Value {
-    enum class Kind : std::uint8_t { null, boolean, integer, real, string, array, object };
+    // other: a Python value with no JSON type (a str or int subclass, a datetime,
+    // a set...), which only ever fails validation.
+    enum class Kind : std::uint8_t { null, boolean, integer, real, string, array, object, other };
     Kind kind = Kind::null;
     bool boolean = false;
+    bool is_list = true;  // array: a Python list (or subclass) rather than a tuple
     // real: the value. integer: the value rounded to binary64, infinite when it
     // exceeds binary64's range.
     double number = 0.0;
@@ -34,6 +37,22 @@ struct Value {
     static Value make_integer(std::string digits);
     static Value make_string(std::string wtf8);
 };
+
+// Object members whose Python key was not a str carry this marker: 0xFF never
+// appears in WTF-8, so no real key can collide with it.
+inline bool is_nonstring_key(std::string_view key) { return !key.empty() && static_cast<unsigned char>(key[0]) == 0xFF; }
+
+// The value of the first member named `key`, or nullptr.
+const Value* find(const Value& object, std::string_view key);
+
+// Python's exact comparison of two finite numbers (int and float mix exactly):
+// negative, zero or positive.
+int compare_numbers(const Value& a, const Value& b);
+
+// Compact JSON in input order that keeps -0.0 and writes WTF-8 as is: a total,
+// faithful encoding of a value, for fingerprints. Throws std::domain_error for
+// non-finite reals and other values.
+std::string write_exact(const Value& value);
 
 // Containers nested deeper than this are refused, here and on the Python path
 // (common.MAX_NESTING), where the refusal used to depend on the stack. The
@@ -63,9 +82,9 @@ ParseOutcome parse(std::string_view text);
 bool validate_wtf8(std::string_view text);
 bool has_surrogate(std::string_view wtf8);
 
-// Throws std::domain_error for non-finite reals and strings with lone surrogates,
-// which Python refuses on write.
-std::string write_canonical(const Value& value);
+// Throws std::domain_error for non-finite reals and, unless allow_surrogates
+// (WTF-8 output), strings with lone surrogates, which Python refuses on write.
+std::string write_canonical(const Value& value, bool allow_surrogates = false);
 
 // Python's repr(float) for a finite double.
 std::string python_repr(double value);

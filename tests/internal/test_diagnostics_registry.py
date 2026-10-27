@@ -31,8 +31,7 @@ KEYS = {'severity', 'meaning', 'since', 'strict', 'reserved', 'removed'}
 RELEASES = ('0.1.0', '0.1.1', '0.2.0.dev0', '0.3.0')
 # Codes assembled at run time: template -> (the one file that builds it, its codes).
 # 'E_{}' is the strict-losses rename of a warning; entries' `strict` fields cover it.
-BUILT = {'E_{}_COMPATIBILITY': ('mapping.py', ('E_NEUTRAL_COMPATIBILITY', 'E_SIDE_COMPATIBILITY', 'E_COUPLING_COMPATIBILITY')),
-         'E_{}': ('snapshot.py', ())}
+BUILT = {'E_{}': ('snapshot.py', ())}
 
 
 def registry():

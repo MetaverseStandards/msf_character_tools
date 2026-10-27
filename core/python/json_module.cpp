@@ -11,21 +11,73 @@
 
 #include "msf/diagnostics.hpp"
 #include "msf/json.hpp"
+#include "bridge.hpp"
 
 namespace nb = nanobind;
 using msf::json::Value;
 
+namespace bridge {
+
+nb::object decode(const std::string& wtf8) {
+    nb::object out = nb::steal(PyUnicode_DecodeUTF8(wtf8.data(), static_cast<Py_ssize_t>(wtf8.size()), "surrogatepass"));
+    if (!out.is_valid()) throw nb::python_error();
+    return out;
+}
+
+std::string wtf8_of(nb::handle str) {
+    Py_ssize_t n;
+    const char* s = PyUnicode_AsUTF8AndSize(str.ptr(), &n);
+    if (s) return std::string(s, static_cast<std::size_t>(n));
+    PyErr_Clear();
+    nb::object raw = nb::steal(PyUnicode_AsEncodedString(str.ptr(), "utf-8", "surrogatepass"));
+    if (!raw.is_valid()) throw nb::python_error();
+    return std::string(PyBytes_AS_STRING(raw.ptr()), static_cast<std::size_t>(PyBytes_GET_SIZE(raw.ptr())));
+}
+
+nb::bytes utf8_bytes(const std::string& wtf8) {
+    if (msf::json::has_surrogate(wtf8)) {
+        nb::object raw = nb::steal(PyUnicode_AsUTF8String(decode(wtf8).ptr()));
+        if (!raw.is_valid()) throw nb::python_error();
+    }
+    return nb::bytes(wtf8.data(), wtf8.size());
+}
+
+nb::object to_python(const Value& v) {
+    switch (v.kind) {
+        case Value::Kind::null: return nb::none();
+        case Value::Kind::boolean: return nb::bool_(v.boolean);
+        case Value::Kind::integer: return nb::steal(PyLong_FromString(v.text.c_str(), nullptr, 10));
+        case Value::Kind::real: return nb::steal(PyFloat_FromDouble(v.number));
+        case Value::Kind::string: return decode(v.text);
+        case Value::Kind::array: {
+            nb::object list = nb::steal(PyList_New(static_cast<Py_ssize_t>(v.items.size())));
+            for (std::size_t i = 0; i < v.items.size(); ++i)
+                PyList_SET_ITEM(list.ptr(), static_cast<Py_ssize_t>(i), to_python(v.items[i]).release().ptr());
+            return list;
+        }
+        case Value::Kind::object: {
+            nb::object dict = nb::steal(PyDict_New());
+            for (const auto& [key, child] : v.members)
+                if (PyDict_SetItem(dict.ptr(), decode(key).ptr(), to_python(child).ptr()) < 0) throw nb::python_error();
+            return dict;
+        }
+        case Value::Kind::other: break;
+    }
+    return nb::none();
+}
+
+}  // namespace bridge
+
 namespace {
+
+using bridge::decode;
+using bridge::to_python;
 
 struct TooDeep {};
 
 [[noreturn]] void raise_too_deep() {
     PyErr_SetString(PyExc_RecursionError, msf::json::kTooDeep);
     throw nb::python_error();
-}
-
-nb::object decode(const std::string& wtf8) {
-    return nb::steal(PyUnicode_DecodeUTF8(wtf8.data(), static_cast<Py_ssize_t>(wtf8.size()), "surrogatepass"));
 }
 
 bool utf8_of(PyObject* str, std::string& out) {
@@ -102,29 +154,6 @@ bool from_python(PyObject* o, Value& v, int depth) {
         return false;
     }
     return true;
-}
-
-nb::object to_python(const Value& v) {
-    switch (v.kind) {
-        case Value::Kind::null: return nb::none();
-        case Value::Kind::boolean: return nb::bool_(v.boolean);
-        case Value::Kind::integer: return nb::steal(PyLong_FromString(v.text.c_str(), nullptr, 10));
-        case Value::Kind::real: return nb::steal(PyFloat_FromDouble(v.number));
-        case Value::Kind::string: return decode(v.text);
-        case Value::Kind::array: {
-            nb::object list = nb::steal(PyList_New(static_cast<Py_ssize_t>(v.items.size())));
-            for (std::size_t i = 0; i < v.items.size(); ++i)
-                PyList_SET_ITEM(list.ptr(), static_cast<Py_ssize_t>(i), to_python(v.items[i]).release().ptr());
-            return list;
-        }
-        case Value::Kind::object: {
-            nb::object dict = nb::steal(PyDict_New());
-            for (const auto& [key, child] : v.members)
-                if (PyDict_SetItem(dict.ptr(), decode(key).ptr(), to_python(child).ptr()) < 0) throw nb::python_error();
-            return dict;
-        }
-    }
-    return nb::none();
 }
 
 [[noreturn]] void raise_fault(const msf::Diagnostic& d) {

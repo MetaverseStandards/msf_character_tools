@@ -88,20 +88,5 @@ class ProfileWork(unittest.TestCase):
         self.assertIn('E_STALE_SOURCE', [d.code for d in result.report.diagnostics])
 
 
-class GraphOrdering(unittest.TestCase):
-    def test_scheduler_orders_long_backwards_chain(self):
-        # Rescanning every rule once per wave needs about 2e8 checks here.
-        count = 20000
-        rules = [{'id': f'r{i}'} for i in reversed(range(count))]
-        dependencies = {f'r{i}': {f'r{i - 1}'} if i else set() for i in range(count)}
-        ordered = mapping._dependency_waves(rules, dependencies)
-        self.assertEqual([r['id'] for r in ordered], [f'r{i}' for i in range(count)])
-
-    def test_scheduler_keeps_declaration_order_and_stops_at_cycles(self):
-        rules = [{'id': rid} for rid in ('A', 'B', 'C', 'P', 'Q', 'R')]
-        dependencies = {'A': {'B'}, 'B': set(), 'C': set(), 'P': {'Q'}, 'Q': {'P'}, 'R': {'R'}}
-        self.assertEqual([r['id'] for r in mapping._dependency_waves(rules, dependencies)], ['B', 'C', 'A'])
-
-
 if __name__ == '__main__':
     unittest.main()

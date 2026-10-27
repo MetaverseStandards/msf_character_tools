@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Record integrity through private state: the numeric predicate, the factory token and core handles."""
 import os
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType
 import unittest
 from unittest import mock
 
@@ -35,16 +35,29 @@ class CoreHandleTests(unittest.TestCase):
     rejected = integrity.IntegrityTests.rejected
     refuses_export = integrity.IntegrityTests.refuses_export
 
-    def test_views_whose_canonical_bytes_differ_from_the_handle_are_not_admitted(self):
-        core = _native.core
-        rewrites = {'indent': lambda raw: raw.replace(b'\n  ', b'\n '), 'trailing space': lambda raw: raw + b' ',
-                    'string escape': lambda raw: raw.replace(b'"mapped"', b'"m\\u0061pped"')}
-        for name, rewrite in rewrites.items():
-            with self.subTest(name):
-                self.assertNotEqual(rewrite(self.compiled._core.document()), self.compiled._core.document())
-                stand_in = SimpleNamespace(**{**vars(core), 'compile': lambda spec: core.compile({**spec, 'document': rewrite(spec['document'])})})
-                with mock.patch.object(_native, 'core', stand_in):
-                    self.rejected(m.compile_mapping(self.pack, self.source, self.target, 'wink'))
+    def test_equal_copies_of_handle_views_are_rejected(self):
+        # A view is bound to its handle by identity: an equal copy is still a substitution.
+        copies = [(self.validated, 'document', lambda r: m.compile_pack(r)),
+                  (self.pack, 'document', lambda r: m.profile_snapshot(r, 'source')),
+                  (self.compiled, 'instructions', lambda r: m.evaluate_mapping(r, self.frames)),
+                  (self.compiled, 'required_inputs', lambda r: m.evaluate_mapping(r, self.frames)),
+                  (self.compiled, 'output_ids', lambda r: m.evaluate_mapping(r, self.frames))]
+        for record, name, use in copies:
+            with self.subTest(record=type(record).__name__, view=name):
+                view = getattr(record, name)
+                copy = MappingProxyType(dict(view)) if isinstance(view, MappingProxyType) else tuple(list(view))
+                self.assertEqual(copy, view)
+                object.__setattr__(record, name, copy)
+                self.rejected(use(record))
+                self.refuses_export(record.to_dict)
+                object.__setattr__(record, name, view)
+                record.to_dict()
+
+    def test_a_compiled_mapping_moved_to_another_pack_is_rejected(self):
+        other = self.good(m.compile_pack(self.good(m.validate_authoring(integrity.document()))))
+        object.__setattr__(self.compiled, '_core', self.good(m.compile_mapping(other, self.good(m.profile_snapshot(other, 'source')),
+                                                                                self.good(m.profile_snapshot(other, 'target')), 'wink'))._core)
+        self.rejected(m.evaluate_mapping(self.compiled, self.frames))
 
     def test_changed_sample_views_are_rejected(self):
         values = self.good(m.evaluate_mapping(self.compiled, self.frames))
