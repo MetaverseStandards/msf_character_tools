@@ -33,6 +33,17 @@ class AgainstTheOracle(unittest.TestCase):
         rng = random.Random(31)
         self.assertSame([self.battery(*gltf_cases.random_asset(rng, damage=False)) for _ in range(2000 if GATE else 5)])
 
+    def test_boundary_inputs(self):
+        oracle.define(gltf_cases.EDGES)
+        combined = (oracle.ROOT / 'tests/public/fixtures/combined.gltf').read_bytes()
+        rng = random.Random(41)
+        external = [gltf_cases.random_asset(rng, damage=False) for _ in range(40)]
+        external = [(raw, blobs) for raw, fmt, blobs in external if blobs and fmt.lower() != 'glb'][:3]
+        self.assertTrue(external)
+        cases = [(f'edge_{name}(raw)', {'raw': combined}) for name in ('timestamps', 'overrides', 'extensions', 'documents')]
+        cases += [('edge_resolvers(raw, blobs)', {'raw': raw, 'blobs': blobs}) for raw, blobs in external]
+        self.assertSame(cases)
+
     def test_damaged_assets(self):
         rng = random.Random(37)
         self.assertSame([self.battery(*gltf_cases.random_asset(rng, damage=True)) for _ in range(8000 if GATE else 8)])

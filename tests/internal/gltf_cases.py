@@ -480,3 +480,101 @@ def gltf_battery(raw, fmt, blobs, signal, deep=True):
             out.append(attempt(lambda: m.evaluate_geometry(bound.value)))
     return out
 '''
+
+
+# Inputs at the API boundary that random assets do not reach: odd types for
+# timestamps, indices and overrides, opaque extension values, undecodable or
+# over-deep JSON, resolvers that misbehave and lone surrogates. `exact` records
+# the exception a call raises, message included, where public() would fold it
+# into E_INPUT or E_INTERNAL.
+EDGES = r"""
+import json as _json
+
+def exact(fn, *args, **kwargs):
+    try:
+        return ('value', encode(getattr(fn, '__wrapped__', fn)(*args, **kwargs)))
+    except Exception as exc:
+        diagnostic = getattr(exc, 'diagnostic', None)
+        if diagnostic is not None:
+            return ('fault', diagnostic.code, diagnostic.ref, diagnostic.message)
+        return ('error', type(exc).__name__, str(exc))
+
+class Falsy:
+    def __init__(self, blobs): self.blobs = blobs
+    def __bool__(self): return False
+    def __call__(self, uri): return self.blobs[uri]
+
+def edge_timestamps(raw):
+    s = m.inspect_asset(raw, 'gltf').value
+    out = []
+    for t in (2**53 + 1, 10**400, float('nan'), -0.0, 0.5, 2**60, 1e308, 5e-324):
+        out.append(exact(m.sample_animation, s, 0, t))
+        out.append(exact(m.evaluate_geometry, s, timestamp=t, animation_id=0))
+    for a in (2**70, False, '0', 0.0, -1):
+        out.append(exact(m.sample_animation, s, a, 0.5))
+        out.append(exact(m.evaluate_geometry, s, animation_id=a))
+    for i in (2**70, '0', None, False, 1.0, -2**70):
+        out.append(exact(m.decode_accessor, s, i))
+    return out
+
+def edge_overrides(raw):
+    s = m.inspect_asset(raw, 'gltf').value
+    nodes = s.document.get('nodes', ())
+    out = []
+    from types import MappingProxyType
+    for weights in ([], (0.5,), {True: [0.5]}, {0.0: [0.5]}, {2**70: [0.5]}, {'0': [0.5]}, MappingProxyType({0: (0.5,)}),
+                    {0: [0.5, 0.25]}, {0: (2**1100,)}, {0: [float('inf')]}, {0: 'ab'}, {0: None}, 7):
+        for n in range(min(len(nodes), 6)):
+            w = {n: v for v in weights.values()} if isinstance(weights, dict) and list(weights) == [0] else weights
+            out.append(exact(m.evaluate_geometry, s, morph_weights=w))
+    for transform in ({'matrix': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 'scale': [1, 1, 1]}, {1: 2}, [], {},
+                      {'translation': (1, 2, 3)}, {'translation': [1, 2]}, {'rotation': [0, 0, 0, 0]}, {'scale': [0, 1, 1]},
+                      {'matrix': [2, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}, {'extra': 1}, {'translation': [1e308, 1e308, 0]}):
+        for n in range(min(len(nodes), 6)):
+            out.append(exact(m.evaluate_geometry, s, node_transforms={n: transform}))
+    out.append(exact(m.evaluate_geometry, s, morph_weights={5: [0.1, 0.2, 0.3]}, animation_id=0, timestamp=0.5))
+    out.append(exact(m.evaluate_geometry, s, node_transforms={3: {'translation': [0, 0, 0]}}, animation_id=0))
+    out.append(exact(m.evaluate_geometry, s, attributes='POSITION'))
+    out.append(exact(m.evaluate_geometry, s, attributes=5))
+    return out
+
+def edge_extensions(raw):
+    out = []
+    for where in ('primitive', 'view'):
+        for value in (5, None, True, 1.5, 'xxKHR_draco_mesh_compressionxx', 'EXT_meshopt_compression', ['KHR_draco_mesh_compression'],
+                      ['EXT_meshopt_compression'], {'EXT_meshopt_compression': {}}, {'KHR_draco_mesh_compression': {}}, []):
+            doc = _json.loads(raw)
+            target = doc['meshes'][0]['primitives'][0] if where == 'primitive' else doc['bufferViews'][0]
+            target['extensions'] = value
+            result = m.inspect_asset(_json.dumps(doc).encode(), 'gltf')
+            out.append(encode(result.report))
+            if result.ok:
+                out.append(exact(m.evaluate_geometry, result.value))
+    return out
+
+def edge_documents(raw):
+    out = []
+    # Past 200 levels the parser refuses where 0.3.0's depended on the stack (CHANGELOG).
+    deep = b'{"asset":{"version":"2.0"},"extras":' + b'[' * 199 + b']' * 199 + b'}'
+    shallow = b'{"asset":{"version":"2.0"},"extras":' + b'[' * 127 + b']' * 127 + b'}'
+    texts = [b'\xef\xbb\xbf' + raw, raw[:-3], raw + b'x', b'\xff' + raw, raw.replace(b'"asset"', b'"asset":1,"asset"', 1), deep, shallow,
+             b'{"asset":{"version":"2.0"},"extras":{"\\ud800":1}}', b'{"asset":{"version":"2.0"},"extras":"\\udfff"}',
+             b'{"asset":{"version":"2.0"},"extras":{"\\ud800":1,"\\ud800":2}}', b'{"asset":{"version":"2.0"},"extras":NaN}',
+             b'{"asset":{"version":"2.0"},"extras":1e400}', b'{"asset":{"version":"2.0"},"scene":1.5}', b'[]', b'"x"', b'',
+             b'{"asset":{"version":"2.0"},"extras":' + b'1' * 400 + b'}', b'{"asset":{"version":"2.0"}}  \n',
+             b'{"asset":{"version":"2.0"},"extras":"\xed\xa0\x80"}']
+    for text in texts:
+        out.append(exact(m.inspect_asset, text, 'gltf'))
+        out.append(exact(m.inspect_asset, text, 'GLTF2'))
+    for fmt in ('glb', 'Glb', 'json', 'obj', 7):
+        out.append(exact(m.inspect_asset, raw, fmt))
+    return out
+
+def edge_resolvers(raw, blobs):
+    out = []
+    for resolver in (lambda uri: bytearray(blobs[uri]), lambda uri: None, lambda uri: 1 / 0, lambda uri: blobs[uri] + b'\0' * 3,
+                     lambda uri: blobs[uri][:4], Falsy(blobs), lambda uri: memoryview(blobs[uri]), 'not callable',
+                     lambda uri: m.LocalResolver('/')(uri)):
+        out.append(exact(m.inspect_asset, raw, 'gltf', resolver))
+    return out
+"""
