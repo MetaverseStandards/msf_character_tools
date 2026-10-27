@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import os
 import re
 import stat
@@ -24,6 +25,10 @@ RULE_REQUIRED = {"id", "inputs", "outputs", "operator", "disposition", "assumpti
                  "evidence", "evidence_status", "loss_annotations"}
 DISPOSITIONS = {"mapped", "unsupported", "unresolved", "excluded"}
 STATUSES = {"verified_current", "proposed", "unresolved"}
+# Authoring schema version -> admitted evidence statuses.
+SCHEMA_STATUSES = {"1.0": STATUSES, "1.1": STATUSES | {"calibrated_software"}}
+# Operator version -> admitted operator IDs.
+OPERATORS = {"1.0": {"identity", "affine", "weighted_sum"}, "1.1": {"identity", "affine", "weighted_sum", "piecewise_linear"}}
 _TOKEN = object()
 # Explicit blank set shared by the authoring/pack 1.0 schema character class.
 # Includes the existing control whitespace policy and the U+FEFF format mark.
@@ -110,13 +115,13 @@ def loss_annotation(obj, ref):
         fail("E_TYPE", ref, "Loss bound must be finite and nonnegative.")
 
 
-def validate_signal(s, ref):
+def validate_signal(s, ref, statuses=STATUSES):
     keys(s, SIGNAL_REQUIRED, SIGNAL_OPTIONAL, ref)
     for k in ("id", "label", "units", "calibration"):
         string(s[k], f"{ref}/{k}")
     enum(s["value_type"], {"scalar"}, f"{ref}/value_type")
     enum(s["disposition"], DISPOSITIONS, ref)
-    enum(s["evidence_status"], STATUSES, ref)
+    enum(s["evidence_status"], statuses, ref)
     strings(s["evidence"], f"{ref}/evidence")
     domain(s["domain"], f"{ref}/domain")
     for k in ("neutral", "native_default"):
@@ -140,7 +145,7 @@ def validate_signal(s, ref):
         fail("E_TYPE", ref, "metadata must be an object.")
 
 
-def validate_rule(r, ref):
+def validate_rule(r, ref, statuses=STATUSES):
     keys(r, RULE_REQUIRED, {"mapping_quality", "coupling"}, ref)
     string(r["id"], ref)
     strings(r["inputs"], f"{ref}/inputs", nonempty=True)
@@ -148,7 +153,7 @@ def validate_rule(r, ref):
     strings(r["assumptions"], f"{ref}/assumptions")
     strings(r["evidence"], f"{ref}/evidence")
     enum(r["disposition"], DISPOSITIONS, ref)
-    enum(r["evidence_status"], STATUSES, ref)
+    enum(r["evidence_status"], statuses, ref)
     if r["disposition"] == "mapped":
         if "mapping_quality" not in r:
             fail("E_REQUIRED", ref, "Mapped rules require mapping_quality.")
@@ -158,12 +163,12 @@ def validate_rule(r, ref):
     if "coupling" in r:
         coupling(r["coupling"], f"{ref}/coupling")
     op = r["operator"]
-    keys(op, {"id"}, {"scale", "offset", "weights"}, f"{ref}/operator")
-    enum(op["id"], {"identity", "affine", "weighted_sum"}, ref)
+    keys(op, {"id"}, {"scale", "offset", "weights", "knots"}, f"{ref}/operator")
+    enum(op["id"], OPERATORS["1.1"], ref)
     if len(r["outputs"]) != 1 or op["id"] != "weighted_sum" and len(r["inputs"]) != 1:
         fail("E_ARITY", ref, "Unary operators need 1 input/output; weighted_sum needs N inputs and 1 output.")
     allowed = {"identity": {"id"}, "affine": {"id", "scale", "offset"},
-               "weighted_sum": {"id", "weights"}}[op["id"]]
+               "weighted_sum": {"id", "weights"}, "piecewise_linear": {"id", "knots"}}[op["id"]]
     if set(op) != allowed:
         fail("E_OPERATOR", ref, "Operator coefficients must be explicit and match its type.")
     if op["id"] == "affine":
@@ -173,10 +178,25 @@ def validate_rule(r, ref):
         w = op["weights"]
         if not isinstance(w, (tuple, list)) or len(w) != len(r["inputs"]) or not all(number(x) for x in w):
             fail("E_TYPE", ref, "Weights must be finite, ordered and match inputs.")
+    if op["id"] == "piecewise_linear":
+        knots(op["knots"], ref)
     if not isinstance(r["loss_annotations"], (list, tuple)):
         fail("E_TYPE", ref, "loss_annotations must be an array.")
     for i, loss in enumerate(r["loss_annotations"]):
         loss_annotation(loss, f"{ref}/loss_annotations/{i}")
+
+
+def knots(value, ref):
+    if (not isinstance(value, (tuple, list)) or len(value) < 2
+            or not all(isinstance(k, (tuple, list)) and len(k) == 2 and number(k[0]) and number(k[1]) for k in value)):
+        fail("E_TYPE", ref, "Knots must be an array of at least two [x, y] pairs of finite numbers.")
+    steps = [(float(b[0]) - float(a[0]), float(b[1]) - float(a[1])) for a, b in zip(value, value[1:])]
+    if not all(math.isfinite(dx) and math.isfinite(dy) for dx, dy in steps):
+        fail("E_KNOTS", ref, "Knot spans must be finite binary64 values.")
+    if not all(dx > 0 for dx, _ in steps):
+        fail("E_KNOTS", ref, "Knot x values must be strictly increasing.")
+    if not (all(dy >= 0 for _, dy in steps) or all(dy <= 0 for _, dy in steps)):
+        fail("E_KNOTS", ref, "Knot y values must be monotone, all nondecreasing or all nonincreasing.")
 
 
 @public
@@ -194,8 +214,11 @@ def validate_authoring(document):
     check(json_value, document)
     for k in ("id", "license"):
         check(string, document[k], f"/{k}")
-    check(enum, document["schema_version"], {"1.0"}, "/schema_version")
-    check(enum, document["operator_version"], {"1.0"}, "/operator_version")
+    check(enum, document["schema_version"], SCHEMA_STATUSES.keys(), "/schema_version")
+    check(enum, document["operator_version"], OPERATORS.keys(), "/operator_version")
+    # An unknown schema version already failed; check the rest as 1.0.
+    statuses = SCHEMA_STATUSES.get(document["schema_version"] if type(document["schema_version"]) is str else None, STATUSES)
+    operators = OPERATORS.get(document["operator_version"] if type(document["operator_version"]) is str else None)
     if type(document["data_version"]) is not str or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?", document["data_version"]):
         diagnostics.append(Diagnostic("E_VERSION", "error", "/data_version", "Expected a semantic data version.", "Use an independently versioned data release."))
     inventories = {}
@@ -219,7 +242,7 @@ def validate_authoring(document):
                 else:
                     ids[row["id"]] = row
             if category == "signals":
-                check(validate_signal, row, ref)
+                check(validate_signal, row, ref, statuses)
             elif category == "profiles":
                 if check(keys, row, {"id", "label", "signal_ids"}, {"evidence", "metadata"}, ref):
                     check(string, row["id"], ref)
@@ -233,7 +256,7 @@ def validate_authoring(document):
                 if check(keys, row, {"id", "claim", "status"}, {"url", "revision", "retrieved", "sha256", "locator", "license", "authorship"}, ref):
                     for k, v in row.items():
                         check(string, v, f"{ref}/{k}")
-                    check(enum, row["status"], STATUSES, ref)
+                    check(enum, row["status"], statuses, ref)
                     if "url" in row:
                         if type(row["url"]) is not str or not row["url"].startswith("https://"):
                             check(fail, "E_EVIDENCE", ref, "Public evidence URL must use HTTPS.")
@@ -251,7 +274,8 @@ def validate_authoring(document):
                         continue
                     for j, r in enumerate(row["rules"]):
                         rr = f"{ref}/rules/{j}"
-                        check(validate_rule, r, rr)
+                        if check(validate_rule, r, rr, statuses) and operators is not None and r["operator"]["id"] not in operators:
+                            check(fail, "E_OPERATOR_VERSION", rr, f"Operator {r['operator']['id']} needs a newer operator_version than {document['operator_version']}.")
                         if isinstance(r, Mapping) and type(r.get("id")) is str:
                             if r["id"] in rules:
                                 check(fail, "E_DUPLICATE_ID", rr, "Rule IDs must be unique across mappings.")
