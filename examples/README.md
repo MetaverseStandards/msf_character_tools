@@ -19,16 +19,16 @@ The FBX cube is written by msf-tools' own test FBX writer (`tests/public/make_ex
 
 ## Set up from a clean environment
 
-You need a standard CPython 3.11 or 3.12: from python.org, Homebrew, pyenv, or uv. The FBX reader is a small compiled extension. Meta's system `python3` cannot build it, because its link settings point at a toolchain that only exists inside buck; the install stops with a message saying so. With uv, which downloads a standard CPython for you, run this from the repository root:
+You need a standard CPython 3.11 or 3.12: from python.org, Homebrew, pyenv, or uv. With uv, which downloads a standard CPython for you, run this from the repository root:
 
 ```sh
 uv venv --python 3.12 .venv
 source .venv/bin/activate
-uv pip install ./native/ufbx '.[usd,fbx]'
+uv pip install '.[usd]'
 python examples/fetch_assets.py
 ```
 
-With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install ./native/ufbx '.[usd,fbx]'`, then fetch the assets as above. `./native/ufbx` is listed because the `fbx` extra needs `msf-tools-ufbx`, which is built from this repository rather than downloaded. If you only want glTF, `pip install .` is enough and `gltf_fox.py` is the only script you can run.
+With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install '.[usd]'`, then fetch the assets as above. Installing compiles msf-tools' C++ core, FBX reader included, so you need a C++17 compiler and CMake 3.24 or newer (see `docs/building.md`). Without the `usd` extra, `usd_tube.py` is the only script you cannot run.
 
 `fetch_assets.py` downloads the assets at pinned revisions into `examples/assets/` and checks each SHA-256:
 - Fox and AnimatedMorphCube from Khronos glTF-Sample-Assets;

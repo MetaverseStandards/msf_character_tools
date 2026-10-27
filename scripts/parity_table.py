@@ -3,7 +3,7 @@
 
     python -B scripts/parity_table.py [output.md]
 
-Needs usd-core and msf-tools-ufbx. The Khronos, real-asset, example-asset and
+Needs usd-core. The Khronos, real-asset, example-asset and
 ufbx corpus sections run when MSF_KHRONOS_ASSETS, MSF_REAL_ASSETS,
 MSF_EXAMPLE_ASSETS and MSF_UFBX_CORPUS name local copies (see docs/testing.md)
 and say "not run" otherwise. Every number is

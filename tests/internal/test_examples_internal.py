@@ -5,38 +5,30 @@ import tempfile
 import unittest
 
 from make_example_fbx import OUTPUT as CUBE_FBX, morph_cube_fbx
-from internal.test_source_fbx_native import HAVE_UFBX, open_scene
+from internal.test_source_fbx_native import open_scene
 from test_examples import ASSETS, ExampleChecks, PRESENT, floats, run, same_points
 
 
 def ufbx_world(data, stack=None, seconds=0.0):
     """ufbx's own evaluation of every mesh, skinning and blend shapes included, in world space, mesh after mesh."""
-    from msf_tools_ufbx import ffi, lib
-    handle, error = open_scene(data)
-    assert handle, error
-    try:
-        index = -1
-        if stack is not None:
-            record = ffi.new('msf_fbx_stack *')
-            names = []
-            while lib.msf_fbx_stack_get(handle, len(names), record):
-                names.append(ffi.unpack(record.name, record.name_len).decode())
-            index = names.index(stack)
-        info = ffi.new('msf_fbx_info *')
-        lib.msf_fbx_info_get(handle, info)
-        points = []
-        for mesh in range(info.meshes):
-            sizes = ffi.new('uint32_t[8]')
-            lib.msf_fbx_mesh_sizes(handle, mesh, sizes)
-            out, text = ffi.new('double[]', 3 * sizes[0] or 1), ffi.new('char[256]')
-            assert lib.msf_fbx_skinned_points(handle, index, seconds, mesh, out, sizes[0], text, 256), ffi.string(text)
-            points += [tuple(out[3 * v:3 * v + 3]) for v in range(sizes[0])]
-        return points
-    finally:
-        lib.msf_fbx_close(handle)
+    scene, error = open_scene(data)
+    assert scene, error
+    index = -1
+    if stack is not None:
+        names = []
+        while scene.stack(len(names)) is not None:
+            names.append(scene.stack(len(names))[0].decode())
+        index = names.index(stack)
+    points = []
+    for mesh in range(scene.info()['meshes']):
+        count = scene.mesh_sizes(mesh)[0]
+        out = scene.skinned_points(index, seconds, mesh, count)
+        assert isinstance(out, tuple), out
+        points += [tuple(out[3 * v:3 * v + 3]) for v in range(count)]
+    return points
 
 
-@unittest.skipUnless(PRESENT and HAVE_UFBX, 'needs MSF_EXAMPLE_ASSETS and msf-tools-ufbx')
+@unittest.skipUnless(PRESENT, 'needs MSF_EXAMPLE_ASSETS')
 class FbxExample(ExampleChecks):
     @classmethod
     def setUpClass(cls):

@@ -27,8 +27,8 @@ add_library(ryu STATIC core/third_party/ryu/ryu/d2s.c)
 target_include_directories(ryu PUBLIC core/third_party/ryu)
 add_library(fast_float INTERFACE)
 target_include_directories(fast_float INTERFACE core/third_party/fast_float/include)
-# ufbx and its C shim, compiled as the msf-tools-ufbx 0.1.6 cffi build compiled them (-O2, the
-# compiler's default floating-point contraction), so FBX conversions stay byte-identical.
+# Vendored ufbx and our C shim over it, compiled as 0.3.0's msf-tools-ufbx 0.1.6 cffi build compiled them
+# (-O2, the compiler's default floating-point contraction), so FBX conversions stay byte-identical.
 add_library(msfufbx STATIC core/third_party/ufbx/ufbx.c core/src/msf_ufbx_shim.c)
 target_include_directories(msfufbx PUBLIC core/third_party/ufbx core/src)
 target_compile_definitions(msfufbx PRIVATE UFBX_NO_STDIO UFBX_NO_FORMAT_OBJ UFBX_NO_GEOMETRY_CACHE UFBX_NO_SUBDIVISION

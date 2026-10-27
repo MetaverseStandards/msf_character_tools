@@ -6,16 +6,15 @@ License texts are in [LICENSES](LICENSES). The public glTF specification informs
 
 The C++ extension `msf_tools._core` in built wheels links nanobind 3.1.0 (BSD-3-Clause, copyright 2022 Wenzel Jakob; text in [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt)), which includes tsl::robin_map (MIT, copyright 2017 Thibaut Goetghebuer-Planchon; its own text in [LICENSES/robin_map-MIT.txt](LICENSES/robin_map-MIT.txt)). Both license files ship in the wheel. nanobind is fetched at build time and not vendored here.
 
-The C++ core vendors two libraries under `core/third_party`, each with its license files, and both are compiled into the extension:
+The C++ core vendors three libraries under `core/third_party`, each with its license files, and all three are compiled into the extension:
 
 - Ryu by Ulf Adams, commit 4c0618b0e44f7ef027ebae05d2cc7812048f7c8f (`ryu/`: the shortest float64 formatter), used under the Boost Software License 1.0 option of its Apache-2.0 OR BSL-1.0 terms; text in [LICENSES/BSL-1.0.txt](LICENSES/BSL-1.0.txt).
 - fast_float by Daniel Lemire and contributors, v8.3.2 (`fast_float/`: the float parser), used under the MIT option of its Apache-2.0 OR BSL-1.0 OR MIT terms; its copyright notice is in `core/third_party/fast_float/LICENSE-MIT`.
+- ufbx 0.23.1 by Samuli Raivio, commit 26a482ae66871d7de36eb722aa060bce95bce274 (`ufbx/`: the FBX reader), used under the MIT License option of its dual MIT/Unlicense terms; text in [LICENSES/ufbx-MIT.txt](LICENSES/ufbx-MIT.txt) and `core/third_party/ufbx/LICENSE.ufbx`. Our C shim over it, `core/src/msf_ufbx_shim.c`, is MIT.
 
 Two functions in `core/src/math3d.cpp` are derived from CPython 3.12.15 (tag v3.12.15, commit e848e4b09ca4bc67c0041c9ce7526dae471d4c36), `Modules/mathmodule.c`, so that results match `math.hypot` and `math.fsum` bit for bit: `hypot` from `vector_norm()`, and the special-value handling and final rounding of `fsum` from `math_fsum()`. Changes: translated to C++ (and, for `fsum`, applied to an array instead of an iterator). They are used under the Python Software Foundation License Version 2, whose text is in [LICENSES/PSF-2.0.txt](LICENSES/PSF-2.0.txt): Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023 Python Software Foundation; All Rights Reserved.
 
 Existing consumer repositories retain their inherited licenses independently. Installing optional build tools does not add their source code or licenses to this runtime package. The installation backend and interpreter are separately licensed tooling.
-
-The optional `native/ufbx` package (`msf-tools-ufbx`) vendors ufbx 0.23.1 by Samuli Raivio, used under the MIT License option of its dual MIT/Unlicense terms; the full text is in `native/ufbx/vendor/LICENSE.ufbx` and ships in that package. It is built with cffi (MIT). The `msf-tools` package itself contains no ufbx code.
 
 The optional `usd` extra installs usd-core (OpenUSD), which is distributed under the Tomorrow Open Source Technology License 1.0 (TOST-1.0): the Apache License 2.0 with a different Section 6 ("Trademarks"), which grants no permission to use the trade names, trademarks, service marks or product names of the licensor and its affiliates, except as required to comply with Section 4(c) and to reproduce the content of the NOTICE file. msf-tools contains no OpenUSD code. The optional OpenUSD test tier reads OpenUSD's own sample scenes from a local checkout (`MSF_OPENUSD_ASSETS`); they are TOST-1.0 and never committed here.
 

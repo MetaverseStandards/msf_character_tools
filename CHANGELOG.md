@@ -4,6 +4,8 @@
 
 ### Changed
 - Authoring validation and fragment merging, packs (canonical bytes, SHA-256, survey CSV, coverage), profile snapshots, mapping compilation and evaluation, and `math3d` run in the C++ core, `msf_tools._core`, and their Python implementations are gone. Results, reports and bytes match 0.3.0 exactly; the internal tests check this against 0.3.0 itself. msf-tools now needs the extension, and `MSF_TOOLS_PURE=1` only skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths.
+- glTF and GLB inspection, accessor decoding, animation sampling and geometry evaluation, the source adapters' node paths, transform decomposition, skin-influence merging and GLB writer, and the FBX adapter run in the C++ core. `gltf_semantics` is gone; `AssetSnapshot` and `GeometryValues` hold core handles behind the same frozen-record API. Results, diagnostics and bytes match 0.3.0, checked against 0.3.0 itself, including the whole ufbx test corpus.
+- ufbx 0.23.1 and the `msf-ufbx` shim are compiled into the core, so FBX needs nothing extra. The cffi package `msf-tools-ufbx` (`native/ufbx`) is removed, and the `fbx` extra is empty and kept so existing install commands work.
 - `canonical_json` and the JSON parser refuse containers nested more than 200 deep with `RecursionError("JSON nesting exceeds 200 levels.")`, where 0.3.0 failed with `RecursionError` at a depth that depended on the interpreter and the call stack (about 500 to 1000). This is the one intended difference from 0.3.0 in the C++ core's JSON handling, and both the core and the pure-Python path behave this way. Documents are still limited to 128 levels by validation.
 
 ## 0.3.0
