@@ -33,6 +33,8 @@ python3 -B check.py
 
 Fixture generation is deterministic. Regenerating fixtures must leave checked-in source/golden bytes equal; it must not derive analytical golden values from evaluator output. Installed wheel tests should run from an outside working directory with both Python3.11 and3.12. Cross-platform CI executes reference commands; native gates belong to native build integration.
 
+`scripts/ci_local.sh` runs the same commands as `.github/workflows/check.yml` on local Python 3.11 and 3.12 environments (`$MSF/_tools/venv3.11` and `venv3.12` by default, or `MSF_PY311` / `MSF_PY312`). It also runs the native build and CTest when `cmake` and a C++ compiler are present, and otherwise reports them as SKIPPED. It ends with a summary block for pull-request descriptions and exits nonzero if any check fails. Use it while hosted CI is unavailable.
+
 ## Limits of acceptance
 
 Numerical agreement covers the explicitly supported positions/curves and declared fixtures. It does not prove contacts, visual quality, general tracking calibration, performance on arbitrary production models, required extension support, normals or material parity. No full taxonomy completion gates geometry. Real host tests and native ownership/numerical tests have separate owners and evidence; syntax/source inspection cannot count as host execution. Later geometry formats, eight influences, DQS, geometry rewriting, simultaneous clips and universal calibration need new capabilities and tests.
