@@ -60,7 +60,10 @@ if [ "$(uname -s)" = Linux ]; then
       for py in cp311-cp311 cp312-cp312; do
         (cd /io/unpacked/msf_tools-* && /opt/python/$py/bin/python -m pip wheel -q --no-deps --no-index --find-links /io/wheelhouse -w /io/raw .)
       done
-      for wheel in /io/raw/*.whl; do auditwheel repair -w /io/repaired "$wheel" >/dev/null; done
+      # One platform tag only: lock files (RCEF'"'"'s) key a wheel by its single tag.
+      for wheel in /io/raw/*.whl; do
+        auditwheel repair --plat "manylinux_2_28_$(uname -m)" --only-plat -w /io/repaired "$wheel" >/dev/null 2>&1
+      done
       { echo "image $(cat /etc/os-release | grep ^PRETTY_NAME | cut -d= -f2) $(auditwheel --version)"; gcc --version | head -1; } > /io/toolchain.txt'
   cp "$scratch"/repaired/*.whl "$out"/
   cat "$scratch/toolchain.txt"

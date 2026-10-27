@@ -81,6 +81,8 @@ if [ "$(uname -s)" = Linux ]; then
       note "$name: auditwheel show FAILED: $(printf '%s' "$shown" | tr '\n' ' ')"
     fi
     if unzip -l "$wheel" | grep -q '\.libs/'; then note "$name: auditwheel vendored libraries, FAILED"; fi
+    tags=$(unzip -p "$wheel" '*.dist-info/WHEEL' | grep -c '^Tag:')
+    [ "$tags" = 1 ] || note "$name: $tags wheel tags, FAILED (want exactly one)"
     mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
     needed=$(readelf -d "$scratch/whl"/msf_tools/_core.*.so | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
     others=$(printf '%s' "$needed" | tr ' ' '\n' | grep -vE '^(libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|libpthread\.so\.0|libdl\.so\.2|ld-linux.*)?$' || true)
