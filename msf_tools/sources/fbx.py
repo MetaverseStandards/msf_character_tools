@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from array import array
 import math
+import struct
 
 from msf_tools_ufbx import ffi, lib
 
@@ -57,6 +58,10 @@ class FbxAdapter:
 
 def _matrix(values):
     return [float(x) for x in values]
+
+
+def _binary32(x):
+    return struct.unpack("<f", struct.pack("<f", x))[0]
 
 
 def _near(row, rest):
@@ -419,7 +424,8 @@ class _Scene:
             return (), losses, set()
         count = int(math.floor((end - begin) * rate + 1e-9)) + 1
         times = [begin + k / rate for k in range(count)]
-        if end - times[-1] > 1e-9:
+        # glTF times are binary32, where a stop just past the last frame can equal it (Kenney stores stops as float32).
+        if _binary32(end) > _binary32(times[-1]):
             times.append(end)
         if len(times) > MAX_SAMPLES:
             fail("E_RESOURCE_LIMIT", "/", f"The animation needs {len(times)} samples, over the {MAX_SAMPLES} limit.",

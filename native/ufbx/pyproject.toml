@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools>=68", "cffi>=1.17"]
+requires = ["setuptools>=77", "cffi>=1.17"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "msf-tools-ufbx"
-version = "0.1.4"
+version = "0.1.5"
 description = "ufbx 0.23.1 with a small C shim, for the msf-tools FBX adapter"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE", "vendor/LICENSE.ufbx"]
 authors = [{name = "MSF Tools contributors"}]
 dependencies = ["cffi>=1.17"]
 
 [tool.setuptools]
 packages = ["msf_tools_ufbx"]
-license-files = ["LICENSE", "vendor/LICENSE.ufbx"]

@@ -545,5 +545,17 @@ class CLITests(Checks):
             r=self.run_cli("invalid-command");self.assertEqual(r.returncode,1);self.assertIn(b'E_CLI_ARGUMENT',r.stderr)
 
 
+class PackageMetadata(unittest.TestCase):
+    def test_versions_agree_and_licences_are_spdx_expressions(self):
+        import tomllib
+        root = Path(__file__).resolve().parent.parent
+        project = tomllib.loads((root / 'pyproject.toml').read_text())['project']
+        self.assertEqual((project['version'], m.__version__), ('0.2.0.dev0', '0.2.0.dev0'))
+        self.assertIn('## 0.2.0.dev0', (root / 'CHANGELOG.md').read_text())
+        shim = tomllib.loads((root / 'native' / 'ufbx' / 'pyproject.toml').read_text())['project']
+        self.assertEqual((project['license'], shim['license']), ('MIT', 'MIT'))
+
+
 if __name__ == "__main__":
     unittest.main()
+

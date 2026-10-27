@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """The FBX adapter on ufbx, with ASCII FBX files written by the test writer."""
 import math
+import struct
 import unittest
 import unittest.mock
 
@@ -389,6 +390,17 @@ class FbxAnimation(unittest.TestCase):
         shifted = good(m.inspect_asset(animated(start=-0.5).text(), 'fbx'))
         self.assertIn(('W_TIME_SHIFTED', '/'), codes(shifted))
         self.assertAlmostEqual(m.sample_animation(shifted, 0, 1.0).value[1]['translation'][0], 10.0, places=5)
+
+    def test_a_stop_time_equal_to_the_last_frame_in_binary32_adds_no_sample(self):
+        # Kenney's Mini Characters store 40 frames at 60 fps as a stop time of float32(2/3), 1.4e-8 s past frame 40.
+        stop = struct.unpack('<f', struct.pack('<f', 2 / 3))[0]
+        scene = face()
+        scene.settings['fps'] = 60.0
+        scene.animation('walk', 0.0, stop, [(1002, 'Lcl Translation', {'X': [(0.0, 0.0), (stop, 1.0)], 'Y': [(0.0, 0.0)], 'Z': [(0.0, 0.0)]})])
+        snapshot = good(m.inspect_asset(scene.text(), 'fbx'))
+        times = m.decode_accessor(snapshot, snapshot.document['animations'][0]['samplers'][0]['input']).value
+        self.assertEqual(len(times), 41)
+        self.assertAlmostEqual(m.sample_animation(snapshot, 0, times[-1][0]).value[1]['translation'][0], 1.0, places=5)
 
     def test_constant_animated_values_that_differ_from_the_static_pose_are_kept(self):
         # Found by comparing with the DCC-exported OBJ frames in ufbx's corpus (blender_279_sausage "Base").

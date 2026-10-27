@@ -108,6 +108,53 @@ else
   lines+=("- Khronos FBX twins tier: SKIPPED (needs msf-tools-ufbx and \$MSF/_viz/assets/khronos)")
 fi
 
+# Optional tier: the 09K real-asset harness recipes, one test per CASE_MATRIX ID.
+real="${MSF_REAL_ASSETS:-$MSF/_viz/assets/real09K}"
+if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -x "$py312" ]; then
+  output=$(MSF_REAL_ASSETS="$real" "$py312" -B -m unittest discover -s tests -p 'test_real_assets.py' 2>&1)
+  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- Real-asset recipe tier: ${ran:-?} tests, $(printf '%s\n' "$output" | grep -E '^OK' | tail -1)")
+  else
+    lines+=("- Real-asset recipe tier: $(verdict_of "$output" 1)")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at $real)")
+fi
+
+# Optional tier: the end-to-end examples, run as scripts on the fetched assets.
+examples="${MSF_EXAMPLE_ASSETS:-$MSF/_viz/assets/examples}"
+if [ -f "$examples/Fox.glb" ] && [ -x "$py312" ]; then
+  output=$(MSF_EXAMPLE_ASSETS="$examples" MSF_REAL_ASSETS="$real" "$py312" -B -m unittest discover -s tests -p 'test_examples.py' 2>&1)
+  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- Examples tier: ${ran:-?} tests, $(printf '%s\n' "$output" | grep -E '^OK' | tail -1)")
+  else
+    lines+=("- Examples tier: $(verdict_of "$output" 1)")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- Examples tier: SKIPPED (run examples/fetch_assets.py --dest $examples)")
+fi
+
+# docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
+if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/Models" ] && [ -n "$corpus" ] \
+    && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
+  fresh="$MSF/_tools/parity.md"
+  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
+      && cmp -s "$fresh" docs/parity.md; then
+    lines+=("- docs/parity.md: matches a fresh measurement")
+  else
+    lines+=("- docs/parity.md: STALE or generator failed (rerun python -B scripts/parity_table.py with the asset variables set)")
+    failed=1
+  fi
+else
+  lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then
