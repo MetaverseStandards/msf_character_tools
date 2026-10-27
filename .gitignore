@@ -8,3 +8,4 @@ dist/
 *.trace
 examples/assets/
 examples/out/
+msf_tools/_build_info.json
