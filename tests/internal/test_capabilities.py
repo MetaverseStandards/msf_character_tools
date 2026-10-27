@@ -33,7 +33,8 @@ class RequiredFormats(unittest.TestCase):
 
 class WorkingReaders(unittest.TestCase):
     def test_working_readers_pass_when_required(self):
-        with patch.dict(os.environ, {'MSF_REQUIRE_FORMATS': 'fbx,usd'}):
+        # USD is optional; a run that requires it already failed at import if usd-core is missing.
+        with patch.dict(os.environ, {'MSF_REQUIRE_FORMATS': 'fbx,usd' if capabilities.USD else 'fbx'}):
             self.assertEqual((capabilities.reads('fbx'), capabilities.reads('usda')), (capabilities.FBX, capabilities.USD))
 
 

@@ -113,12 +113,14 @@ tier() {
 # in, so always; USD (usd-core, the usd extra) in a workspace, or when MSF_REQUIRE_FORMATS says so.
 if [ -n "$MSF" ]; then export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx,usd}"; else export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx}"; fi
 
+interpreters=0
 for version in 3.11 3.12; do
   py=$(interpreter $version)
   if [ ! -x "$py" ]; then
     lines+=("- Python $version: SKIPPED (no interpreter at $py)")
     continue
   fi
+  interpreters=$((interpreters + 1))
   exact=$("$py" -c 'import platform; print(platform.python_version())')
   summary=()
   for suite in public internal; do
@@ -137,6 +139,10 @@ for version in 3.11 3.12; do
   if "$py" -B check.py >/dev/null 2>&1; then check="check.py OK"; else check="check.py FAILED"; failed=1; fi
   lines+=("- Python $exact: unittest ${summary[0]}; ${summary[1]}; $check")
 done
+if [ $interpreters -eq 0 ]; then
+  lines+=("- Suites: FAILED (no Python 3.11 or 3.12 found; set MSF_PY311 or MSF_PY312)")
+  failed=1
+fi
 
 py312=$(interpreter 3.12)
 if [ -x "$py312" ]; then
@@ -260,7 +266,7 @@ fi
 
 # docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
 if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -n "$khronos" ] && [ -d "$khronos/Models" ] \
-    && [ -n "$corpus" ] && [ -n "$examples" ] && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
+    && [ -d "$corpus/data" ] && [ -n "$examples" ] && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
   mkdir -p build
   fresh=build/parity.md
   if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \

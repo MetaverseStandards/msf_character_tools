@@ -8,7 +8,7 @@ Original documentation: CC-BY-SA-4.0.
 
 The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Authoring, packs, mappings and `math3d` exist only in the core, so msf-tools needs the extension; `MSF_TOOLS_PURE=1` skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths and the remaining Python reference paths.
 
-For work in a checkout, build the extension in place next to the modules:
+For work in a checkout, build the extension in place next to the modules. CMake finds nanobind through the chosen interpreter, so install it there first (`python3.12 -m pip install nanobind`). The interpreters that `scripts/ci_local.sh` uses (`MSF_PY311`, `MSF_PY312`) need it too.
 
 ```sh
 cmake -S . -B build/core-3.12 -G Ninja -DPython_EXECUTABLE=python3.12 -DMSF_CORE_IN_PLACE=ON
