@@ -38,7 +38,13 @@ class PathGrammar(unittest.TestCase):
         self.assertNotEqual(paths.node_path([('n', None)], ('geometry', None)), paths.node_path([('n', None)], ('scale', None)))
         self.assertNotEqual(paths.node_path([('n', 0)]), paths.node_path([('n[0]', None)]))
 
-    def test_locators_split_at_the_first_unescaped_hash(self):
+    def test_locators_on_helper_nodes_round_trip(self):
+        # A reader can put an instanced mesh on a geometry helper node.
+        node = paths.node_path([('Body', None)], ('geometry', None))
+        key = paths.target_key([('Blend', None), ('smile', None)])
+        self.assertEqual(paths.split_locator(paths.locator(node, key)), (node, key))
+
+    def test_locators_split_at_the_unescaped_hash_before_the_key(self):
         node = paths.node_path([('Face#1', None)])
         key = paths.target_key([('Blend#A', None), ('smile:L', 1)])
         locator = paths.locator(node, key)
@@ -56,7 +62,7 @@ class PathGrammar(unittest.TestCase):
         for bad in ('a#b', 'a[1', 'a%zz', 'a:b', '%41'):
             with self.subTest(key=bad), self.assertRaises(ValueError):
                 paths.parse_target_key(bad)
-        for bad in ('/a', 'a#k', '#k', '/a#helper:scale#k', '/a#helper:scale'):
+        for bad in ('/a', 'a#k', '#k', '/a#helper:other#k', '/a#helper:scale', '/a#b#k'):
             with self.subTest(locator=bad), self.assertRaises(ValueError):
                 paths.split_locator(bad)
 

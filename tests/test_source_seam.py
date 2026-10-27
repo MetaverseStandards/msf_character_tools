@@ -239,6 +239,14 @@ class SourceLocatorBinding(unittest.TestCase):
                 result = m.annotate_asset(self.snapshot, {'bindings': [dict(self.binding, ref=ref)]})
                 self.assertEqual([d.code for d in result.report.diagnostics], [code])
 
+    def test_meshes_on_helper_nodes_bind_by_locator(self):
+        scene = fake.scene(nodes=[{'path': '/Body'}, {'path': '/Body#helper:geometry', 'mesh': 'face'}])
+        snapshot = good(generated(scene)[1])
+        binding = thaw(good(m.morph_binding(snapshot, SIGNAL, 1, 0)))
+        self.assertEqual(binding['ref']['source_locator'], '/Body#helper:geometry#smile')
+        sidecar = good(m.annotate_asset(snapshot, {'bindings': [binding]}))
+        self.assertEqual(thaw(good(generated(scene, sidecar=sidecar)[1]).bindings[0]['ref']), binding['ref'])
+
     def test_gltf_bindings_refuse_source_locators(self):
         snapshot = good(m.inspect_asset(COMBINED, 'gltf'))
         binding = thaw(good(m.morph_binding(snapshot, SIGNAL, 5, 0)))

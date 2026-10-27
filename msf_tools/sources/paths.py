@@ -6,8 +6,9 @@ source name with `%`, `/`, `#`, `[`, `]`, `:` and control characters
 percent-encoded (uppercase hex), optionally followed by `[k]` to tell apart
 siblings with the same name. A node path may end in `#helper:<kind>[k]` for a
 reader-made helper node. A target key is one or more components joined by
-`/`. A source locator is `<node path>#<target key>`. Escaping makes every raw
-separator unambiguous, and nodes sort by their unescaped components.
+`/`. A source locator is `<node path>#<target key>`, split at its last `#`.
+Escaping makes every raw separator unambiguous, and nodes sort by their
+unescaped components.
 """
 import re
 
@@ -89,12 +90,12 @@ def locator(path, key):
 
 
 def split_locator(text):
-    """Split at the first `#`; names never contain a raw `#`."""
+    """Split at the last `#`: target keys never contain a raw `#`, but a node path
+    on a reader-made helper node ends in `#helper:<kind>`."""
     if type(text) is not str or "#" not in text:
         raise ValueError(f"Source locator needs '<node path>#<target key>': {text!r}.")
-    path, _, key = text.partition("#")
-    if parse_node_path(path)[1] is not None:
-        raise ValueError("Helper nodes cannot carry targets.")
+    path, _, key = text.rpartition("#")
+    parse_node_path(path)
     parse_target_key(key)
     return path, key
 
