@@ -558,7 +558,7 @@ meaning = "A matrix cannot be split into TRS without shear."
 [E_SHEAR_UNSUPPORTED]
 severity = "error"
 since = "0.2.0.dev0"
-meaning = "A source transform has shear glTF cannot represent; under strict losses, shear was baked."
+meaning = "A source transform has shear glTF cannot represent, or, under strict losses, shear that would have been baked."
 
 [E_SIDECAR_VERSION]
 severity = "error"
