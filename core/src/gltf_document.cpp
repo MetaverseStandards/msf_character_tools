@@ -185,12 +185,12 @@ void normalize_slots(Value& doc) {
 bool strict_utf8(std::string_view text) { return json::validate_wtf8(text) && !json::has_surrogate(text); }
 
 Value parse_document(std::string_view text) {
-    if (!strict_utf8(text) || text.compare(0, 3, "\xEF\xBB\xBF") == 0) throw DecodeError{};
+    if (!strict_utf8(text) || text.compare(0, 3, "\xEF\xBB\xBF") == 0) throw DecodeError{std::string(text)};
     json::ParseOutcome parsed = json::parse(text);
     using Status = json::ParseOutcome::Status;
     switch (parsed.status) {
         case Status::ok: break;
-        case Status::syntax: throw DecodeError{};
+        case Status::syntax: throw DecodeError{std::string(text)};
         case Status::too_deep: throw TooDeep{};
         case Status::constant: fail(Code::E_NONFINITE, "/", "Invalid JSON constant " + parsed.detail + ".");
         case Status::duplicate_key: throw DuplicateKey{parsed.detail};
@@ -201,9 +201,9 @@ Value parse_document(std::string_view text) {
 
 }  // namespace
 
-Parsed parse_asset(std::string_view raw, const std::string& format) {
+Parsed parse_asset(std::string_view raw, bool glb) {
     Parsed out;
-    if (format == "glb") {
+    if (glb) {
         if (raw.size() < 20) fail(Code::E_GLB_HEADER, "/", "Truncated GLB header.");
         std::uint32_t magic = u32(raw, 0), version = u32(raw, 4), length = u32(raw, 8);
         if (magic != 0x46546C67 || version != 2 || length != raw.size() || length % 4)

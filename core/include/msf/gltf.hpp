@@ -3,6 +3,7 @@
 // 0.3.0: the same checks, codes, refs, messages and order. Documents only ever
 // come from JSON here, so values have JSON kinds; integers are exact (BigInt).
 #pragma once
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -19,19 +20,20 @@ namespace msf::gltf {
 
 using json::Value;
 
-// Bytes owned elsewhere (a Python bytes object, or a decoded string), kept
-// alive by `keep`.
+// Bytes kept alive by `keep`: a decoded string the core owns, or the caller's
+// object (`origin`, opaque to the core) for bytes the caller supplied.
 struct Bytes {
     std::string_view view;
     std::shared_ptr<const void> keep;
+    const void* origin = nullptr;
     static Bytes own(std::string data);
 };
 
-// Thrown where Python raised something other than a Fault.
-struct DecodeError {};                      // UnicodeDecodeError or JSONDecodeError: E_INPUT
+struct DecodeError { std::string text; };   // UnicodeDecodeError or JSONDecodeError on this text: E_INPUT
 struct TooDeep {};                          // RecursionError
 struct DuplicateKey { std::string key; };   // Fault E_DUPLICATE_KEY, whose message needs Python's repr of the key
 struct InternalError { std::string what; }; // an unexpected Python exception, such as struct.error: E_INTERNAL
+struct TypeError { std::string what; };     // Python's TypeError: E_INPUT
 
 constexpr long long kMaxAssetBytes = 64LL * 1024 * 1024;
 constexpr long long kMaxResourceBytes = 64LL * 1024 * 1024;
@@ -59,9 +61,9 @@ struct Parsed {
     std::string_view bin;
 };
 
-// _parse_asset: the GLB container (when format is glb, any case) and the JSON
-// document with its core integer slots made exact.
-Parsed parse_asset(std::string_view raw, const std::string& format);
+// _parse_asset: the GLB container (when the format is glb, in any case) and
+// the JSON document with its core integer slots made exact.
+Parsed parse_asset(std::string_view raw, bool glb);
 // _data_uri.
 Bytes data_uri(const std::string& uri, const std::string& ref);
 // _validate_document, gltf_semantics included.
@@ -70,25 +72,24 @@ void validate_document(const Value& doc, Caps caps);
 std::size_t morph_count(const Value& mesh);
 
 struct Resource {
-    std::string id;
+    std::string id;  // "/buffers/{i}" or "/images/{i}"
     bool has_uri = false;
     std::string uri;
-    Value byte_length;  // an integer
+    Value byte_length;  // an integer: the buffer's declaration, or the image's size
     bool has_data = false;
     Bytes data;
-    std::string sha256;
+    std::string sha256;  // empty without data
 };
 
 struct Asset {
-    std::string format;  // "gltf", "glb" or "profile"
+    std::string format;  // "gltf" or "glb"
     Bytes original;
     std::string sha256;
     Value doc;
     std::vector<Chunk> chunks;
     std::vector<Resource> resources;
-    Value channels, bindings, source;  // object, array, and null unless generated from a source
-    Caps caps;
-    bool has_source() const { return source.kind == Value::Kind::object; }
+    bool generated = false;  // converted from a source format
+    Caps caps;               // the record's component caps, which decoding uses
 };
 
 // Decoded accessor rows. `integers`: the values are Python ints (integer
@@ -111,27 +112,62 @@ std::vector<double> animation_times(const Asset& asset, const Value& accessor_id
 // animation_layout: the component count per key.
 std::size_t animation_layout(const Value& doc, const Value& sampler, const Value& target, const std::string& ref);
 
+// A timestamp as Python holds it: an exact int or a float, compared exactly.
+struct Time {
+    Value value;     // integer or real
+    double seconds;  // float(timestamp)
+};
+
 struct Sampled {
     bool present = false;  // false for noncore targets
     std::size_t node = 0;
     std::string path;
     std::vector<double> value;
 };
-// geometry._sample_channel at a finite nonnegative timestamp.
-Sampled sample_channel(const Asset& asset, std::size_t animation, std::size_t channel, double timestamp);
+// geometry._sample_channel at a valid timestamp.
+Sampled sample_channel(const Asset& asset, std::size_t animation, std::size_t channel, const Time& t);
 
-// The caller's resolver: returns the bytes for a URI, or raises (with a Fault
-// or the caller's own exception). Called only when a resolver was supplied.
-using Resolve = std::function<Bytes(const std::string& uri, const std::string& ref)>;
+// geometry._sample_animation after its timestamp check: node -> path -> value,
+// in insertion order.
+using Pose = std::vector<std::pair<std::size_t, std::vector<std::pair<std::string, std::vector<double>>>>>;
+Pose sample_animation(const Asset& asset, const Value& animation_id, const Time& t);
+
+// The caller's resolver, called only when one was supplied: the bytes for a
+// buffer URI (image false), or for an image URI, std::nullopt when nothing was
+// fetched. Raises a Fault (or the caller's own exception) for anything else.
+using Resolve = std::function<std::optional<Bytes>(const std::string& uri, const std::string& ref, bool image)>;
 
 struct Inspection {
-    Asset asset;
+    std::shared_ptr<Asset> asset;
     std::vector<Diagnostic> diagnostics;  // errors, then warnings
 };
 
-// _inspect_gltf up to the sidecar: resources, binary checks, animation checks,
-// images. `source` is null or the generated snapshot's source record.
-Inspection inspect(const Bytes& raw, const std::string& format, const Resolve* resolver, long long max_asset_bytes, Caps caps,
-                   Value source);
+// _inspect_gltf after its size and resolver checks, up to the sidecar.
+Inspection inspect(const Bytes& raw, bool glb, const Resolve* resolver, Caps caps, bool generated);
+
+// One of evaluate_geometry's override mappings: absent (None), not a Mapping,
+// or its items in order, each key an integer Value when it was an exact int.
+struct Overrides {
+    bool present = false, mapping = false;
+    std::vector<std::pair<Value, Value>> items;
+};
+
+struct PrimitivePositions {
+    std::size_t primitive = 0;
+    std::vector<std::array<double, 3>> positions;
+};
+struct Instance {
+    std::size_t node = 0, mesh = 0;
+    std::vector<PrimitivePositions> primitives;
+};
+struct Geometry {
+    std::vector<Instance> instances;
+    std::vector<Diagnostic> diagnostics;
+};
+
+// evaluate_geometry after its snapshot, timestamp and attributes checks;
+// animation_id is nullptr for None.
+Geometry evaluate_geometry(const Asset& asset, const Time& t, const Value* animation_id, const Overrides& morph_weights,
+                           const Overrides& node_transforms);
 
 }  // namespace msf::gltf
