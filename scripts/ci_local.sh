@@ -66,6 +66,22 @@ else
   lines+=("- ufbx corpus tier: SKIPPED (needs msf-tools-ufbx installed and the corpus under \$MSF/_viz/assets/ufbx)")
 fi
 
+# Optional tier: Khronos sample assets re-authored as FBX, kept out of the fast suite.
+khronos="${MSF_KHRONOS_ASSETS:-$MSF/_viz/assets/khronos}"
+if [ -d "$khronos/Models" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
+  output=$(MSF_KHRONOS_ASSETS="$khronos" "$py312" -B -m unittest discover -s tests -p 'test_source_twins.py' 2>&1)
+  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- Khronos FBX twins tier: ${ran:-?} tests OK")
+  else
+    lines+=("- Khronos FBX twins tier: FAILED")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- Khronos FBX twins tier: SKIPPED (needs msf-tools-ufbx and \$MSF/_viz/assets/khronos)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then
