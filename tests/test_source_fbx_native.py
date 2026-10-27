@@ -232,3 +232,25 @@ class VendoredUfbx(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def toolchain_module():
+    path = Path(__file__).resolve().parent.parent / 'native' / 'ufbx' / 'toolchain.py'
+    spec = importlib.util.spec_from_file_location('ufbx_toolchain', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ShimBuildToolchain(unittest.TestCase):
+    def test_link_settings_that_point_at_missing_relative_folders_are_reported_before_building(self):
+        check = toolchain_module().missing_link_folders
+        meta = ('gcc -shared -L../../../../xplat/toolchains/apple/MacOSX27.0.sdk/usr/lib', '-L../../xplat/toolchains/sdk/usr/lib')
+        self.assertEqual(check(*meta), ['../../../../xplat/toolchains/apple/MacOSX27.0.sdk/usr/lib', '../../xplat/toolchains/sdk/usr/lib'])
+        self.assertEqual(check('clang -bundle -undefined dynamic_lookup -L/no/such/absolute/dir', ''), [])
+        self.assertEqual(check('cc -shared', None), [])
+
+    def test_the_message_names_the_remedy(self):
+        text = toolchain_module().GUIDANCE
+        self.assertIn('python.org', text)
+        self.assertIn('uv', text)
