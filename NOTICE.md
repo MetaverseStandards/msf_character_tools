@@ -4,6 +4,8 @@ Original Python/C++ source code is licensed MIT. Original documentation, JSON sc
 
 License texts are in [LICENSES](LICENSES). The public glTF specification informs format behavior; its restricted text is not copied into the implementation or fixture assets. Public source evidence appears as factual references with pinned revisions in [docs/sources.md](docs/sources.md). No external sample mesh, GLM, cgltf, JSON library or other third-party runtime code is included in the Python reference.
 
+The C++ extension `msf_tools._core` in built wheels links nanobind 3.1.0 (BSD-3-Clause, copyright 2022 Wenzel Jakob; text in [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt)), which includes tsl::robin_map (MIT, copyright 2017 Thibaut Goetghebuer-Planchon; text in [LICENSES/MIT.txt](LICENSES/MIT.txt)). Both license files ship in the wheel. nanobind is fetched at build time and not vendored here.
+
 Existing consumer repositories retain their inherited licenses independently. Installing optional build tools does not add their source code or licenses to this runtime package. The installation backend and interpreter are separately licensed tooling.
 
 The optional `native/ufbx` package (`msf-tools-ufbx`) vendors ufbx 0.23.1 by Samuli Raivio, used under the MIT License option of its dual MIT/Unlicense terms; the full text is in `native/ufbx/vendor/LICENSE.ufbx` and ships in that package. It is built with cffi (MIT). The `msf-tools` package itself contains no ufbx code.
