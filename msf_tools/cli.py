@@ -73,7 +73,7 @@ def _input_paths(args):
             paths.extend(authoring_files(path))
         else:
             paths.append(path)
-        # Listing a source's layers would mean running its reader, so only glTF resources are listed here.
+        # A source's layers are known only once its reader has run; main() checks them against the output after inspection.
         if (field in ("asset", "source_asset", "target_asset") and getattr(args, "resolver_root", None) and path.is_file()
                 and path.suffix.lstrip(".").lower() not in SOURCE_FORMATS):
             inventory = inspect_asset(path.read_bytes(), path.suffix.lstrip("."))
@@ -113,7 +113,11 @@ def _inspect(path, args, sidecar):
     if fmt.lower() in SOURCE_FORMATS:
         limits = {k: v for k, v in (("timeout_s", args.source_timeout), ("max_source_bytes", args.max_source_bytes)) if v is not None}
         source = {"isolate": not args.in_process, "limits": SourceLimits(**limits)}
-    return inspect_asset(path.read_bytes(), fmt, resolver=resolver, sidecar=sidecar, **source)
+    result = inspect_asset(path.read_bytes(), fmt, resolver=resolver, sidecar=sidecar, **source)
+    if result.ok and resolver and result.value.source is not None:
+        from urllib.parse import unquote
+        args.fetched.extend(resolver.root / unquote(d["uri"]) for d in result.value.source["dependencies"])
+    return result
 
 
 def _snapshot(args):
@@ -218,6 +222,7 @@ def parser():
 def main(argv=None):
     try:
         args = parser().parse_args(argv)
+        args.fetched = []
         if args.command != "check" and args.output:
             _preflight([args.output], _input_paths(args))
         if args.command == "check":
@@ -240,6 +245,7 @@ def main(argv=None):
                 result = evaluate_mapping(result.value, samples)
         payload = canonical_json(result.value) if result.ok else canonical_json(result.report)
         if args.output:
+            _preflight([args.output], args.fetched)
             atomic_write(args.output, payload)
         elif result.ok:
             sys.stdout.buffer.write(payload)
