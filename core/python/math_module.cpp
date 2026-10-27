@@ -6,7 +6,10 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <algorithm>
+#include <array>
 #include <cstring>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -102,9 +105,61 @@ m3::Vec normalize(nb::handle q) { return m3::normalize(read_vector(q.ptr(), 4, "
 
 double fraction(nb::handle value) { return m3::fraction(read_number(value.ptr(), "/animations")); }
 
+// geometry.evaluate_geometry's linear blend over any number of influences, in
+// its order: per vertex, each nonzero weight's palette (built on first use as
+// mesh_inverse * worlds[skin_joints[j]] * ibms[j]) transforms the point, then
+// each component sums weight * point over the influences.
+nb::list skin(nb::handle positions, nb::handle joints, nb::handle weights, nb::handle mesh_inverse, nb::handle worlds,
+              nb::handle skin_joints, nb::handle ibms, const std::string& ref) {
+    std::vector<nb::object> ps = items(positions.ptr()), js = items(joints.ptr()), ws = items(weights.ptr());
+    std::size_t count = std::min({ps.size(), js.size(), ws.size()});
+    std::vector<std::pair<long long, m3::Mat>> palettes;
+    nb::list out;
+    for (std::size_t v = 0; v < count; ++v) {
+        std::vector<nb::object> vj = items(js[v].ptr()), vw = items(ws[v].ptr());
+        std::vector<std::pair<double, std::array<double, 3>>> contributions;
+        for (std::size_t k = 0; k < std::min(vj.size(), vw.size()); ++k) {
+            double w = operand(vw[k]);
+            if (w == 0) continue;
+            long long j = PyLong_AsLongLong(vj[k].ptr());
+            if (j == -1 && PyErr_Occurred()) throw nb::python_error();
+            const m3::Mat* palette = nullptr;
+            for (const auto& entry : palettes)
+                if (entry.first == j) palette = &entry.second;
+            if (!palette) {
+                nb::object node = nb::steal(PySequence_GetItem(skin_joints.ptr(), static_cast<Py_ssize_t>(j)));
+                if (!node.is_valid()) throw nb::python_error();
+                nb::object world = nb::steal(PyObject_GetItem(worlds.ptr(), node.ptr()));
+                if (!world.is_valid()) throw nb::python_error();
+                nb::object ibm = nb::steal(PySequence_GetItem(ibms.ptr(), static_cast<Py_ssize_t>(j)));
+                if (!ibm.is_valid()) throw nb::python_error();
+                m3::Mat a = read_matrix(mesh_inverse.ptr(), "/transforms");
+                m3::Mat b = read_matrix(world.ptr(), "/transforms");
+                m3::Mat first = m3::multiply(a, b);
+                m3::Mat c = read_matrix(ibm.ptr(), "/transforms");
+                palettes.emplace_back(j, m3::multiply(first, c));
+                palette = &palettes.back().second;
+            }
+            m3::check_affine(*palette, 1e-7, "/transforms");
+            m3::Vec p = read_vector(ps[v].ptr(), 3, "/transforms");
+            contributions.emplace_back(w, m3::transform(*palette, p.data()));
+        }
+        nb::list point;
+        for (int c = 0; c < 3; ++c) {
+            double total = 0.0;
+            for (const auto& [w, q] : contributions) total = m3::add(total, m3::product(w, q[c], ref), ref);
+            point.append(total);
+        }
+        out.append(point);
+    }
+    return out;
+}
+
 }  // namespace
 
 void bind_math3d(nb::module_& m) {
+    m.def("_skin", &skin, nb::arg("positions"), nb::arg("joints"), nb::arg("weights"), nb::arg("mesh_inverse"), nb::arg("worlds"),
+          nb::arg("skin_joints"), nb::arg("ibms"), nb::arg("ref"));
     m.attr("IDENTITY") = tuple_of(m3::kIdentity);
     m.attr("UNIT_QUATERNION_TOLERANCE") = m3::kUnitQuaternionTolerance;
     m.def("_number", [](nb::handle value, const std::string& ref) { return read_number(value.ptr(), ref); },

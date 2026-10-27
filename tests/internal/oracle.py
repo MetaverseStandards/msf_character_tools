@@ -20,6 +20,7 @@ import subprocess
 import sys
 
 MSF = Path(os.environ.get('MSF', Path.home() / '.local/share/msf'))
+ROOT = Path(__file__).resolve().parents[2]
 PYTHON = Path(os.environ.get('MSF_ORACLE_PYTHON', MSF / '_tools/oracle-venv/bin/python'))
 REQUIRED = os.environ.get('MSF_REQUIRE_ORACLE') == '1'
 AVAILABLE = PYTHON.exists()

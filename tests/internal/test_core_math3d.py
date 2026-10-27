@@ -217,6 +217,65 @@ def regressions():
     return out
 
 
+def skinned_asset(rng):
+    """A random skinned glTF: 1-3 influence sets, palette joints in a TRS hierarchy, some invalid on purpose."""
+    from test_core_semantic_fixes import AssetBytes, encode
+    b = AssetBytes()
+    vertices, joints, sets = rng.randrange(1, 6), rng.randrange(1, 6), rng.randrange(1, 4)
+    attrs = {'POSITION': b.rows([tuple(rng.uniform(-2, 2) for _ in range(3)) for _ in range(vertices)], 'VEC3', bounds=True)}
+    influence = []
+    for _ in range(vertices):
+        # Distinct joints carry the positive weights, which are dyadic so they sum to one exactly.
+        positive = rng.sample(range(joints), rng.randrange(1, min(4 * sets, joints) + 1))
+        shares = [1.0]
+        while len(shares) < len(positive):
+            shares.sort()
+            half = shares.pop() / 2
+            shares += [half, half]
+        slots = rng.sample(range(4 * sets), len(positive))
+        indices = [rng.randrange(joints) for _ in range(4 * sets)]
+        weights = [0.0] * (4 * sets)
+        for slot, joint, share in zip(slots, positive, shares):
+            indices[slot], weights[slot] = joint, share
+        if rng.random() < 0.03:
+            weights[slots[0]] += 0.01
+        if rng.random() < 0.03:
+            indices[rng.randrange(4 * sets)] = joints
+        influence.append((indices, weights))
+    for s in range(sets):
+        attrs[f'JOINTS_{s}'] = b.rows([tuple(i[4 * s:4 * s + 4]) for i, _ in influence], 'VEC4', rng.choice((5121, 5123)))
+        attrs[f'WEIGHTS_{s}'] = b.rows([tuple(w[4 * s:4 * s + 4]) for _, w in influence], 'VEC4')
+    def trs_node(**extra):
+        node = dict(extra)
+        if rng.random() < 0.7:
+            node['translation'] = [rng.uniform(-3, 3) for _ in range(3)]
+        if rng.random() < 0.7:
+            q = [rng.gauss(0, 1) for _ in range(4)]
+            n = math.sqrt(sum(x * x for x in q))
+            node['rotation'] = [x / n for x in q]
+        if rng.random() < 0.5:
+            node['scale'] = [rng.choice((1, 2, 0.5, rng.uniform(0.2, 3), 0 if rng.random() < 0.05 else 1)) for _ in range(3)]
+        return node
+    ibms = []
+    for _ in range(joints):
+        r = rotation(rng)
+        m = [r[i][c] * rng.choice((1, 2, 0.5)) for c in range(3) for i in range(3)]
+        cols = m[0:3] + [0] + m[3:6] + [0] + m[6:9] + [0] + [rng.uniform(-2, 2) for _ in range(3)] + [1]
+        if rng.random() < 0.03:
+            cols[3] = 0.5
+        ibms.append(tuple(cols))
+    ibm = b.rows(ibms, 'MAT4')
+    nodes = [trs_node(mesh=0, skin=0)] + [trs_node() for _ in range(joints)]
+    for j in range(2, joints + 1):
+        nodes[rng.randrange(1, j)].setdefault('children', []).append(j)
+    roots = [i for i in range(len(nodes)) if not any(i in n.get('children', ()) for n in nodes)]
+    skin = {'joints': list(range(1, joints + 1))}
+    if rng.random() < 0.9:
+        skin['inverseBindMatrices'] = ibm
+    d = b.document(meshes=[{'primitives': [{'mode': 0, 'attributes': attrs}]}], nodes=nodes, skins=[skin], scenes=[{'nodes': roots}])
+    return encode(d)
+
+
 def scalar_float(rng):
     x = scalar(rng)
     return float(x) if type(x) in (int, float) and abs(x) < 1e308 else rng.uniform(-1, 1)
@@ -273,8 +332,18 @@ class AgainstTheOracle(unittest.TestCase):
     def test_retired_internal_cases_match_the_oracle(self):
         self.assertEqual(oracle.differ(regressions())[:3], [])
 
+    def test_n_influence_skinning_matches_the_oracle(self):
+        rng = random.Random(31)
+        expression = "(lambda r: m.evaluate_geometry(r.value) if r.ok else r)(m.inspect_asset(raw, 'gltf'))"
+        cases = [(expression, {'raw': skinned_asset(rng)}) for _ in range(3000 if GATE else 25)]
+        for name in ('eight-influence.gltf', 'eight-weighted.gltf', 'simple-skin.gltf'):
+            cases.append((expression, {'raw': (oracle.ROOT / 'tests/public/fixtures' / name).read_bytes()}))
+        self.assertEqual(oracle.differ(cases)[:3], [])
+        evaluated = sum(oracle.outcome(*case)[1][1][0] == 'record' for case in cases)
+        self.assertGreater(evaluated, len(cases) // 2, 'too few random assets evaluated')
+
     def test_math3d_matches_the_oracle(self):
-        mismatches = oracle.differ(cases(100000 if GATE else 3000, 20261027))
+        mismatches = oracle.differ(cases(100000 if GATE else 1500, 20261027))
         self.assertEqual(mismatches[:3], [])
 
 
