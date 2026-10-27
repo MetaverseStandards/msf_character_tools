@@ -241,7 +241,8 @@ def evaluate_mapping(compiled_mapping, samples):
         fail("E_SAMPLE_TYPE", "/", "Expected CompiledMapping and sample frame array.")
     compiled_mapping._check_integrity()
     diagnostics, frames = [], []
-    signals = compiled_mapping.pack.signals
+    # The compiled mapping's check above already verified its pack; Pack.signals would verify it again.
+    signals = {s["id"]: s for s in compiled_mapping.pack.document["signals"]}
     for i, frame in enumerate(samples):
         ref = f"/samples/{i}"
         values = {}

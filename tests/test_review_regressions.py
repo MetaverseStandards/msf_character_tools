@@ -83,7 +83,8 @@ class ProfileWork(unittest.TestCase):
                 print(f'rules={count} operation={operation} full_profiles={profiles.call_count} full_pack_checks={len(pack_calls)}')
                 with self.subTest(count=count, operation=operation):
                     self.assertLessEqual(profiles.call_count, 4 if operation == 'compile' else 2)
-                    self.assertLessEqual(len(pack_calls), 4 if operation == 'compile' else 2)
+                    # Evaluation checks the pack once, inside the compiled mapping's own check.
+                    self.assertLessEqual(len(pack_calls), {'compile': 4, 'export': 2, 'evaluate': 1}[operation])
             self.assertEqual([r['id'] for r in compiled.instructions], [f'r{i}' for i in range(count)])
 
     def test_later_operations_recheck_mutated_and_copied_dependencies(self):
