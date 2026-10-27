@@ -97,6 +97,10 @@ agreement test and independent strict binding test. `native/tests/test_strict.py
 takes the actual module directory followed by the source root and refuses an
 incorrect import origin. Its literal numerical, diagnostic and lifetime oracles
 are independent; agreement is supplemental.
+`tests/test_native_consumer.py` checks the bindings the way a consumer uses them
+(strict types, copies, refusal codes, matrix storage order). It runs under CTest
+with `MSF_NATIVE_PATH` set to the module directory, and skips in the plain
+`unittest` suite when that variable is unset.
 
 Local qualification is limited to the recorded macOS arm64 CPython3.11.17 and
 3.12.15+meta builds. Configured CI native jobs leave bindings OFF. No release
