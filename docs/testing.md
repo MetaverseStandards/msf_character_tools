@@ -105,7 +105,7 @@ Expected values are authored directly; fixture bytes use direct binary32 packing
 Native/reference agreement is supplemental.
 
 Builder correction gates run126 tests on Python3.11.17 (two optional jsonschema skips) and
-Python3.12.15+meta (zero skips), plus34 targeted tests each and byte-preserving
+Python 3.12.15 (a vendor-patched build) (zero skips), plus34 targeted tests each and byte-preserving
 check.py. Fresh separate bindings ON builds pass2 CTests each: native analytical
 executable and seven agreement tests. These native gates test compatibility with
 the pure changes; strict native types, setters, nested getter ownership/lifetime
@@ -157,7 +157,7 @@ data and generated goldens remain unchanged. Schema/runtime tests preserve
 known incompatible/empty inventory without adding schema keys or versions.
 
 Builder GREEN: 24 targeted methods and 150 full tests on Python3.11.17 (one
-targeted and three full optional jsonschema skips), and Python3.12.15+meta (zero
+targeted and three full optional jsonschema skips), and Python 3.12.15 (a vendor-patched build) (zero
 skips, actual Draft202012 schema validation). `check.py` passes on both. No
 unaffected native/host gate was rerun. Saved commands/source/test hashes and
 case-to-RED links accompany the private draft handoff. Fresh independent exact
