@@ -2,12 +2,13 @@
 """Time msf-tools operations through the public API and print a JSON report.
 
     python -B scripts/bench.py [--root CHECKOUT | --installed] [--frames N] [--runs 5] [--authoring DIR]
-                               [--grid 50] [--geometry-frames 300] [--output report.json]
+                               [--grid 50] [--geometry-frames 300] [--fbx FILE] [--output report.json]
 
 By default msf_tools comes from this checkout. --root imports it from another
 checkout; --installed uses the interpreter's installed copy, such as a 0.3.0
 wheel in a separate venv. Set MSF_TOOLS_PURE=1 to time a build without its
-fast paths. --authoring also times a real authoring directory, such as RCEF's. Each workload checks one value analytically before timing.
+fast paths. --authoring also times a real authoring directory, such as RCEF's, and --fbx
+converting an FBX file, such as the examples' Kenney character, and evaluating its first animation. Each workload checks one value analytically before timing.
 Timings are medians on one host; they are not a real-time or device guarantee.
 """
 import argparse
@@ -169,6 +170,7 @@ def main():
     parser.add_argument('--authoring', type=Path)
     parser.add_argument('--grid', type=int, default=50)
     parser.add_argument('--geometry-frames', type=int, default=300)
+    parser.add_argument('--fbx', type=Path)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if not 1 <= args.frames <= 10_000_000 or not 3 <= args.runs <= 100 or not 2 <= args.grid <= 500 or not 1 <= args.geometry_frames <= 10_000:
@@ -239,6 +241,20 @@ def main():
             'to_bytes_seconds': median_seconds(real.to_bytes, args.runs),
             'survey_csv_seconds': median_seconds(lambda: m.survey_csv(real), args.runs),
             'coverage_seconds': median_seconds(lambda: m.coverage(real), args.runs)}
+    if args.fbx:
+        data = args.fbx.read_bytes()
+        converted = m.inspect_asset(data, 'fbx')
+        if not converted.ok:
+            raise SystemExit(f'{args.fbx}: {converted.report.to_dict()}')
+        scene = converted.value
+        # The adapter writes one glTF node per source node, every one of them named by a source path.
+        if len(scene.source['node_paths']) != len(scene.document['nodes']):
+            raise SystemExit(f'{args.fbx}: node paths do not match nodes')
+        animated = {'animation_id': 0, 'timestamp': 0.5} if scene.document.get('animations') else {}
+        report['workloads']['fbx'] = {
+            'path': str(args.fbx), 'bytes': len(data), 'glb_bytes': len(scene.original_bytes),
+            'inspect_asset_seconds': median_seconds(lambda: m.inspect_asset(data, 'fbx'), args.runs),
+            'evaluate_geometry_seconds': median_seconds(lambda: m.evaluate_geometry(scene, **animated), args.runs)}
     text = json.dumps(report, indent=2, sort_keys=True) + '\n'
     if args.output:
         args.output.write_text(text, encoding='utf-8')
