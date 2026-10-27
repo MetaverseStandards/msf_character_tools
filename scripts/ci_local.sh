@@ -129,8 +129,8 @@ if [ $gate -eq 1 ] && [ -x "$py312" ]; then
     py="${!var:-$MSF/_tools/venv$version/bin/python}"
     [ -x "$py" ] || continue
     start=$(python3 -c 'import time; print(time.time())')
-    output=$(MSF_GATE=1 suites "$py" '' 'test_core_[ajm]*.py')
-    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples; $(seconds "$start") s)" $? "$output"
+    output=$(MSF_GATE=1 suites "$py" '' 'test_core_*.py')
+    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples, 10^4 glTF assets, 2x10^4 each of node paths, matrices, influence sets and GLB scenes; $(seconds "$start") s)" $? "$output"
   done
 else
   lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")
@@ -154,13 +154,14 @@ def flat(suite):
     for test in suite:
         yield from flat(test) if isinstance(test, unittest.TestSuite) else [test]
 tests = [t for t in flat(loader.discover('tests/public', top_level_dir='tests/public')) if 'isolated_reader' not in t.id()]
-for pattern in ('test_core*.py', 'test_record_integrity_internal.py', 'test_diagnostics_registry.py'):
+for pattern in ('test_core*.py', 'test_record_integrity_internal.py', 'test_diagnostics_registry.py',
+                'test_source_fbx_native.py', 'test_source_fbx_internal.py'):
     tests += list(flat(loader.discover('tests/internal', pattern=pattern, top_level_dir='tests')))
 result = unittest.TextTestRunner(verbosity=0).run(unittest.TestSuite(tests))
 sys.exit(not result.wasSuccessful())
 PY
 )
-    tier "Sanitizer tier (ASan + UBSan core; public suite less 1 isolated-worker test, core and record tests)" $? "$output"
+    tier "Sanitizer tier (ASan + UBSan core with ufbx; public suite less 1 isolated-worker test, core, record and FBX tests)" $? "$output"
   else
     lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
     failed=1
