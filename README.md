@@ -45,4 +45,4 @@ The original [combined fixture](tests/fixtures/README.md) includes jaw/head defo
 
 ## Development and licenses
 
-Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Original code is MIT; original documentation, data and fixtures are CC-BY-SA-4.0. The [native pilot](native/README.md) and build integration have separate numerical and ownership gates.
+Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Original code is MIT; original documentation, data and fixtures are CC-BY-SA-4.0. The pybind11 native pilot was removed in 0.3.0; the C++ core will replace it. [Building](docs/building.md) covers the build record and tools.
