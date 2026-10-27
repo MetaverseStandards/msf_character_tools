@@ -14,8 +14,12 @@ import struct
 from urllib.parse import unquote, urlsplit
 
 from .authoring import keys, string, domain
-from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number
+from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number, SPECIAL_FILE_ERRNOS
 from .report import public, fail, Report, Result, Diagnostic, Fault
+from .records import OwnedRecord, _admit
+from .math3d import matrix, validate_trs, authored_quaternion
+from .gltf_semantics import (parse_document, morph_count, validate_meshes,
+                             validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
 
 COMPONENTS = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
               5123: ("H", 2), 5125: ("I", 4), 5126: ("f", 4)}
@@ -50,7 +54,7 @@ class Chunk:
 
 
 @dataclass(frozen=True)
-class AssetSnapshot:
+class AssetSnapshot(OwnedRecord):
     format: str
     original_bytes: bytes
     sha256: str
@@ -62,9 +66,14 @@ class AssetSnapshot:
 
     @property
     def resource_hashes(self):
+        self._check_integrity()
+        return self._resource_hashes()
+
+    def _resource_hashes(self):
         return {r.id: r.sha256 for r in self.resources if r.sha256 is not None}
 
     def to_dict(self):
+        self._check_integrity()
         return {"schema_version": "1.0", "format": self.format, "asset_sha256": self.sha256,
                 "document": thaw(self.document), "resources": [r.to_dict() for r in self.resources],
                 "chunks": [{"type": c.type, "byte_length": len(c.data), "sha256": digest(c.data)} for c in self.chunks],
@@ -74,11 +83,54 @@ class AssetSnapshot:
                                  "supported_required_extensions": sorted(SUPPORTED_REQUIRED_EXTENSIONS)}}
 
 
+    def _check_consistency(self):
+        if type(self.original_bytes) is not bytes or digest(self.original_bytes) != self.sha256:
+            fail("E_RECORD_INTEGRITY", "/", "Snapshot original bytes and digest disagree.")
+        if self.format == "profile":
+            doc = parse_json(self.original_bytes)
+            if doc != thaw(self.document) or doc.get("schema_version") != "1.0" or doc.get("channels") != thaw(self.channels):
+                fail("E_RECORD_INTEGRITY", "/", "Profile raw document and channels disagree.")
+            if self.resources or self.chunks or self.bindings:
+                fail("E_RECORD_INTEGRITY", "/", "Profile contains asset-only state.")
+            return
+        kind, doc, chunks, bin_chunk = _parse_asset(self.original_bytes, self.format)
+        if kind != self.format or doc != thaw(self.document) or chunks != self.chunks:
+            fail("E_RECORD_INTEGRITY", "/", "Snapshot source, parsed view or chunks disagree.")
+        _validate_document(doc)  # Includes hierarchy cycles before any world traversal.
+        expected = [(f"/buffers/{i}", b.get("uri"), b["byteLength"]) for i, b in enumerate(doc.get("buffers", ()))]
+        expected += [(f"/images/{i}", img["uri"], None) for i, img in enumerate(doc.get("images", ())) if "uri" in img]
+        if len(expected) != len(self.resources):
+            fail("E_RECORD_INTEGRITY", "/resources", "Resource inventory disagrees with source.")
+        for (rid, uri, length), resource in zip(expected, self.resources):
+            if type(resource) is not Resource or resource.id != rid or resource.uri != uri or length is not None and resource.byte_length != length:
+                fail("E_RECORD_INTEGRITY", rid, "Resource declaration disagrees with source.")
+            data = resource.data
+            if data is None:
+                if resource.sha256 is not None or uri is None or uri.startswith("data:"):
+                    fail("E_RECORD_INTEGRITY", rid, "Required embedded resource is missing.")
+            else:
+                if type(data) is not bytes or digest(data) != resource.sha256 or len(data) < resource.byte_length:
+                    fail("E_RECORD_INTEGRITY", rid, "Resource bytes and identity disagree.")
+                if length is None and resource.byte_length != len(data):
+                    fail("E_RECORD_INTEGRITY", rid, "Image length and bytes disagree.")
+                embedded = bin_chunk[:length] if uri is None else _data_uri(uri, rid) if uri.startswith("data:") else None
+                if embedded is not None and data != embedded:
+                    fail("E_RECORD_INTEGRITY", rid, "Embedded resource disagrees with raw source.")
+        channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in self.bindings}
+        if channels != self.channels:
+            fail("E_RECORD_INTEGRITY", "/channels", "Channels disagree with bindings.")
+        if self.bindings:
+            _validate_sidecar(self, {"schema_version": "1.0", "asset_sha256": self.sha256,
+                                     "resource_hashes": self._resource_hashes(), "bindings": self.bindings})
+
+
 class LocalResolver:
     """No-follow file reads under an explicit root; cumulative budget per resolver.
 
     Every component is opened relative to a directory descriptor with O_NOFOLLOW.
     This prevents symlink substitution between validation and the actual read.
+    O_NONBLOCK keeps the open of a FIFO from waiting for a writer, so the
+    descriptor reaches the regular-file check and is refused there.
     """
     def __init__(self, root, max_resource_bytes=64 * 1024 * 1024, max_total_bytes=256 * 1024 * 1024):
         self.root = Path(root).absolute()
@@ -98,14 +150,19 @@ class LocalResolver:
         path = PurePosixPath(decoded)
         if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or not decoded or path.is_absolute() or "\\" in decoded or "\x00" in decoded or any(x in ("", ".", "..") for x in decoded.split("/")):
             fail("E_RESOURCE_URI", "/resources", "Resolver accepts relative local paths without traversal.")
-        flags = os.O_RDONLY | os.O_NOFOLLOW
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
         fd = os.open(self.root, flags | os.O_DIRECTORY)
         try:
             for part in path.parts[:-1]:
                 next_fd = os.open(part, flags | os.O_DIRECTORY, dir_fd=fd)
                 os.close(fd)
                 fd = next_fd
-            resource_fd = os.open(path.parts[-1], flags, dir_fd=fd)
+            try:
+                resource_fd = os.open(path.parts[-1], flags, dir_fd=fd)
+            except OSError as exc:
+                if exc.errno in SPECIAL_FILE_ERRNOS:
+                    fail("E_RESOURCE_TYPE", "/resources", "Resource must be a regular file.")
+                raise
             try:
                 info = os.fstat(resource_fd)
                 if not stat.S_ISREG(info.st_mode):
@@ -157,7 +214,7 @@ def _layout(accessor):
     return offsets, columns * column_stride, size
 
 
-def _read_elements(snapshot, view_id, offset, count, accessor, ref, sparse=False):
+def _read_elements(snapshot, view_id, offset, count, accessor, ref, sparse=False, raw=False):
     views = snapshot.document.get("bufferViews", ())
     view = index(view_id, views, ref)
     resource = snapshot.resources[view["buffer"]]
@@ -176,7 +233,7 @@ def _read_elements(snapshot, view_id, offset, count, accessor, ref, sparse=False
     if end > view["byteLength"]:
         fail("E_ACCESSOR_BOUNDS", ref, "Accessor exceeds its bufferView.")
     fmt = "<" + COMPONENTS[accessor["componentType"]][0]
-    normalized = accessor.get("normalized", False)
+    normalized = accessor.get("normalized", False) and not raw
     rows = []
     for i in range(count):
         row = []
@@ -192,14 +249,14 @@ def _read_elements(snapshot, view_id, offset, count, accessor, ref, sparse=False
     return rows
 
 
-def _decode_accessor(snapshot, accessor_id):
+def _decode_accessor(snapshot, accessor_id, *, raw=False):
     ref = f"/accessors/{accessor_id}"
     a = index(accessor_id, snapshot.document.get("accessors", ()), ref)
     offsets, _, _ = _layout(a)
     if a["count"] * len(offsets) > MAX_ACCESSOR_COMPONENTS:
         fail("E_RESOURCE_LIMIT", ref, "Accessor exceeds the decoded component budget.")
     if "bufferView" in a:
-        rows = _read_elements(snapshot, a["bufferView"], a.get("byteOffset", 0), a["count"], a, ref)
+        rows = _read_elements(snapshot, a["bufferView"], a.get("byteOffset", 0), a["count"], a, ref, raw=raw)
     else:
         rows = [tuple(0.0 if a["componentType"] == 5126 or a.get("normalized") else 0 for _ in offsets) for _ in range(a["count"])]
     if "sparse" in a:
@@ -207,7 +264,7 @@ def _decode_accessor(snapshot, accessor_id):
         ix = sp["indices"]
         indices = _read_elements(snapshot, ix["bufferView"], ix.get("byteOffset", 0), sp["count"],
                                  {"componentType": ix["componentType"], "type": "SCALAR"}, ref + "/sparse/indices", True)
-        vals = _read_elements(snapshot, sp["values"]["bufferView"], sp["values"].get("byteOffset", 0), sp["count"], a, ref + "/sparse/values", True)
+        vals = _read_elements(snapshot, sp["values"]["bufferView"], sp["values"].get("byteOffset", 0), sp["count"], a, ref + "/sparse/values", True, raw=raw)
         last = -1
         for (i,), row in zip(indices, vals):
             if i <= last or i >= a["count"]:
@@ -221,6 +278,7 @@ def _decode_accessor(snapshot, accessor_id):
 def decode_accessor(snapshot, index):
     if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
         fail("E_SNAPSHOT", "/", "Expected a glTF asset snapshot.")
+    snapshot._check_integrity()
     return _decode_accessor(snapshot, index)
 
 
@@ -255,10 +313,11 @@ def _validate_document(doc):
             fail("E_ACCESSOR_STRIDE", ref, "byteStride must be a multiple of 4 between 4 and 252.")
         if "target" in v and v["target"] not in (34962, 34963):
             fail("E_TYPE", ref, "Unknown bufferView target.")
+    validate_meshes(doc, index)
     decoded_components = 0
     for i, a in enumerate(accessors):
         ref = f"/accessors/{i}"
-        if not integer(a.get("componentType")) or a["componentType"] not in COMPONENTS or a.get("type") not in SHAPES:
+        if not integer(a.get("componentType")) or a["componentType"] not in COMPONENTS or type(a.get("type")) is not str or a["type"] not in SHAPES:
             fail("E_ACCESSOR_TYPE", ref, "Unsupported componentType or shape.")
         positive_int(a.get("count"), ref)
         positive_int(a.get("byteOffset", 0), ref, True)
@@ -271,6 +330,7 @@ def _validate_document(doc):
         for field in ("min", "max"):
             if field in a:
                 vector(a[field], len(offsets), ref + "/" + field)
+        validate_bounds(a, None, ref)
         if "min" in a and "max" in a and any(lo > hi for lo, hi in zip(a["min"], a["max"])):
             fail("E_ACCESSOR_DOMAIN", ref, "Accessor min exceeds max.")
         if "bufferView" in a:
@@ -305,22 +365,26 @@ def _validate_document(doc):
                     fail("E_ACCESSOR_BOUNDS", ref, "Sparse data misaligned or out of bounds.")
     nodes, meshes, skins = (doc.get(k, ()) for k in ("nodes", "meshes", "skins"))
     parents = {}
+    skinned_meshes = set()
     for i, n in enumerate(nodes):
         ref = f"/nodes/{i}"
         if "matrix" in n:
             vector(n["matrix"], 16, ref)
+            validate_trs(matrix(n["matrix"]), affine_tolerance=1e-12, ref=ref)
             if any(k in n for k in ("translation", "rotation", "scale")):
                 fail("E_NODE_TRANSFORM", ref, "matrix and TRS are mutually exclusive.")
         for k, length in (("translation", 3), ("rotation", 4), ("scale", 3)):
             if k in n:
                 vector(n[k], length, ref + "/" + k)
-        if "rotation" in n and abs(sum(x * x for x in n["rotation"]) - 1) > 1e-5:
-            fail("E_QUATERNION", ref, "Authored quaternion must be unit length.")
+        if "rotation" in n:
+            authored_quaternion(n["rotation"], ref)
         for k, arr in (("mesh", meshes), ("skin", skins), ("camera", doc.get("cameras", ()))):
             if k in n:
                 index(n[k], arr, ref + "/" + k)
         if "skin" in n and "mesh" not in n:
             fail("E_SKIN", ref, "Skinned node must reference a mesh.")
+        if "skin" in n:
+            skinned_meshes.add(n["mesh"])
         children = n.get("children", [])
         if not isinstance(children, list) or not all(integer(x) for x in children) or len(set(children)) != len(children):
             fail("E_HIERARCHY", ref, "Children must be unique integer indices.")
@@ -342,42 +406,23 @@ def _validate_document(doc):
             child = parents[child]
         complete.update(visiting)
     for i, mesh in enumerate(meshes):
-        primitives = mesh.get("primitives")
-        if not isinstance(primitives, list) or not primitives:
-            fail("E_MESH", f"/meshes/{i}", "Mesh needs a nonempty primitives array.")
-        target_counts = set()
-        for j, p in enumerate(primitives):
+        for j, p in enumerate(mesh["primitives"]):
             ref = f"/meshes/{i}/primitives/{j}"
-            if not isinstance(p, Mapping) or not isinstance(p.get("attributes"), Mapping) or not p["attributes"]:
-                fail("E_MESH", ref, "Primitive needs an attribute object.")
-            for attr, aid in p["attributes"].items():
-                index(aid, accessors, ref + "/attributes/" + attr)
+            if i in skinned_meshes and not {"JOINTS_0", "WEIGHTS_0"} <= p["attributes"].keys():
+                fail("E_SKIN", ref, "Skinned primitive needs JOINTS_0 and WEIGHTS_0.")
             if "indices" in p:
                 a = index(p["indices"], accessors, ref)
-                if a["type"] != "SCALAR" or a["componentType"] not in (5121, 5123, 5125) or a.get("normalized", False):
+                if a["type"] != "SCALAR" or a["componentType"] not in (5121,5123,5125) or a.get("normalized", False):
                     fail("E_INDEX_TYPE", ref, "Primitive indices must be unsigned unnormalized scalars.")
             if "material" in p:
                 index(p["material"], doc.get("materials", ()), ref)
-            if not integer(p.get("mode", 4)) or not 0 <= p.get("mode", 4) <= 6:
-                fail("E_PRIMITIVE_MODE", ref, "Invalid primitive mode.")
-            targets = p.get("targets", [])
-            if not isinstance(targets, list):
-                fail("E_MORPH", ref, "targets must be an array.")
-            target_counts.add(len(targets))
-            for t in targets:
-                if not isinstance(t, Mapping):
-                    fail("E_MORPH", ref, "Morph target must be an attribute object.")
-                for attr, aid in t.items():
-                    index(aid, accessors, ref + "/targets/" + attr)
-        if len(target_counts) != 1:
-            fail("E_MORPH", f"/meshes/{i}", "All primitives must have the same morph target count.")
         if "weights" in mesh:
-            vector(mesh["weights"], next(iter(target_counts)), f"/meshes/{i}/weights")
+            vector(mesh["weights"], morph_count(mesh), f"/meshes/{i}/weights")
     for i, n in enumerate(nodes):
         if "weights" in n:
             if "mesh" not in n:
                 fail("E_MORPH", f"/nodes/{i}", "Node weights need a mesh.")
-            vector(n["weights"], len(meshes[n["mesh"]]["primitives"][0].get("targets", ())), f"/nodes/{i}/weights")
+            vector(n["weights"], morph_count(meshes[n["mesh"]]), f"/nodes/{i}/weights")
     for i, skin in enumerate(skins):
         ref = f"/skins/{i}"
         joints = skin.get("joints")
@@ -389,8 +434,8 @@ def _validate_document(doc):
             index(skin["skeleton"], nodes, ref)
         if "inverseBindMatrices" in skin:
             a = index(skin["inverseBindMatrices"], accessors, ref)
-            if a["type"] != "MAT4" or a["componentType"] != 5126 or a["count"] != len(joints):
-                fail("E_SKIN_TYPE", ref, "Inverse bind accessor must be FLOAT MAT4 with one matrix per joint.")
+            if a["type"] != "MAT4" or a["componentType"] != 5126 or a["count"] < len(joints) or a.get("normalized", False):
+                fail("E_SKIN_TYPE", ref, "Inverse bind accessor must be unnormalized FLOAT MAT4 with at least one matrix per joint.")
     for i, scene in enumerate(doc.get("scenes", ())):
         roots = scene.get("nodes", [])
         if not isinstance(roots, list) or not all(integer(x) for x in roots) or len(set(roots)) != len(roots):
@@ -412,14 +457,18 @@ def _validate_document(doc):
             index(sampler.get("output"), accessors, ref)
             if a["type"] != "SCALAR" or a["componentType"] != 5126 or "min" not in a or "max" not in a:
                 fail("E_ANIMATION_TYPE", ref, "Animation times require FLOAT SCALAR with min/max.")
+            if sampler.get("interpolation") == "CUBICSPLINE" and a["count"] < 2:
+                fail("E_ANIMATION_TYPE", ref, "Cubic samplers require at least two input keys.")
             if sampler.get("interpolation", "LINEAR") not in ("STEP", "LINEAR", "CUBICSPLINE"):
                 fail("E_ANIMATION", ref, "Unknown interpolation.")
         driven = set()
-        for channel in anim["channels"]:
+        for ci, channel in enumerate(anim["channels"]):
             if not isinstance(channel, Mapping) or not isinstance(channel.get("target"), Mapping):
                 fail("E_ANIMATION", ref, "Channel needs a target object.")
             index(channel.get("sampler"), anim["samplers"], ref)
             target = channel["target"]
+            if type(target.get("path")) is not str:
+                fail("E_TYPE", ref + f"/channels/{ci}/target/path", "Animation target path is required and must be a string.")
             if target.get("path") not in ("translation", "rotation", "scale", "weights"):
                 extensions = target.get("extensions", {})
                 if not isinstance(extensions, Mapping) or not any(k in doc.get("extensionsUsed", ()) for k in extensions):
@@ -435,10 +484,9 @@ def _validate_document(doc):
                 if pair in driven:
                     fail("E_MULTIPLE_WRITERS", ref, "Animation has competing property channels.")
                 driven.add(pair)
-                if "matrix" in node:
-                    fail("E_ANIMATION", ref, "Animation cannot target a matrix-authored node.")
-                if target["path"] == "weights" and "mesh" not in node:
-                    fail("E_ANIMATION", ref, "Weights animation needs a mesh node.")
+                if "matrix" in node and target["path"] != "weights":
+                    fail("E_ANIMATION", ref, "TRS animation cannot target a matrix-authored node.")
+                animation_layout(doc, anim["samplers"][channel["sampler"]], target, index, ref)
     for i, image in enumerate(doc.get("images", ())):
         if ("uri" in image) == ("bufferView" in image):
             fail("E_IMAGE", f"/images/{i}", "Image requires exactly one URI or bufferView.")
@@ -447,6 +495,7 @@ def _validate_document(doc):
         else:
             index(image["bufferView"], views, f"/images/{i}")
             string(image.get("mimeType"), f"/images/{i}/mimeType")
+    validate_skin_hierarchy(doc, parents)
     for i, texture in enumerate(doc.get("textures", ())):
         for field, array in (("source", doc.get("images", ())), ("sampler", doc.get("samplers", ()))):
             if field in texture:
@@ -462,31 +511,24 @@ def _data_uri(uri, ref):
         fail("E_RESOURCE_URI", ref, "Invalid base64 resource.")
 
 
-@public
-def inspect_asset(bytes, format, resolver=None, sidecar=None):
-    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
-        fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
-    if len(bytes) > MAX_ASSET_BYTES:
-        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget.")
-    if resolver is not None and not callable(resolver):
-        fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
+def _parse_asset(raw, format):
     chunks = []
     bin_chunk = None
     if format.lower() == "glb":
-        if len(bytes) < 20:
+        if len(raw) < 20:
             fail("E_GLB_HEADER", "/", "Truncated GLB header.")
-        magic, version, length = struct.unpack_from("<III", bytes)
-        if magic != 0x46546C67 or version != 2 or length != len(bytes) or length % 4:
+        magic, version, length = struct.unpack_from("<III", raw)
+        if magic != 0x46546C67 or version != 2 or length != len(raw) or length % 4:
             fail("E_GLB_HEADER", "/", "GLB magic/version/total length mismatch.")
         cursor = 12
-        while cursor < len(bytes):
-            if cursor + 8 > len(bytes):
+        while cursor < len(raw):
+            if cursor + 8 > len(raw):
                 fail("E_GLB_CHUNK", "/", "Truncated chunk header.")
-            size, kind = struct.unpack_from("<II", bytes, cursor)
+            size, kind = struct.unpack_from("<II", raw, cursor)
             cursor += 8
-            if size % 4 or cursor + size > len(bytes):
+            if size % 4 or cursor + size > len(raw):
                 fail("E_GLB_CHUNK", "/", "Chunk length is unaligned or exceeds GLB.")
-            chunks.append(Chunk(kind, bytes[cursor:cursor + size]))
+            chunks.append(Chunk(kind, raw[cursor:cursor + size]))
             cursor += size
         if not chunks or chunks[0].type != 0x4E4F534A or sum(c.type == 0x4E4F534A for c in chunks) != 1 or sum(c.type == 0x004E4942 for c in chunks) > 1:
             fail("E_GLB_CHUNK", "/", "GLB needs one first JSON chunk and at most one BIN chunk.")
@@ -495,11 +537,23 @@ def inspect_asset(bytes, format, resolver=None, sidecar=None):
                 if i != 1:
                     fail("E_GLB_CHUNK", "/", "BIN chunk must be second.")
                 bin_chunk = c.data
-        doc = parse_json(chunks[0].data.decode("utf-8"))
+        doc = parse_document(chunks[0].data.decode("utf-8"))
         kind = "glb"
     else:
-        doc = parse_json(bytes.decode("utf-8"))
+        doc = parse_document(raw.decode("utf-8"))
         kind = "gltf"
+    return kind, doc, tuple(chunks), bin_chunk
+
+
+@public
+def inspect_asset(bytes, /, format, resolver=None, sidecar=None):
+    if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in ("gltf", "glb", "gltf2", "json"):
+        fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
+    if len(bytes) > MAX_ASSET_BYTES:
+        fail("E_RESOURCE_LIMIT", "/", "Asset exceeds the 64 MiB input byte budget.")
+    if resolver is not None and not callable(resolver):
+        fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
+    kind, doc, chunks, bin_chunk = _parse_asset(bytes, format)
     _validate_document(doc)
     resources = []
     warnings = []
@@ -532,18 +586,29 @@ def inspect_asset(bytes, format, resolver=None, sidecar=None):
     snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze({}))
     errors = []
     for i, a in enumerate(doc.get("accessors", ())):
+        # Spec1509: descriptors without base or sparse data may declare arbitrary
+        # representable bounds. Structural/range checks already ran above.
+        if "bufferView" not in a and "sparse" not in a:
+            continue
         try:
-            _decode_accessor(snapshot, i)
+            rows = _decode_accessor(snapshot, i, raw=True)
+            validate_bounds(a, rows, f"/accessors/{i}")
         except Fault as exc:
             if exc.diagnostic.code != "E_RESOURCE_UNAVAILABLE":
                 errors.append(exc.diagnostic)
-    # Validate binary animation semantics even when geometry is not requested.
-    # Unknown behavior is inventoried; the evaluator applies its capability gate.
-    from .geometry import _sample_animation
+    errors.extend(validate_binary(snapshot, _decode_accessor))
+    # Validate available core channels independently of unknown extension channels.
+    from .geometry import _sample_channel, _animation_times
     for i, anim in enumerate(doc.get("animations", ())):
-        if all(ch["target"].get("path") in ("translation", "rotation", "scale", "weights") and "node" in ch["target"] for ch in anim["channels"]):
+        for sampler in anim["samplers"]:
             try:
-                _sample_animation(snapshot, i, 0.0)
+                _animation_times(snapshot, sampler["input"])
+            except Fault as exc:
+                if exc.diagnostic.code != "E_RESOURCE_UNAVAILABLE":
+                    errors.append(exc.diagnostic)
+        for ci in range(len(anim["channels"])):
+            try:
+                _sample_channel(snapshot, i, ci, 0.0)
             except Fault as exc:
                 if exc.diagnostic.code != "E_RESOURCE_UNAVAILABLE":
                     errors.append(exc.diagnostic)
@@ -565,17 +630,19 @@ def inspect_asset(bytes, format, resolver=None, sidecar=None):
         channels = {b["id"]: {k: b[k] for k in ("id", "value_type", "units", "domain", "calibration")} for b in sc["bindings"]}
         snapshot = AssetSnapshot(kind, bytes, digest(bytes), freeze(doc), tuple(resources), tuple(chunks), freeze(channels), freeze(sc["bindings"]))
     report = Report(tuple(errors + warnings))
-    return Result(snapshot if report.ok else None, report)
+    return Result(_admit(snapshot) if report.ok else None, report)
 
 
 @dataclass(frozen=True)
-class Sidecar:
+class Sidecar(OwnedRecord):
     document: Mapping
 
     def to_dict(self):
+        self._check_integrity()
         return thaw(self.document)
 
     def to_bytes(self):
+        self._check_integrity()
         return canonical_json(self.document)
 
 
@@ -592,15 +659,15 @@ def _binding(snapshot, b):
         fail("E_STALE_SOURCE", "/bindings/ref", "Binding asset hash is stale.")
     node = index(ref["node"], snapshot.document.get("nodes", ()), "/bindings/ref/node")
     mesh = index(ref["mesh"], snapshot.document.get("meshes", ()), "/bindings/ref/mesh")
-    if node.get("mesh") != ref["mesh"] or not integer(ref["target"]) or not 0 <= ref["target"] < len(mesh["primitives"][0].get("targets", ())):
+    if node.get("mesh") != ref["mesh"] or not integer(ref["target"]) or not 0 <= ref["target"] < morph_count(mesh):
         fail("E_BINDING_REFERENCE", "/bindings/ref", "Binding does not address a mesh-instance morph target.")
     if ref["locator"] != f"/nodes/{ref['node']}/weights/{ref['target']}":
         fail("E_BINDING_REFERENCE", "/bindings/ref/locator", "Structural locator and indices disagree.")
     if "resource_sha256" in ref:
-        # A binding consumes target POSITION data; verify its exact buffer digest.
+        # Bind every authored target resource; morphless primitives consume none.
         hashes = set()
         for p in mesh["primitives"]:
-            for aid in p["targets"][ref["target"]].values():
+            for aid in (p["targets"][ref["target"]].values() if p.get("targets") else ()):
                 a = snapshot.document["accessors"][aid]
                 for vid in ([a["bufferView"]] if "bufferView" in a else []) + ([a["sparse"][field]["bufferView"] for field in ("indices", "values")] if "sparse" in a else []):
                     hashes.add(snapshot.resources[snapshot.document["bufferViews"][vid]["buffer"]].sha256)
@@ -609,11 +676,13 @@ def _binding(snapshot, b):
 
 
 def _validate_sidecar(snapshot, sidecar):
+    if isinstance(sidecar, Sidecar):
+        sidecar._check_integrity()
     sc = sidecar.document if isinstance(sidecar, Sidecar) else sidecar
     keys(sc, {"schema_version", "asset_sha256", "resource_hashes", "bindings"}, {"metadata"}, "/sidecar")
     if sc["schema_version"] != "1.0":
         fail("E_SIDECAR_VERSION", "/sidecar", "Unsupported sidecar version.")
-    if sc["asset_sha256"] != snapshot.sha256 or sc["resource_hashes"] != snapshot.resource_hashes:
+    if sc["asset_sha256"] != snapshot.sha256 or sc["resource_hashes"] != snapshot._resource_hashes():
         fail("E_STALE_SOURCE", "/sidecar", "Sidecar asset or consumed resource hashes are stale.")
     if "metadata" in sc and not isinstance(sc["metadata"], Mapping):
         fail("E_TYPE", "/sidecar/metadata", "Metadata must be an object.")
@@ -636,15 +705,19 @@ def _validate_sidecar(snapshot, sidecar):
 def annotate_asset(snapshot, annotations):
     if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
         fail("E_SNAPSHOT", "/", "Annotation requires an inspected glTF asset.")
+    snapshot._check_integrity()
     keys(annotations, {"bindings"}, {"metadata"}, "/annotations")
     sc = {"schema_version": "1.0", "asset_sha256": snapshot.sha256,
           "resource_hashes": snapshot.resource_hashes, **thaw(annotations)}
     _validate_sidecar(snapshot, sc)
-    return Sidecar(freeze(sc))
+    return _admit(Sidecar(sc))
 
 
 @public
 def morph_binding(snapshot, signal, node, target):
+    if not isinstance(snapshot, AssetSnapshot) or snapshot.format == "profile":
+        fail("E_SNAPSHOT", "/", "Binding requires an inspected glTF asset.")
+    snapshot._check_integrity()
     n = index(node, snapshot.document.get("nodes", ()), "/node")
     if "mesh" not in n:
         fail("E_BINDING_REFERENCE", "/node", "Node must have a mesh.")
@@ -654,7 +727,7 @@ def morph_binding(snapshot, signal, node, target):
     _binding(snapshot, b)
     hashes = set()
     for p in snapshot.document["meshes"][n["mesh"]]["primitives"]:
-        for aid in p["targets"][target].values():
+        for aid in (p["targets"][target].values() if p.get("targets") else ()):
             a = snapshot.document["accessors"][aid]
             vids = ([a["bufferView"]] if "bufferView" in a else []) + ([a["sparse"][f]["bufferView"] for f in ("indices", "values")] if "sparse" in a else [])
             hashes.update(snapshot.resources[snapshot.document["bufferViews"][v]["buffer"]].sha256 for v in vids)

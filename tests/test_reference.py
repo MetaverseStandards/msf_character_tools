@@ -1,18 +1,25 @@
 # SPDX-License-Identifier: MIT
 """Adversarial public API checks and independent analytical numeric fixtures."""
 import base64
+import contextlib
 import copy
 import hashlib
+import inspect
+import io
 import json
 import math
+import os
+import socket
 from pathlib import Path
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import msf_tools as m
+from msf_tools import cli, geometry
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests/fixtures"
@@ -60,6 +67,23 @@ class Checks(unittest.TestCase):
 
 
 class AuthoringTests(Checks):
+    def test_fragment_socket_is_refused(self):
+        with tempfile.TemporaryDirectory() as td, socket.socket(socket.AF_UNIX) as listener:
+            root=Path(td).resolve();(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());listener.bind(str(root/"s.toml"))
+            r=m.load_authoring(root)
+        self.assertEqual([(d.code,d.ref) for d in r.report.diagnostics],[("E_FRAGMENT_PATH","s.toml")]);self.assertIsNone(r.value)
+
+    def test_fragment_fifo_is_refused_without_blocking(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());os.mkfifo(root/"zz.toml")
+            code="import json,sys,msf_tools as m;r=m.load_authoring(sys.argv[1]);print(json.dumps([(d.code,d.ref) for d in r.report.diagnostics]))"
+            # A FIFO with no writer blocks a plain open, so loading runs in a killable child process.
+            try:
+                r=subprocess.run([sys.executable,"-B","-c",code,root],cwd=ROOT,capture_output=True,timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("load_authoring blocked opening a FIFO fragment instead of refusing it.")
+        self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout),[["E_FRAGMENT_PATH","zz.toml"]])
+
     def test_unused_evidence_coverage_and_partitions(self):
         d=source_doc();d["evidence"].append({"id":"unused","claim":"Unresolved original inventory","status":"unresolved","license":"CC-BY-SA-4.0","authorship":"MSF Tools contributors"})
         p=self.good(compile_doc(d));c=m.coverage(p)
@@ -131,6 +155,18 @@ class MappingTests(Checks):
         self.bad(m.evaluate_mapping(c,[{"timestamp":0,"values":{"input.wink":True},"validity":{"input.wink":True}}]),"E_TYPE")
         self.bad(m.evaluate_mapping(c,[{"timestamp":0,"values":{"input.wink":3},"validity":{"input.wink":True}}]),"E_DOMAIN")
 
+    def test_empty_samples_and_unknown_frame_key(self):
+        c=self.good(compile_map(source_doc()))
+        r=m.evaluate_mapping(c,[])
+        self.assertEqual(self.good(r).to_dict(),{"samples":[]});self.assertEqual(r.report.to_dict(),{"schema_version":"1.0","diagnostics":[],"losses":[]})
+        calls=[]
+        class Frames(list):
+            def __iter__(self):
+                calls.append("iter");return iter([{"timestamp":0,"values":{},"validity":{},"extra":1}])
+        r=m.evaluate_mapping(c,Frames())
+        self.assertEqual(calls,["iter"]);self.assertIsNone(r.value)
+        self.assertEqual(r.report.to_dict(),{"schema_version":"1.0","diagnostics":[{"code":"E_UNKNOWN_KEY","severity":"error","ref":"/samples/0","message":"Unknown keys: extra","remediation":"Correct the referenced input."}],"losses":[]})
+
     def test_topological_and_output_domain_weighted_sum(self):
         d=source_doc(); d["signals"] += [signal("mid"),signal("other")]
         d["profiles"][0]["signal_ids"].append("other")
@@ -159,11 +195,22 @@ class MappingTests(Checks):
         self.good(compile_doc(d));self.bad(compile_map(d),"E_UNRESOLVED_RULE")
         d=source_doc();d["mappings"][0]["rules"][0]["mapping_quality"]="approximate"
         self.bad(compile_map(d),"E_APPROXIMATION")
+        p=self.good(compile_doc(d))
+        self.bad(m.compile_mapping(p,self.good(m.profile_snapshot(p,"source")),self.good(m.profile_snapshot(p,"target")),"wink",True),"E_LOSS_REQUIRED")
+        # Approximation needs an authored loss; compilation preserves it.
+        loss={"category":"signal","effect":"approximated","reason":"Original declared synthetic approximation.","refs":["input.wink","output.wink"]}
+        d["mappings"][0]["rules"][0]["loss_annotations"]=[loss]
         p=self.good(compile_doc(d)); c=self.good(m.compile_mapping(p,self.good(m.profile_snapshot(p,"source")),self.good(m.profile_snapshot(p,"target")),"wink",True))
-        self.assertEqual(c.losses[0].effect,"approximated")
+        self.assertEqual(c.losses[0].to_dict(),loss)
 
 
 class AssetTests(Checks):
+    def test_asset_bytes_parameter_is_positional_only(self):
+        raw=(FIX/"combined.gltf").read_bytes()
+        self.assertIs(inspect.signature(m.inspect_asset).parameters["bytes"].kind,inspect.Parameter.POSITIONAL_ONLY)
+        self.good(m.inspect_asset(raw,"gltf"));self.good(m.inspect_asset(raw,format="gltf"))
+        r=m.inspect_asset(bytes=raw,format="gltf");self.bad(r,"E_INPUT");self.assertEqual(len(r.report.diagnostics),1)
+
     def test_extension_defined_animation_inventory_and_runtime_refusal(self):
         d=json.loads((FIX/"combined.gltf").read_bytes());d["extensionsUsed"].append("KHR_animation_pointer");d["extensionsRequired"]=["KHR_animation_pointer"]
         d["animations"][0]["channels"][0]["target"]={"path":"pointer","extensions":{"KHR_animation_pointer":{"pointer":"/nodes/0/rotation"}}}
@@ -174,8 +221,8 @@ class AssetTests(Checks):
         data=bytes([0,0,0,0])+struct.pack("<fff",.1,.2,.3)
         d={"asset":{"version":"2.0"},"buffers":[{"byteLength":1,"uri":"indices.bin"},{"byteLength":12,"uri":"values.bin"}],
            "bufferViews":[{"buffer":0,"byteLength":1},{"buffer":1,"byteLength":12}],
-           "accessors":[{"componentType":5126,"type":"VEC3","count":1,"sparse":{"count":1,"indices":{"bufferView":0,"componentType":5121},"values":{"bufferView":1}}}],
-           "meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}]}],"nodes":[{"mesh":0}]}
+           "accessors":[{"componentType":5126,"type":"VEC3","count":1,"min":[.1,.2,.3],"max":[.1,.2,.3],"sparse":{"count":1,"indices":{"bufferView":0,"componentType":5121},"values":{"bufferView":1}}}],
+           "meshes":[{"primitives":[{"mode":0,"attributes":{"POSITION":0},"targets":[{"POSITION":0}]}]}],"nodes":[{"mesh":0}]}
         resolver=lambda uri:data[:1] if uri=="indices.bin" else data[4:]
         s=self.good(asset(d,resolver));b=self.good(m.morph_binding(s,source_doc()["signals"][1],0,0));b=dict(b);b["ref"]=dict(b["ref"]);b["ref"]["resource_sha256"]=hashlib.sha256(data[:1]).hexdigest()
         self.good(m.annotate_asset(s,{"bindings":[b]}))
@@ -215,7 +262,7 @@ class AssetTests(Checks):
         self.bad(asset(d),"E_SPARSE_INDEX")
 
     def test_bounds_binary_nan_sparse_index_and_hierarchy(self):
-        d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][0]["count"]=9999
+        d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][0]["byteOffset"]=9999*4
         self.bad(asset(d),"E_ACCESSOR_BOUNDS")
         d=json.loads((FIX/"combined.gltf").read_bytes());data=bytearray(base64.b64decode(d["buffers"][0]["uri"].split(",")[1]));struct.pack_into("<f",data,0,float("nan"));d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode()
         self.bad(asset(d),"E_NONFINITE")
@@ -234,6 +281,26 @@ class AssetTests(Checks):
                 d["buffers"][0]["uri"]=uri;self.assertFalse(asset(d,m.LocalResolver(root)).ok)
             d["buffers"][0]["uri"]="data.bin";self.bad(asset(d,m.LocalResolver(root,max_resource_bytes=8)),"E_RESOURCE_LIMIT")
 
+    def test_resolver_refuses_fifo_without_blocking(self):
+        d={"asset":{"version":"2.0"},"buffers":[{"byteLength":12,"uri":"pipe.bin"}]}
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve();os.mkfifo(root/"pipe.bin");(root/"asset.gltf").write_bytes(m.canonical_json(d))
+            # A FIFO with no writer blocks a plain open, so the CLI runs in a killable child process.
+            try:
+                r=subprocess.run([sys.executable,"-B","-m","msf_tools","inspect",root/"asset.gltf","--resolver-root",root],cwd=ROOT,capture_output=True,timeout=5)
+            except subprocess.TimeoutExpired:
+                self.fail("Resolver blocked opening a FIFO instead of refusing it.")
+        self.assertEqual(r.returncode,1);self.assertEqual(r.stdout,b"")
+        self.assertEqual([(x["code"],x["ref"]) for x in json.loads(r.stderr)["diagnostics"]],[("E_RESOURCE_TYPE","/resources")])
+
+    def test_resolver_refuses_unix_socket(self):
+        d={"asset":{"version":"2.0"},"buffers":[{"byteLength":12,"uri":"sock.bin"}]}
+        with tempfile.TemporaryDirectory() as td, socket.socket(socket.AF_UNIX) as listener:
+            root=Path(td).resolve();listener.bind(str(root/"sock.bin"))
+            r=asset(d,m.LocalResolver(root))
+        self.assertIsNone(r.value)
+        self.assertEqual([(x.code,x.ref) for x in r.report.diagnostics],[("E_RESOURCE_TYPE","/resources")])
+
     def test_sidecar_idempotence_hash_references_mapping(self):
         raw=(FIX/"combined.gltf").read_bytes();s=self.good(m.inspect_asset(raw,"gltf"));d=source_doc();sig=d["signals"][1]
         b=self.good(m.morph_binding(s,sig,5,0));sc=self.good(m.annotate_asset(s,{"bindings":[b],"metadata":{"keep":42}}))
@@ -245,7 +312,61 @@ class AssetTests(Checks):
         self.assertEqual(s.original_bytes,raw)
 
 
+def instanced_points(*meshes):
+    """Zero-backed point meshes given as (vertices, instances[, morph targets]) tuples."""
+    accessors,mesh_rows,nodes=[],[],[]
+    for count,instances,*targets in meshes:
+        accessors.append({"componentType":5126,"type":"VEC3","count":count,"min":[0,0,0],"max":[0,0,0]})
+        primitive={"mode":0,"attributes":{"POSITION":len(accessors)-1}}
+        if targets:
+            primitive["targets"]=[{"POSITION":len(accessors)-1}]*targets[0]
+        mesh_rows.append({"primitives":[primitive]})
+        nodes+=[{"mesh":len(mesh_rows)-1}]*instances
+    return {"asset":{"version":"2.0"},"accessors":accessors,"meshes":mesh_rows,"nodes":nodes}
+
+
 class GeometryTests(Checks):
+    def assert_instance_budget_refusal(self, r):
+        self.assertEqual([(d.code,d.ref) for d in r.report.diagnostics],[("E_RESOURCE_LIMIT","/nodes")])
+        self.assertIsNone(r.value)
+
+    def test_instance_component_budget_threshold(self):
+        # Four one-vertex instances, or two with one morph target, need 12 position components.
+        for doc in (instanced_points((1,4)),instanced_points((1,2,1)),instanced_points((2,1),(1,2))):
+            s=self.good(asset(doc))
+            for cap in (13,12):
+                with self.subTest(doc=doc,cap=cap),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",cap):
+                    self.assertEqual(len(self.good(m.evaluate_geometry(s)).instances),len(doc["nodes"]))
+            with self.subTest(doc=doc,cap=11),patch.object(geometry,"MAX_EVALUATION_COMPONENTS",11):
+                self.assert_instance_budget_refusal(m.evaluate_geometry(s))
+
+    def test_shared_skin_is_counted_once(self):
+        # Two instances x 6 vertices x 3 x (1 + 3 targets) = 144, plus 16 x 4 joints for the one shared skin.
+        s=self.good(m.inspect_asset((FIX/"combined.gltf").read_bytes(),"gltf"))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",208):
+            self.good(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",207):
+            self.assert_instance_budget_refusal(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
+
+    def test_shared_skin_output_matches_separate_skins(self):
+        doc=json.loads((FIX/"combined.gltf").read_bytes());shared=self.good(asset(doc))
+        doc["skins"].append(copy.deepcopy(doc["skins"][0]));doc["nodes"][6]["skin"]=1;separate=self.good(asset(doc))
+        for kwargs in ({},{"animation_id":0,"timestamp":.5},{"animation_id":0,"timestamp":1.75}):
+            with self.subTest(**kwargs):
+                self.assertEqual(m.canonical_json(self.good(m.evaluate_geometry(shared,**kwargs))),
+                                 m.canonical_json(self.good(m.evaluate_geometry(separate,**kwargs))))
+
+    def test_default_budget_refuses_smallest_workload_over_cap(self):
+        # Counts are multiples of 3, so 4,000,002 is the first workload above the 4,000,000 cap.
+        r=m.evaluate_geometry(self.good(asset(instanced_points((1000,1333),(334,1)))))
+        self.assert_instance_budget_refusal(r);self.assertIn("need 4000002 position",r.report.diagnostics[0].message)
+
+    def test_default_budget_counts_morph_targets_per_instance(self):
+        # 100 vertices x 200 instances is 60,000 components; 100 targets make it 6,060,000.
+        self.assert_instance_budget_refusal(m.evaluate_geometry(self.good(asset(instanced_points((100,200,100))))))
+        # Evaluating each POSITION and morph-target accessor once stays within the inspection component limit.
+        self.assertEqual(geometry.MAX_EVALUATION_COMPONENTS,4_000_000)
+
     def test_separate_morph_and_skin_analytical(self):
         doc=json.loads((FIX/"combined.gltf").read_bytes())
         doc.pop("animations")
@@ -288,13 +409,13 @@ class GeometryTests(Checks):
 
     def test_skin_bad_binary_types_signed_skin_and_joint_bounds(self):
         d=json.loads((FIX/"combined.gltf").read_bytes());d["accessors"][1]["componentType"]=5122
-        s=self.good(asset(d));self.bad(m.evaluate_geometry(s),"E_GEOMETRY_TYPE")
+        self.bad(asset(d),"E_GEOMETRY_TYPE")
         for change in ("negative","joint"):
             d=json.loads((FIX/"combined.gltf").read_bytes());data=bytearray(base64.b64decode(d["buffers"][0]["uri"].split(",")[1]))
             aid=2 if change=="negative" else 1;offset=d["bufferViews"][d["accessors"][aid]["bufferView"]]["byteOffset"]
             struct.pack_into("<f" if change=="negative" else "<H",data,offset,-.4 if change=="negative" else 100)
-            d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode();s=self.good(asset(d))
-            self.bad(m.evaluate_geometry(s),"E_SKIN_WEIGHTS" if change=="negative" else "E_JOINT_BOUNDS")
+            d["buffers"][0]["uri"]="data:application/octet-stream;base64,"+base64.b64encode(data).decode()
+            self.bad(asset(d),"E_SKIN_WEIGHTS" if change=="negative" else "E_JOINT_BOUNDS")
 
     def test_reparent_world_preservation_shear_and_singular(self):
         child=[0,1,0,0,-1,0,0,0,0,0,1,0,2,3,4,1]
@@ -338,8 +459,18 @@ class CLITests(Checks):
                 if destination.name=="symlink.json":destination.symlink_to(p/"asset.gltf")
                 r=self.run_cli("annotate",p/"asset.gltf",p/"annotations.json","--output",destination)
                 self.assertEqual(r.returncode,1);self.assertIn("E_OUTPUT_PATH",[d["code"] for d in json.loads(r.stderr)["diagnostics"]]);self.assertEqual((p/"asset.gltf").read_bytes(),raw)
+                self.assertEqual(r.stdout,b"")
+                if destination.name=="symlink.json":self.assertTrue(destination.is_symlink());self.assertEqual(destination.readlink(),p/"asset.gltf")
             (p/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());before=(p/"pack.toml").read_bytes()
             r=self.run_cli("check",p/"pack.toml","--pack",p/"pack.toml","--csv",p/"survey.csv","--write");self.assertEqual(r.returncode,1);self.assertIn(b'E_OUTPUT_PATH',r.stderr);self.assertEqual((p/"pack.toml").read_bytes(),before);self.assertFalse((p/"survey.csv").exists())
+
+    def test_output_creates_parent_and_leaves_no_temporary_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            p=Path(td);(p/"annotations.json").write_text('{"bindings":[]}');out=p/"nested"/"sidecar.json"
+            err=io.TextIOWrapper(io.BytesIO())
+            with contextlib.redirect_stderr(err):code=cli.main(["annotate",str(FIX/"combined.gltf"),str(p/"annotations.json"),"--output",str(out)])
+            self.assertEqual(code,0,err.buffer.getvalue())
+            self.assertEqual(list(out.parent.iterdir()),[out]);self.assertEqual(json.loads(out.read_bytes())["bindings"],[])
 
     def test_extra_unlisted_output(self):
         with tempfile.TemporaryDirectory() as td:

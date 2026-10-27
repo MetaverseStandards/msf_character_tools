@@ -13,7 +13,7 @@ struct Instruction {
   double scale{1}, offset{0};
   std::vector<double> weights;
 };
-// The Python compiler resolves references/evidence. This kernel owns a copy of all values.
+// Callers supply resolved, topologically ordered numerical instructions.
 struct ScalarProgram { std::vector<Domain> domains; std::vector<Instruction> instructions; };
 Result<std::vector<double>> evaluate_scalars(const ScalarProgram& program,
   const std::vector<double>& values,const std::vector<bool>& validity);

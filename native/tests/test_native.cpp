@@ -13,10 +13,11 @@ int main(){try {
   auto parent=compose_trs({10,0,0},{0,0,0,1},{1,1,1}).value;
   auto child=compose_trs({15,0,0},{0,0,0,1},{1,1,1}).value;
   auto local=reparent_local(parent,child);require(bool(local),"Reparent failed");near(local.value[3],5);
-  near(multiply(parent,local.value)[3],15);
+  auto composed=multiply(parent,local.value);require(bool(composed),"Multiply failed");near(composed.value[3],15);
   auto scale=compose_trs({0,0,0},{0,0,0,1},{2,1,1}).value;
   auto rotate=compose_trs({0,0,0},{0,0,std::sqrt(.5),std::sqrt(.5)},{1,1,1}).value;
-  auto p=transform_point(multiply(rotate,scale),{1,0,0});require(bool(p),"Point failed");near(p.value[0],0);near(p.value[1],2);
+  auto rotated_scale=multiply(rotate,scale);require(bool(rotated_scale),"Multiply failed");
+  auto p=transform_point(rotated_scale.value,{1,0,0});require(bool(p),"Point failed");near(p.value[0],0);near(p.value[1],2);
   auto shear=identity();shear[1]=.25;require(!validate_trs(shear),"Shear accepted");
   auto zero=identity();zero[0]=0;require(!inverse(zero),"Singular accepted");
   auto q=slerp({0,0,0,1},{0,0,0,-1},.5);require(bool(q),"Antipodal slerp failed");near(q.value[3],1);

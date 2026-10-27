@@ -6,4 +6,6 @@ Original assets, analytical goldens and documentation: **CC-BY-SA-4.0**, authors
 
 Clip `CombinedReference` index0 spans0..2 seconds. Node5 morph weights animate; node6 retains authored defaults. `combined.analytical.json` records eight explicit times including intermediates/end clamp. Direct rotation equations in `../make_fixtures.py` construct goldens independently; root rotation cancels through per-instance mesh world inverse. `rest-not-bind.gltf` changes rest head translation without changing inverse bind matrices. `eight-influence.gltf` inventories second influence arrays and must reject requested evaluation.
 
+`native-agreement.gltf` is a one-vertex skinned, morphed and animated asset with two instances of one mesh. `native/tests/test_agreement.py` and `test_core_semantics.py` both read it.
+
 Regenerate using `python -B tests/make_fixtures.py`. Fixtures are intentionally small analytical examples, not artist acceptance assets. The source topology/opaque data remains untouched by inspection and sidecar annotation.

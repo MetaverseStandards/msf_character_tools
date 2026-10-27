@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""Independent one-vertex fixture: compare the public Python evaluator to C++."""
-import base64
-import json
+"""Shared one-vertex fixture: compare the public Python evaluator to C++."""
 import math
-import struct
+from pathlib import Path
 import sys
 import unittest
 
@@ -15,53 +13,11 @@ from msf_tools import (inspect_asset, evaluate_geometry, validate_authoring, com
                        sample_animation)
 
 
+FIXTURE = Path(__file__).resolve().parents[2] / "tests/fixtures/native-agreement.gltf"
+
+
 def fixture():
-    binary = bytearray()
-    views, accessors = [], []
-
-    def accessor(values, component, kind, count):
-        while len(binary) % 4:
-            binary.append(0)
-        offset = len(binary)
-        binary.extend(struct.pack("<" + {5126: "f", 5123: "H"}[component] * len(values), *values))
-        views.append({"buffer": 0, "byteOffset": offset, "byteLength": len(binary) - offset})
-        accessors.append({"bufferView": len(views)-1, "componentType": component,
-                          "type": kind, "count": count})
-        if kind == "SCALAR" and values:
-            accessors[-1].update(min=[min(values)], max=[max(values)])
-        return len(accessors)-1
-
-    position = accessor([1, 0, 0], 5126, "VEC3", 1)
-    delta = accessor([0, 1, 0], 5126, "VEC3", 1)
-    joints = accessor([0, 0, 0, 0], 5123, "VEC4", 1)
-    weights = accessor([1, 0, 0, 0], 5126, "VEC4", 1)
-    ibm = accessor([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1], 5126, "MAT4", 1)
-    times = accessor([0, 2], 5126, "SCALAR", 2)
-    morph_curve = accessor([0, 0, 2, 0, 0, 0], 5126, "SCALAR", 6)
-    quat_linear = accessor([0,0,0,1, 0,0,1,0], 5126, "VEC4", 2)
-    quat_cubic = accessor([0,0,0,0, 0,0,0,1, 0,0,2,0,
-                           0,0,0,0, 0,0,1,0, 0,0,0,0], 5126, "VEC4", 6)
-    document = {
-        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0,1,2]}],
-        "nodes": [{"name": "mesh", "mesh": 0, "skin": 0, "translation": [1,0,0]},
-                  {"name": "joint", "rotation": [0,0,math.sqrt(.5),math.sqrt(.5)]},
-                  {"name": "second instance", "mesh": 0, "skin": 0, "translation": [3,0,0]}],
-        "meshes": [{"weights": [0], "primitives": [{"mode": 0,
-                       "attributes": {"POSITION": position, "JOINTS_0": joints, "WEIGHTS_0": weights},
-                       "targets": [{"POSITION": delta}]}]}],
-        "skins": [{"joints": [1], "inverseBindMatrices": ibm}],
-        "animations": [
-            {"samplers": [{"input": times, "output": morph_curve, "interpolation": "CUBICSPLINE"}],
-             "channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}]},
-            {"samplers": [{"input": times, "output": quat_linear, "interpolation": "LINEAR"}],
-             "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]},
-            {"samplers": [{"input": times, "output": quat_cubic, "interpolation": "CUBICSPLINE"}],
-             "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]},
-        ],
-        "buffers": [{"byteLength": len(binary), "uri": "data:application/octet-stream;base64," + base64.b64encode(binary).decode()}],
-        "bufferViews": views, "accessors": accessors,
-    }
-    return json.dumps(document).encode()
+    return FIXTURE.read_bytes()
 
 
 class Agreement(unittest.TestCase):
@@ -172,9 +128,6 @@ class Agreement(unittest.TestCase):
         doc = snapshot.document
         parents = {child: index for index, node in enumerate(doc["nodes"]) for child in node.get("children", ())}
 
-        def row_major(column_major):
-            return [column_major[column*4+row] for row in range(4) for column in range(4)]
-
         def accessor(index):
             result = decode_accessor(snapshot, index)
             self.assertTrue(result.ok, result.report.to_dict())
@@ -188,7 +141,7 @@ class Agreement(unittest.TestCase):
             def world(index):
                 if index not in worlds:
                     node = dict(doc["nodes"][index]); node.update(animation.value.get(index, {}))
-                    local = (row_major(node["matrix"]) if "matrix" in node else native.compose_trs(
+                    local = (native.from_gltf_column_major(node["matrix"]) if "matrix" in node else native.compose_trs(
                         node.get("translation", [0,0,0]), node.get("rotation", [0,0,0,1]), node.get("scale", [1,1,1])))
                     worlds[index] = native.multiply(world(parents[index]), local) if index in parents else local
                 return worlds[index]
@@ -199,7 +152,7 @@ class Agreement(unittest.TestCase):
                 index = instance["node"]; node = doc["nodes"][index]; mesh = doc["meshes"][node["mesh"]]
                 skin = doc["skins"][node["skin"]]
                 joint_worlds = [world(joint) for joint in skin["joints"]]
-                ibms = [row_major(value) for value in accessor(skin["inverseBindMatrices"])]
+                ibms = [native.from_gltf_column_major(value) for value in accessor(skin["inverseBindMatrices"])]
                 weights = animation.value.get(index, {}).get("weights", node.get("weights", mesh["weights"]))
                 for actual in instance["primitives"]:
                     primitive = mesh["primitives"][actual["primitive"]]
