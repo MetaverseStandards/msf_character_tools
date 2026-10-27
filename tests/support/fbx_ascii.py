@@ -70,11 +70,13 @@ class Scene:
     def material(self, model, name):
         return self._add(f'\tMaterial: @ID@, "Material::{name}", "" {{\n\t\tVersion: 102\n\t\tShadingModel: "phong"\n\t}}\n', model)
 
-    def mesh(self, model, name, points, faces):
-        """faces: lists of point indices; the last index of each face is written as -(i + 1)."""
+    def mesh(self, model, name, points, faces, subdivision=None):
+        """faces: lists of point indices; the last index of each face is written as -(i + 1).
+        subdivision: (Smoothness display mode, PreviewDivisionLevels), as Maya writes them."""
         indices = [i for face in faces for i in face[:-1] + [-face[-1] - 1]]
+        smooth = f"\t\tSmoothness: {subdivision[0]}\n\t\tPreviewDivisionLevels: {subdivision[1]}\n" if subdivision else ""
         text = (f'\tGeometry: @ID@, "Geometry::{name}", "Mesh" {{\n' + _array("Vertices", [c for p in points for c in p], "\t\t")
-                + _array("PolygonVertexIndex", indices, "\t\t") + "\t\tGeometryVersion: 124\n\t}\n")
+                + _array("PolygonVertexIndex", indices, "\t\t") + smooth + "\t\tGeometryVersion: 124\n\t}\n")
         return self._add(text, model)
 
     def skin(self, geometry, clusters, skinning="Linear"):

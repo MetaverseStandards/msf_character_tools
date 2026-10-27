@@ -41,7 +41,7 @@ typedef struct {
 } msf_fbx_node;
 
 /* Bumped whenever a declaration or struct below changes; msf_tools refuses a shim with another value. */
-#define MSF_FBX_SHIM_ABI 3
+#define MSF_FBX_SHIM_ABI 4
 int msf_fbx_shim_abi(void);
 /* The compiled ufbx's ufbx_source_version: major * 1000000 + minor * 1000 + patch. */
 uint32_t msf_fbx_ufbx_version(void);
@@ -50,8 +50,9 @@ void msf_fbx_close(msf_fbx *h);
 int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out);
 int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out);
 /* sizes: points, triangles, hole faces, faces with fewer than 3 corners, skin deformers, blend channels,
-   vertex cache deformers (their cache files are never read) */
-int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[7]);
+   vertex cache deformers (their cache files are never read), 1 when the mesh displays as a smoothed
+   subdivision surface (at least one preview level) */
+int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[8]);
 /* Points as x,y,z; triangles ear-clipped by ufbx, as point indices. The counts must equal msf_fbx_mesh_sizes. */
 int msf_fbx_mesh_fill(const msf_fbx *h, uint32_t m, double *positions, uint32_t points, uint32_t *tri_points, uint32_t triangles);
 /* Skin deformer d of mesh m. sizes: clusters, weight entries. */

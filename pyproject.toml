@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 usd = ["usd-core>=25.11,<27"]
-fbx = ["msf-tools-ufbx>=0.1.3,<0.2"]
+fbx = ["msf-tools-ufbx>=0.1.4,<0.2"]
 
 [project.scripts]
 msf-tools = "msf_tools.cli:main"

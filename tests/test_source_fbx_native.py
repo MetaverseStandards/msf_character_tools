@@ -128,7 +128,7 @@ class UfbxShim(unittest.TestCase):
         scene.mesh(body, 'Body', points, [[0, 1, 2, 3], [1, 4, 2], [4, 5, 6, 7, 2]])
         handle = self.scene(scene.text())
         self.assertEqual(self.nodes(handle)[0]['mesh'], 0)
-        sizes = ffi.new('uint32_t[7]')
+        sizes = ffi.new('uint32_t[8]')
         self.assertEqual(lib.msf_fbx_mesh_sizes(handle, 0, sizes), 1)
         count, triangles = sizes[0], sizes[1]
         self.assertEqual((count, triangles, sizes[2], sizes[3], sizes[6]), (8, 6, 0, 0, 0))

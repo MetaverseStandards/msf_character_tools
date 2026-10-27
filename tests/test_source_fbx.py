@@ -128,6 +128,20 @@ class FbxStatic(unittest.TestCase):
         self.assertEqual(thaw(snapshot.source['losses'])[0]['message'], 'Skipped 1 camera, 1 light and 1 material.')
         self.assertIn('/Cam', snapshot.source['node_paths'])
 
+    def test_smooth_subdivision_surfaces_are_declared_as_cages(self):
+        # Smoothness 2 and 3 display the smoothed surface, 1 the cage; zero preview levels leave it unsmoothed.
+        cases = {(3, 2): [('W_SUBDIV_CAGE', '/Body')], (2, 1): [('W_SUBDIV_CAGE', '/Body')], (1, 2): [], (3, 0): []}
+        for subdivision, expected in cases.items():
+            with self.subTest(subdivision=subdivision):
+                scene = Scene()
+                body = scene.model('Body', kind='Mesh')
+                scene.mesh(body, 'Body', [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [[0, 1, 2, 3]], subdivision=subdivision)
+                data = scene.text()
+                self.assertEqual(codes(good(m.inspect_asset(data, 'fbx'))), expected)
+                if expected:
+                    strict = m.inspect_asset(data, 'fbx', options={'losses': 'strict'})
+                    self.assertEqual(errors(strict), [('E_SUBDIV_CAGE', '/Body')])
+
     def test_vertex_caches_are_declared_as_dropped_point_animation(self):
         scene = face()
         scene.cache(1003, 'Face')  # the Face geometry
@@ -280,7 +294,7 @@ def ufbx_skinned_world(data, mesh=0, stack=-1, time=0.0):
     from msf_tools_ufbx import ffi, lib
     handle, err = open_scene(data)
     try:
-        sizes = ffi.new('uint32_t[7]')
+        sizes = ffi.new('uint32_t[8]')
         lib.msf_fbx_mesh_sizes(handle, mesh, sizes)
         out, text = ffi.new('double[]', 3 * sizes[0]), ffi.new('char[256]')
         assert lib.msf_fbx_skinned_points(handle, stack, time, mesh, out, sizes[0], text, 256), ffi.string(text)
