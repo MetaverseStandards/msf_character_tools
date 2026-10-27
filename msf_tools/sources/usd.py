@@ -121,7 +121,7 @@ def _skipped_kind(prim):
     return None
 
 
-_PLURALS = {"hole face": "hole faces", "point animation": "point animations",
+_PLURALS = {"hole face": "hole faces",
             "external asset dependency": "external asset dependencies"}
 
 
@@ -135,6 +135,20 @@ def _skipped(counts):
     return [Diagnostic("W_SKIPPED", "warning", "/", f"Skipped {text}.", "Review the declared loss.")]
 
 
+def _time_varying(prim, query):
+    """Names of the attributes feeding a mesh's points, topology, blend shapes or skin weights that change over time."""
+    mesh = UsdGeom.Mesh(prim)
+    attributes = [mesh.GetPointsAttr(), mesh.GetFaceVertexCountsAttr(), mesh.GetFaceVertexIndicesAttr(), mesh.GetHoleIndicesAttr()]
+    if query is not None:
+        # The skin primvars can be inherited from an ancestor, so they come from the skinning query.
+        attributes += [query.GetJointIndicesPrimvar().GetAttr(), query.GetJointWeightsPrimvar().GetAttr(), query.GetGeomBindTransformAttr()]
+    for target in UsdSkel.BindingAPI(prim).GetBlendShapeTargetsRel().GetTargets():
+        shape = UsdSkel.BlendShape(prim.GetStage().GetPrimAtPath(target))
+        if shape:
+            attributes += [shape.GetOffsetsAttr(), shape.GetPointIndicesAttr()]
+    return [a.GetName() if a.GetPrim() == prim else str(a.GetPath()) for a in attributes if a and a.ValueMightBeTimeVarying()]
+
+
 def _blend_shapes(prim, points, path):
     binding = UsdSkel.BindingAPI(prim)
     tokens = list(binding.GetBlendShapesAttr().Get() or ())
@@ -146,8 +160,8 @@ def _blend_shapes(prim, points, path):
         shape = UsdSkel.BlendShape(prim.GetStage().GetPrimAtPath(target))
         if not shape:
             fail("E_SOURCE_VALUE", path, f"Blend shape target {target} is not a BlendShape.")
-        values = [tuple(map(float, v)) for v in shape.GetOffsetsAttr().Get() or ()]
-        indices = shape.GetPointIndicesAttr().Get()
+        values = [tuple(map(float, v)) for v in shape.GetOffsetsAttr().Get(_EARLIEST) or ()]
+        indices = shape.GetPointIndicesAttr().Get(_EARLIEST)
         if not shape.GetOffsetsAttr().HasAuthoredValue():
             # A shape that only moves normals leaves positions where they are.
             values = [(0.0, 0.0, 0.0)] * (len(indices) if indices else len(points))
@@ -388,7 +402,7 @@ def _skel_bindings(prims):
 
 def _influences(target, skeleton, count, path, mode):
     """Per-point (skeleton joint, weight) pairs for one skinned mesh, and the losses they declare."""
-    indices, weights = target.ComputeJointInfluences()
+    indices, weights = target.ComputeJointInfluences(_EARLIEST)
     indices, weights = list(indices), [float(w) for w in weights]
     size = target.GetNumInfluencesPerComponent()
     if target.GetInterpolation() == UsdGeom.Tokens.constant:
@@ -555,8 +569,10 @@ def _convert(stage, adapter, dependencies, external, options):
             left = mesh.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded
             if left:
                 losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
-            if mesh.GetPointsAttr().GetNumTimeSamples() > 1:
-                skipped["point animation"] += 1  # glTF animates points only through morph targets
+            varying = _time_varying(prim, skinned[1] if skinned is not None else None)
+            if varying:
+                losses.append(skinning.warning("W_POINTS_ANIMATION_DROPPED", path,
+                                               f"Dropped the animation of {', '.join(varying)}; the earliest value is used."))
             points = [conversion.point(tuple(map(float, p))) for p in mesh.GetPointsAttr().Get(_EARLIEST) or ()]
             if points:
                 tokens, keys, offsets, inbetweens = _blend_shapes(prim, points, path)
@@ -567,7 +583,7 @@ def _convert(stage, adapter, dependencies, external, options):
                 flip = left
                 if skinned is not None:
                     # Skinning ignores the mesh's own transform; geomBindTransform carries the points into skeleton space.
-                    baked = _checked(skinned[1].GetGeomBindTransform(), path, conversion)
+                    baked = _checked(skinned[1].GetGeomBindTransform(_EARLIEST), path, conversion)
                 if baked is not None:
                     points = [_apply(baked, p) for p in points]
                     offsets = [tuple(_apply(baked[:12] + [0.0, 0.0, 0.0, 1.0], o) for o in target) for target in offsets]

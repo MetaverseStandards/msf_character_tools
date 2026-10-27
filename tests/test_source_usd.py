@@ -346,15 +346,30 @@ class UsdMeshesAndTransforms(unittest.TestCase):
                 result = m.inspect_asset(data, 'usda')
                 self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', ref)])
 
-    def test_point_animation_is_skipped_and_declared(self):
+    def test_point_animation_is_dropped_and_declared(self):
         data = layer(mesh('Tri', '[(0, 0, 0), (1, 0, 0), (0, 1, 0)]', '[3]', '[0, 1, 2]').replace(
             'point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]',
-            'point3f[] points.timeSamples = {0: [(0, 0, 0), (1, 0, 0), (0, 1, 0)], 1: [(0, 0, 0), (2, 0, 0), (0, 1, 0)]}'),
+            'point3f[] points.timeSamples = {0: [(0, 0, 0), (1, 0, 0), (0, 1, 0)], 10: [(0, 0, 0), (2, 0, 0), (0, 1, 0)]}'),
             'metersPerUnit = 1')
         snapshot = good(m.inspect_asset(data, 'usda'))
-        self.assertEqual(self.codes(snapshot), [('W_SKIPPED', '/')])
-        self.assertEqual(thaw(snapshot.source['losses'])[0]['message'], 'Skipped 1 point animation.')
+        self.assertEqual(self.codes(snapshot), [('W_POINTS_ANIMATION_DROPPED', '/Tri')])
+        self.assertIn('points', thaw(snapshot.source['losses'])[0]['message'])
         self.assertEqual(positions(snapshot), [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        strict = m.inspect_asset(data, 'usda', options={'losses': 'strict'})
+        self.assertEqual([(d.code, d.ref) for d in strict.report.diagnostics], [('E_POINTS_ANIMATION_DROPPED', '/Tri')])
+
+    def test_time_varying_blend_offsets_and_skin_weights_are_declared(self):
+        offsets = FACE.replace(b'uniform vector3f[] offsets = [(0, 0.5, 0)]',
+                               b'vector3f[] offsets.timeSamples = {0: [(0, 0.5, 0)], 1: [(0, 1, 0)]}')
+        weights = rig(['root'], '[0, 0, 0]', '[1, 1, 1]', 1).replace(
+            b'        rel skel:skeleton', b'        float[] primvars:skel:jointWeights.timeSamples = {0: [1, 1, 1], 1: [0, 1, 1]}\n'
+                                        b'        rel skel:skeleton')
+        for data, ref, name in ((offsets, '/Root/Face', 'offsets'), (weights, '/Rig/Body', 'primvars:skel:jointWeights')):
+            with self.subTest(ref=ref):
+                result = m.inspect_asset(data, 'usda')
+                found = [d for d in result.report.diagnostics if d.code == 'W_POINTS_ANIMATION_DROPPED']
+                self.assertEqual([d.ref for d in found], [ref])
+                self.assertIn(name, found[0].message)
 
     def test_holes_cages_winding_and_skipped_prims_are_declared(self):
         quads = mesh('Quads', '[(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)]', '[4, 4]',

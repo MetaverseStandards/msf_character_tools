@@ -44,8 +44,8 @@ class OpenUsdAssets(unittest.TestCase):
         earliest = oracle.Usd.TimeCode.EarliestTime()
         meshes = [prim for prim in oracle.meshes if oracle.UsdGeom.Mesh(prim).GetPointsAttr().Get(earliest)]
         checks = [(prim, earliest) for prim in meshes]
-        # Point animation is declared as skipped, so such meshes are compared at the earliest time only.
-        moving = {prim.GetPath() for prim in meshes if oracle.UsdGeom.Mesh(prim).GetPointsAttr().GetNumTimeSamples() > 1}
+        # Point animation is dropped (W_POINTS_ANIMATION_DROPPED), so such meshes are compared at the earliest time only.
+        moving = {prim.GetPath() for prim in meshes if oracle.UsdGeom.Mesh(prim).GetPointsAttr().ValueMightBeTimeVarying()}
         if skinned:
             oracle.bake()
             for prim in meshes:
