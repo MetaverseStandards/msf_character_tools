@@ -9,15 +9,19 @@
 #               and RCEF's JSON goldens (MSF_RCEF_ROOT, MSF_RCEF_COMMIT)
 #   --sanitize  rebuild the core with ASan and UBSan, run the core and public
 #               suites on it, then restore the normal build
+#   --fuzz      run scripts/fuzz.sh, libFuzzer on the core's parsers, for
+#               MSF_FUZZ_SECONDS (default 300) per harness
 set -u
 cd "$(dirname "$0")/.." || exit 2
 gate=0
 sanitize=0
+fuzz=0
 for arg in "$@"; do
   case "$arg" in
     --gate) gate=1 ;;
     --sanitize) sanitize=1 ;;
-    *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize]" >&2; exit 2 ;;
+    --fuzz) fuzz=1 ;;
+    *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize] [--fuzz]" >&2; exit 2 ;;
   esac
 done
 MSF="${MSF:-$HOME/.local/share/msf}"
@@ -169,6 +173,18 @@ PY
   cmake -E copy build/core-3.12/_core.*.so msf_tools/ >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
 else
   lines+=("- Sanitizer tier: SKIPPED (scripts/ci_local.sh --sanitize)")
+fi
+
+# Fuzz tier (--fuzz).
+if [ $fuzz -eq 1 ]; then
+  if output=$(scripts/fuzz.sh "${MSF_FUZZ_SECONDS:-300}" 2>&1); then
+    lines+=("- Fuzz tier (libFuzzer, ASan + UBSan, ${MSF_FUZZ_SECONDS:-300} s per harness): $(printf '%s' "$output" | tr '\n' ';' | sed 's/;$//; s/;/; /g')")
+  else
+    lines+=("- Fuzz tier: FAILED: $(printf '%s' "$output" | tr '\n' ' ')")
+    failed=1
+  fi
+else
+  lines+=("- Fuzz tier: SKIPPED (scripts/ci_local.sh --fuzz)")
 fi
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
