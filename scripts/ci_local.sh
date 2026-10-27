@@ -201,7 +201,11 @@ PY
     lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
     failed=1
   fi
-  cmake -E copy build/core-3.12/_core.*.so msf_tools/ >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
+  # Restore the normal 3.12 build. Copy only the newest extension: an older build directory can
+  # still hold a version-specific one, which Python would load in preference to abi3.
+  newest=$(ls -t build/core-3.12/_core.*.so 2>/dev/null | head -1)
+  rm -f msf_tools/_core.abi3.so msf_tools/_core.cpython-312-*.so
+  { [ -n "$newest" ] && cmake -E copy "$newest" msf_tools/; } >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
 else
   lines+=("- Sanitizer tier: SKIPPED (scripts/ci_local.sh --sanitize)")
 fi
