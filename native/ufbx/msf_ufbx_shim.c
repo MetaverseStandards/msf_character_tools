@@ -6,7 +6,22 @@
 
 struct msf_fbx {
     ufbx_scene *scene;
+    uint32_t *shim_of_element; /* element_id -> shim node index, UINT32_MAX for the root and non-nodes */
 };
+
+static int32_t shim_index(const msf_fbx *h, const ufbx_node *node) {
+    if (!node || node->is_root) return -1;
+    return (int32_t)h->shim_of_element[node->element_id];
+}
+
+static void matrix16(const ufbx_matrix *m, double *out) {
+    for (int c = 0; c < 4; c++) {
+        out[4 * c + 0] = m->cols[c].x;
+        out[4 * c + 1] = m->cols[c].y;
+        out[4 * c + 2] = m->cols[c].z;
+        out[4 * c + 3] = c == 3 ? 1.0 : 0.0;
+    }
+}
 
 static void set_error(char *err, size_t n, const char *message) {
     if (err && n) {
@@ -52,13 +67,115 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
         return 0;
     }
     h->scene = scene;
+    h->shim_of_element = (uint32_t *)malloc(sizeof(uint32_t) * (scene->elements.count + 1));
+    if (!h->shim_of_element) {
+        msf_fbx_close(h);
+        set_error(err, n, "msf_fbx_open: out of memory");
+        return 0;
+    }
+    for (size_t i = 0; i < scene->elements.count; i++) h->shim_of_element[i] = UINT32_MAX;
+    uint32_t next = 0;
+    for (size_t i = 0; i < scene->nodes.count; i++) {
+        const ufbx_node *node = scene->nodes.data[i];
+        if (!node->is_root) h->shim_of_element[node->element_id] = next++;
+    }
     *out = h;
     return 1;
+}
+
+static const ufbx_node *node_at(const msf_fbx *h, uint32_t i) {
+    uint32_t seen = 0;
+    for (size_t k = 0; k < h->scene->nodes.count; k++) {
+        const ufbx_node *node = h->scene->nodes.data[k];
+        if (node->is_root) continue;
+        if (seen++ == i) return node;
+    }
+    return NULL;
+}
+
+int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out) {
+    if (!h || !out) return 0;
+    const ufbx_node *node = node_at(h, i);
+    if (!node) return 0;
+    memset(out, 0, sizeof(*out));
+    out->parent = shim_index(h, node->parent);
+    out->name = node->name.data;
+    out->name_len = node->name.length;
+    out->mesh = node->mesh ? (int32_t)node->mesh->typed_id : -1;
+    out->is_bone = node->bone != NULL || node->attrib_type == UFBX_ELEMENT_BONE;
+    out->helper = node->is_geometry_transform_helper ? 1 : node->is_scale_helper ? 2 : 0;
+    out->inherit_mode = (int)node->inherit_mode;
+    out->original_inherit_mode = (int)node->original_inherit_mode;
+    matrix16(&node->node_to_parent, out->to_parent);
+    matrix16(&node->node_to_world, out->to_world);
+    return 1;
+}
+
+static const ufbx_mesh *mesh_at(const msf_fbx *h, uint32_t m) {
+    if (!h || m >= h->scene->meshes.count) return NULL;
+    return h->scene->meshes.data[m];
+}
+
+static int usable_face(const ufbx_mesh *mesh, size_t f) {
+    int hole = mesh->face_hole.count > f && mesh->face_hole.data[f];
+    return !hole && mesh->faces.data[f].num_indices >= 3;
+}
+
+int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[6]) {
+    const ufbx_mesh *mesh = mesh_at(h, m);
+    if (!mesh || !sizes) return 0;
+    uint32_t triangles = 0, holes = 0, small = 0;
+    for (size_t f = 0; f < mesh->faces.count; f++) {
+        if (mesh->face_hole.count > f && mesh->face_hole.data[f]) holes++;
+        else if (mesh->faces.data[f].num_indices < 3) small++;
+        if (usable_face(mesh, f)) triangles += mesh->faces.data[f].num_indices - 2;
+    }
+    uint32_t channels = 0;
+    for (size_t d = 0; d < mesh->blend_deformers.count; d++) channels += (uint32_t)mesh->blend_deformers.data[d]->channels.count;
+    sizes[0] = (uint32_t)mesh->vertices.count;
+    sizes[1] = triangles;
+    sizes[2] = holes;
+    sizes[3] = small;
+    sizes[4] = (uint32_t)mesh->skin_deformers.count;
+    sizes[5] = channels;
+    return 1;
+}
+
+int msf_fbx_mesh_fill(const msf_fbx *h, uint32_t m, double *positions, uint32_t points, uint32_t *tri_points, uint32_t triangles) {
+    const ufbx_mesh *mesh = mesh_at(h, m);
+    uint32_t sizes[6];
+    if (!mesh || !positions || !tri_points || !msf_fbx_mesh_sizes(h, m, sizes)) return 0;
+    if (points != sizes[0] || triangles != sizes[1]) return 0;
+    for (size_t v = 0; v < mesh->vertices.count; v++) {
+        positions[3 * v + 0] = mesh->vertices.data[v].x;
+        positions[3 * v + 1] = mesh->vertices.data[v].y;
+        positions[3 * v + 2] = mesh->vertices.data[v].z;
+    }
+    size_t scratch_count = mesh->max_face_triangles * 3;
+    uint32_t *scratch = (uint32_t *)malloc(sizeof(uint32_t) * (scratch_count ? scratch_count : 1));
+    if (!scratch) return 0;
+    uint32_t written = 0;
+    for (size_t f = 0; f < mesh->faces.count; f++) {
+        if (!usable_face(mesh, f)) continue;
+        uint32_t made = ufbx_triangulate_face(scratch, scratch_count, mesh, mesh->faces.data[f]);
+        uint32_t expected = mesh->faces.data[f].num_indices - 2;
+        for (uint32_t t = 0; t < expected; t++) {
+            for (int k = 0; k < 3; k++) {
+                /* A degenerate face may give fewer triangles; repeat its first corner so counts stay fixed. */
+                uint32_t index = t < made ? scratch[3 * t + k] : mesh->faces.data[f].index_begin;
+                tri_points[3 * written + k] = mesh->vertex_indices.data[index];
+            }
+            written++;
+        }
+    }
+    free(scratch);
+    return written == triangles;
 }
 
 void msf_fbx_close(msf_fbx *h) {
     if (!h) return;
     ufbx_free_scene(h->scene);
+    free(h->shim_of_element);
     free(h);
 }
 
