@@ -20,7 +20,7 @@ from .common import freeze, thaw, digest, canonical_json, integer, SPECIAL_FILE_
 from .report import public, fail, Report, Result, Diagnostic
 from .records import OwnedRecord, _admit
 from .sources import paths as source_paths
-from .sources import (SOURCE_FORMATS, ReaderMismatch, SourceLimits, SourceParseError,
+from .sources import (SOURCE_FORMATS, SourceLimits, SourceParseError,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
 _core = _native.built
@@ -388,8 +388,6 @@ def _load_adapter(fmt):
     except ImportError as exc:
         if exc.name == module:
             _missing_adapter(fmt)
-        if isinstance(exc, ReaderMismatch):
-            fail("E_FORMAT_DEPENDENCY", "/", str(exc), exc.remediation)
         fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
              f"pip install 'msf-tools[{extra}]'")
 
