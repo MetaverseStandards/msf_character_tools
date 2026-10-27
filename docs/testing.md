@@ -24,7 +24,7 @@ Shared combined analytical tolerance: max component absolute error <1e-6 m. Inde
 
 ## Public and internal suites
 
-`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate a reimplementation, such as the planned C++ core, must keep passing unchanged. Its helpers and fixtures live inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version and finds optional FBX support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it stands.
+`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate a reimplementation, such as the planned C++ core, must keep passing unchanged. Its helpers and fixtures live inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version and finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it stands. A format without a working reader makes its tests skip, unless `MSF_REQUIRE_FORMATS` names it (`scripts/ci_local.sh` sets `fbx,usd`); then a missing or broken reader fails the suite.
 
 `tests/internal` covers private modules: checked maths in `math3d`, record admission, the source adapters' worker, GLB writer and path grammar, the ufbx shim through cffi, the diagnostics registry and the build record. Its tests may import public helpers; the public suite never imports internal code. A reimplementation deletes internal tests along with the modules they cover.
 

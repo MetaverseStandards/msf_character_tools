@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 """Source formats through the command line."""
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -10,10 +9,11 @@ import tempfile
 import unittest
 
 from msf_tools import cli
+from support import capabilities
 
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
-HAVE_USD = importlib.util.find_spec('pxr') is not None
+HAVE_USD = capabilities.USD
 
 
 def run(*args):

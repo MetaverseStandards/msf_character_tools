@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 """The USD adapter with the real usd-core reader; skipped when pxr is not installed."""
 import hashlib
-import importlib.util
 import io
 import math
 from pathlib import Path
@@ -12,9 +11,10 @@ import unittest.mock
 import zipfile
 
 import msf_tools as m
+from support import capabilities
 from support.values import plain
 
-HAVE_USD = importlib.util.find_spec('pxr') is not None
+HAVE_USD = capabilities.USD
 
 
 SIGNAL = {'id': 'smile', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'literal'}

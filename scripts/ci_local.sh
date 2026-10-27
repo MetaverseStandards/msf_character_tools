@@ -59,6 +59,9 @@ tier() {
   fi
 }
 
+# A missing or broken FBX or USD reader fails the suites instead of skipping their tests.
+export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx,usd}"
+
 for version in 3.11 3.12; do
   var="MSF_PY${version/./}"
   py="${!var:-$MSF/_tools/venv$version/bin/python}"
