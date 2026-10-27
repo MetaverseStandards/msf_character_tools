@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MIT
 """The format seam: generated snapshots, source identity and sidecar binding."""
-import ast
 from dataclasses import replace
 from pathlib import Path
 import unittest
@@ -52,6 +51,18 @@ def good(result):
     return result.value
 
 
+def seam_authoring():
+    """One identity rule from the fake face's 'smile' target to a profile output."""
+    return {'schema_version': '1.0', 'data_version': '0.1.0', 'operator_version': '1.0', 'id': 'seam', 'license': 'MIT',
+            'signals': [dict(SIGNAL, label='Smile', disposition='mapped', evidence=['e'], evidence_status='verified_current'),
+                        dict(SIGNAL, id='out', label='Out', disposition='mapped', evidence=['e'], evidence_status='verified_current')],
+            'profiles': [{'id': 'target', 'label': 'Target', 'signal_ids': ['out']}],
+            'mappings': [{'id': 'seam', 'rules': [{'id': 'r', 'inputs': ['smile'], 'outputs': ['out'], 'operator': {'id': 'identity'},
+                                                   'disposition': 'mapped', 'mapping_quality': 'exact', 'assumptions': [],
+                                                   'evidence': ['e'], 'evidence_status': 'verified_current', 'loss_annotations': []}]}],
+            'evidence': [{'id': 'e', 'claim': 'Seam test.', 'status': 'verified_current', 'license': 'MIT', 'authorship': 'MSF Tools contributors'}]}
+
+
 class GeneratedSnapshots(unittest.TestCase):
     def setUp(self):
         self.data, result = generated()
@@ -94,15 +105,7 @@ class GeneratedSnapshots(unittest.TestCase):
         self.assertEqual(golden['asset_sha256'], self.source_sha)
         self.assertEqual(thaw(golden['source']), {'format': 'usda', 'adapter': 'msf-fake', 'adapter_version': '1',
                                                   'reader': 'fake-reader 1', 'options_sha256': s.source['options_sha256']})
-        authoring = {'schema_version': '1.0', 'data_version': '0.1.0', 'operator_version': '1.0', 'id': 'seam', 'license': 'MIT',
-                     'signals': [dict(SIGNAL, label='Smile', disposition='mapped', evidence=['e'], evidence_status='verified_current'),
-                                 dict(SIGNAL, id='out', label='Out', disposition='mapped', evidence=['e'], evidence_status='verified_current')],
-                     'profiles': [{'id': 'target', 'label': 'Target', 'signal_ids': ['out']}],
-                     'mappings': [{'id': 'seam', 'rules': [{'id': 'r', 'inputs': ['smile'], 'outputs': ['out'], 'operator': {'id': 'identity'},
-                                                            'disposition': 'mapped', 'mapping_quality': 'exact', 'assumptions': [],
-                                                            'evidence': ['e'], 'evidence_status': 'verified_current', 'loss_annotations': []}]}],
-                     'evidence': [{'id': 'e', 'claim': 'Seam test.', 'status': 'verified_current', 'license': 'MIT', 'authorship': 'MSF Tools contributors'}]}
-        pack = good(m.compile_pack(good(m.validate_authoring(authoring))))
+        pack = good(m.compile_pack(good(m.validate_authoring(seam_authoring()))))
         compiled = good(m.compile_mapping(pack, bound, good(m.profile_snapshot(pack, 'target')), 'seam')).to_dict()
         self.assertEqual(compiled['source_sha256'], self.source_sha)
         self.assertEqual(compiled['source_adapter'], thaw(golden['source']))
@@ -144,33 +147,40 @@ class GeneratedSnapshots(unittest.TestCase):
         self.assertEqual([(d.code, d.ref, len(d.message)) for d in result.report.diagnostics], [('E_SOURCE_PARSE', '/', 512)])
 
 
-class SnapshotHashGuard(unittest.TestCase):
-    """Snapshot `.sha256` is the generated GLB digest; persisted hashes must use `_identity`."""
-    # to_dict also reports the GLB digest itself, as generated_sha256.
-    ALLOWED = {('snapshot.py', '_identity'), ('snapshot.py', 'AssetSnapshot._check_consistency'),
-               ('snapshot.py', 'AssetSnapshot.to_dict')}
-    SNAPSHOT_NAMES = {'snapshot', 'source_snapshot', 'target_snapshot', 's'}
+class PersistedOutputsIgnoreTheGeneratedGlb(unittest.TestCase):
+    """Nothing persisted may depend on the GLB bytes, which change with the reader version."""
 
-    def test_snapshot_sha256_is_read_only_in_identity_and_integrity(self):
-        offenders = []
-        for path in sorted((ROOT / 'msf_tools').rglob('*.py')):
-            tree = ast.parse(path.read_text())
-            def visit(node, scope, in_snapshot_class):
-                for child in ast.iter_child_nodes(node):
-                    if isinstance(child, (ast.FunctionDef, ast.ClassDef)):
-                        visit(child, f'{scope}.{child.name}'.lstrip('.'),
-                              in_snapshot_class or isinstance(child, ast.ClassDef) and child.name == 'AssetSnapshot')
-                        continue
-                    if isinstance(child, ast.Attribute) and child.attr == 'sha256' and isinstance(child.ctx, ast.Load):
-                        base = child.value
-                        name = base.attr if isinstance(base, ast.Attribute) else getattr(base, 'id', None)
-                        if name in self.SNAPSHOT_NAMES or name == 'self' and in_snapshot_class:
-                            if (path.name, scope) not in self.ALLOWED:
-                                offenders.append(f'{path.name}:{child.lineno} {scope}')
-                    visit(child, scope, in_snapshot_class)
-            visit(tree, '', False)
-        self.assertEqual(offenders, [])
+    def persisted(self, adapter):
+        data, result = generated(adapter=adapter)
+        snapshot = good(result)
+        binding = thaw(good(m.morph_binding(snapshot, SIGNAL, 1, 0)))
+        sidecar = good(m.annotate_asset(snapshot, {'bindings': [binding]}))
+        bound = good(generated(adapter=adapter, sidecar=sidecar)[1])
+        golden = thaw(good(m.export_geometry_golden(bound)))
+        pack = good(m.compile_pack(good(m.validate_authoring(seam_authoring()))))
+        compiled = good(m.compile_mapping(pack, bound, good(m.profile_snapshot(pack, 'target')), 'seam'))
+        evaluated = good(m.evaluate_mapping(compiled, [{'timestamp': 0, 'values': {'smile': 0.5}, 'validity': {'smile': True}}]))
+        exported = bound.to_dict()
+        identities = [binding['ref']['asset_sha256'], sidecar.to_dict()['asset_sha256'], golden['asset_sha256'],
+                      compiled.to_dict()['source_sha256'], exported['asset_sha256']]
+        for field in ('generated_sha256', 'resources', 'chunks', 'source'):
+            exported.pop(field)
+        golden.pop('source')
+        outputs = {'binding': binding, 'sidecar': sidecar.to_dict(), 'golden': golden,
+                   'compiled': {k: v for k, v in compiled.to_dict().items() if k != 'source_adapter'},
+                   'evaluated': evaluated.to_dict(), 'snapshot': exported}
+        return digest(data), bound.sha256, identities, {k: m.canonical_json(v) for k, v in outputs.items()}
 
+    def test_no_output_carries_the_glb_digest_or_changes_with_the_reader(self):
+        source_sha, glb_sha, identities, outputs = self.persisted(fake.FakeAdapter())
+        self.assertEqual(identities, [source_sha] * 5)
+        for name, raw in outputs.items():
+            with self.subTest(output=name):
+                self.assertNotIn(glb_sha.encode(), raw)
+        other_source, other_glb, _, other_outputs = self.persisted(fake.FakeAdapter('2', compact_json=True))
+        self.assertEqual(other_source, source_sha)
+        self.assertNotEqual(other_glb, glb_sha)
+        self.assertEqual(other_outputs, outputs)
 
 def add_arm(scene):
     scene['nodes'].append({'path': '/Root/Arm'})

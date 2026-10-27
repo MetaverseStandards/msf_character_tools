@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """A source adapter for tests: a JSON scene behind a USDA-looking header."""
 import json
+import struct
 
 from msf_tools.common import digest
 from msf_tools.report import Diagnostic
@@ -34,9 +35,10 @@ class FakeAdapter:
     version = '1'
     formats = ('usda',)
 
-    def __init__(self, reader_version='1', edit=None):
+    def __init__(self, reader_version='1', edit=None, compact_json=False):
         self.reader_version = reader_version
         self.edit = edit
+        self.compact_json = compact_json
 
     def reader(self):
         return f'fake-reader {self.reader_version}'
@@ -80,9 +82,19 @@ class FakeAdapter:
             dependencies.append((uri, digest(payload), len(payload)))
         losses = tuple(Diagnostic(code, 'warning' if code.startswith('W_') else 'info', ref, message, 'Review the declared loss.')
                        for code, ref, message in scene.get('losses', ()))
-        return Generated(glb=glb.write_glb(glb_nodes, tuple(glb_meshes), generator=f'{self.name} {self.version}'),
+        raw = glb.write_glb(glb_nodes, tuple(glb_meshes), generator=f'{self.name} {self.version}')
+        return Generated(glb=_compact(raw) if self.compact_json else raw,
                          node_paths=tuple(paths), target_keys=tuple(target_keys),
                          dependencies=tuple(dependencies), losses=losses)
+
+
+def _compact(raw):
+    """Same glTF document with compact JSON, as a different reader version might write it."""
+    length = struct.unpack_from('<I', raw, 12)[0]
+    text = json.dumps(json.loads(raw[20:20 + length]), separators=(',', ':'), sort_keys=True).encode()
+    text += b' ' * (-len(text) % 4)
+    chunks = struct.pack('<II', len(text), 0x4E4F534A) + text + raw[20 + length:]
+    return struct.pack('<III', 0x46546C67, 2, 12 + len(chunks)) + chunks
 
 
 def resolver(uri):
