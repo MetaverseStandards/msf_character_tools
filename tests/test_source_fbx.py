@@ -76,6 +76,16 @@ class FbxStatic(unittest.TestCase):
         close(self, [msf_world_points(snapshot, '/Root/Face', 0.0)[3]], [(0, 0, -0.02)])
         self.assertTrue(root)
 
+    def test_the_unit_reported_is_the_one_ufbx_converted_from(self):
+        # 3ds Max writes OriginalUnitScaleFactor for the unit the scene was made in; ufbx converts by UnitScaleFactor.
+        metres = good(m.inspect_asset(face(unit_cm=100.0, original_unit_cm=1.0).text(), 'fbx'))
+        self.assertEqual(codes(metres), [])
+        close(self, [msf_world_points(metres, '/Root/Face', 0.0)[2]], [(1, 2, 0)])
+        centimetres = good(m.inspect_asset(face(unit_cm=1.0, original_unit_cm=100.0).text(), 'fbx'))
+        self.assertEqual(codes(centimetres), [('I_UNITS_CONVERTED', '/')])
+        self.assertIn('0.01 metres per unit', thaw(centimetres.source['losses'])[0]['message'])
+        close(self, [msf_world_points(centimetres, '/Root/Face', 0.0)[2]], [(0.01, 0.02, 0)])
+
     def test_duplicate_names_and_geometry_helpers_get_distinct_paths(self):
         scene = Scene()
         root = scene.model('Root')

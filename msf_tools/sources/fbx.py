@@ -138,7 +138,7 @@ class _Scene:
     def convert(self, adapter):
         info = self.info
         conversion = []
-        if info.unit_meters != 1.0:
+        if info.unit_meters > 0 and info.unit_meters != 1.0:  # ufbx leaves a nonpositive unit unconverted
             conversion.append(Diagnostic("I_UNITS_CONVERTED", "info", "/", f"Converted {info.unit_meters:g} metres per unit to metres.",
                                          "No action needed."))
         if info.axes_converted:

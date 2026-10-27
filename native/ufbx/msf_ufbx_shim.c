@@ -221,7 +221,7 @@ int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out) {
     out->blend_channels = (uint32_t)s->blend_channels.count;
     out->materials = (uint32_t)s->materials.count;
     out->textures = (uint32_t)s->textures.count;
-    out->unit_meters = s->settings.original_unit_meters;
+    out->unit_meters = s->settings.unit_meters; /* what ufbx converts by; original_unit_meters is only a record */
     out->fps = s->settings.frames_per_second;
     out->ascii = s->metadata.ascii ? 1 : 0;
     out->version = s->metadata.version;

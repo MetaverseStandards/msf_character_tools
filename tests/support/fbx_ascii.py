@@ -19,11 +19,11 @@ def _array(name, values, indent):
 
 
 class Scene:
-    def __init__(self, unit_cm=100.0, up=1, front=2, coord=0, front_sign=1, fps=24.0):
+    def __init__(self, unit_cm=100.0, up=1, front=2, coord=0, front_sign=1, fps=24.0, original_unit_cm=None):
         """`unit_cm` is FBX UnitScaleFactor (centimetres per unit); axes use FBX's index/sign convention."""
         self.objects, self.connections, self.next_id = [], [], 1000
         self.settings = {"UpAxis": up, "FrontAxis": front, "CoordAxis": coord, "FrontAxisSign": front_sign,
-                         "UnitScaleFactor": unit_cm, "fps": fps}
+                         "UnitScaleFactor": unit_cm, "OriginalUnitScaleFactor": original_unit_cm, "fps": fps}
 
     def _id(self):
         self.next_id += 1
@@ -146,6 +146,8 @@ class Scene:
             ("UpAxis", s["UpAxis"]), ("UpAxisSign", 1), ("FrontAxis", s["FrontAxis"]), ("FrontAxisSign", s["FrontAxisSign"]),
             ("CoordAxis", s["CoordAxis"]), ("CoordAxisSign", 1)))
         props += f'\t\tP: "UnitScaleFactor", "double", "Number", "",{_numbers([s["UnitScaleFactor"]])}\n'
+        if s["OriginalUnitScaleFactor"] is not None:
+            props += f'\t\tP: "OriginalUnitScaleFactor", "double", "Number", "",{_numbers([s["OriginalUnitScaleFactor"]])}\n'
         props += '\t\tP: "TimeMode", "enum", "", "",14\n' + f'\t\tP: "CustomFrameRate", "double", "Number", "",{_numbers([s["fps"]])}\n'
         out = ("; FBX 7.4.0 project file\nFBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7400\n}\n"
                f"GlobalSettings:  {{\n\tVersion: 1000\n\tProperties70:  {{\n{props}\t}}\n}}\n"
