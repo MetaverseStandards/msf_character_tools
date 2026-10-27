@@ -9,7 +9,6 @@ and ufbx's own evaluation; the independent Fox oracle when MSF_REAL_ASSETS is
 set. The command-line check compares msf-tools with itself and is only a
 reproducibility check.
 """
-import importlib.util
 import json
 import math
 import os
@@ -20,10 +19,11 @@ import sys
 import tempfile
 import unittest
 
+from support import capabilities
 from support.glb_struct import accessor, read_glb
 from test_source_usd import HAVE_USD
 
-HAVE_UFBX = importlib.util.find_spec('msf_tools_ufbx') is not None
+HAVE_FBX = capabilities.FBX
 
 REPO = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO / 'examples'
@@ -193,7 +193,7 @@ class UsdExample(ExampleChecks):
                 self.assertLess(max(math.dist(a, w) for a, w in zip(actual, wanted)), 1e-5 * diagonal, name)
 
 
-@unittest.skipUnless(PRESENT and HAVE_UFBX, 'needs MSF_EXAMPLE_ASSETS and msf-tools-ufbx')
+@unittest.skipUnless(PRESENT and HAVE_FBX, 'needs MSF_EXAMPLE_ASSETS and FBX support')
 class FbxExample(ExampleChecks):
     @classmethod
     def setUpClass(cls):

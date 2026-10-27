@@ -8,19 +8,20 @@ first animation, read back through the FBX adapter, and every primitive's
 world-space points must match the original within 1e-5 of the bounding-box
 diagonal at every keyframe time.
 """
-import importlib.util
 import math
 import os
 from pathlib import Path
 import unittest
 
 import msf_tools as m
+from support import capabilities
 from support.fbx_ascii import Scene
-HAVE_UFBX = importlib.util.find_spec('msf_tools_ufbx') is not None
 from test_source_usd import trs
 
+HAVE_FBX = capabilities.FBX
+
 ROOT = Path(os.environ['MSF_KHRONOS_ASSETS']) if os.environ.get('MSF_KHRONOS_ASSETS') else None
-PRESENT = HAVE_UFBX and ROOT is not None and (ROOT / 'Models').is_dir()
+PRESENT = HAVE_FBX and ROOT is not None and (ROOT / 'Models').is_dir()
 MODELS = ('AnimatedMorphCube', 'Fox', 'MorphPrimitivesTest', 'RiggedFigure', 'SimpleSkin')
 
 

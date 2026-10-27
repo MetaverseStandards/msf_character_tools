@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: MIT
 """The FBX adapter on ufbx, with ASCII FBX files written by the test writer."""
-import importlib.util
 import math
 import struct
 import unittest
 import unittest.mock
 
 import msf_tools as m
+from support import capabilities
 from support.values import plain
 from support.fbx_ascii import Scene
 from test_source_strict import msf_world_points
 from test_source_usd import SIGNAL, authoring, good, positions
 
-HAVE_UFBX = importlib.util.find_spec('msf_tools_ufbx') is not None
+HAVE_FBX = capabilities.FBX
 
 IDENTITY = [float(r == c) for c in range(4) for r in range(4)]
 
@@ -51,7 +51,7 @@ def close(test, actual, expected, tolerance=1e-6):
         test.assertLess(math.dist(a, e), tolerance, (actual, expected))
 
 
-@unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
+@unittest.skipUnless(HAVE_FBX, 'FBX support is not installed')
 class FbxStatic(unittest.TestCase):
     def test_static_mesh_through_inspect_geometry_annotate_and_map(self):
         data = face().text()
@@ -240,7 +240,7 @@ def oracle_worlds(nodes):
     return worlds
 
 
-@unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
+@unittest.skipUnless(HAVE_FBX, 'FBX support is not installed')
 class FbxPivots(unittest.TestCase):
     def test_pivots_offsets_and_pre_post_rotation_match_the_fbx_formula(self):
         rows = [('Root', None, dict(translation=(1, 2, 3), rotation=(10, 20, 30), rotation_order=4, rotation_pivot=(0.5, 0, 0),
@@ -299,7 +299,7 @@ def skinned_scene(skinning='Linear', weights=None):
     return scene, geometry
 
 
-@unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
+@unittest.skipUnless(HAVE_FBX, 'FBX support is not installed')
 class FbxSkin(unittest.TestCase):
 
     def test_skin_losses_are_declared(self):
@@ -309,7 +309,7 @@ class FbxSkin(unittest.TestCase):
                                            ('W_SKINNING_METHOD', '/Body')])
 
 
-@unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
+@unittest.skipUnless(HAVE_FBX, 'FBX support is not installed')
 class FbxBlend(unittest.TestCase):
     def test_inbetweens_and_partial_channels(self):
         scene = Scene()
@@ -341,7 +341,7 @@ def animated(start=0.0, stacks=1):
     return scene
 
 
-@unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
+@unittest.skipUnless(HAVE_FBX, 'FBX support is not installed')
 class FbxAnimation(unittest.TestCase):
     def test_stack_samples_translations_and_blend_weights(self):
         snapshot = good(m.inspect_asset(animated().text(), 'fbx'))
