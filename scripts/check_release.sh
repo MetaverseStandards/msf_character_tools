@@ -46,7 +46,8 @@ modules = {str(p.relative_to(src)) for p in (src / 'msf_tools').rglob('*.py')}
 licences = {f'msf_tools-{version}.dist-info/licenses/{name}' for name in project['license-files']}
 ok = True
 for wheel in sorted(dist.glob('*.whl')):
-    names = set(zipfile.ZipFile(wheel).namelist())
+    # auditwheel repair adds directory entries; only files count.
+    names = {n for n in zipfile.ZipFile(wheel).namelist() if not n.endswith('/')}
     package = {n for n in names if n.startswith('msf_tools/')}
     extension = {n for n in package if n.startswith('msf_tools/_core.')}
     record = json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json'))
@@ -75,8 +76,10 @@ if [ "$(uname -s)" = Linux ]; then
     name=$(basename "$wheel")
     shown=$("$scratch/audit/bin/auditwheel" show "$wheel" 2>&1)
     case "$name" in *"manylinux_2_28_$arch.whl") ;; *) note "$name: tag is not manylinux_2_28_$arch, FAILED" ;; esac
-    if printf '%s' "$shown" | tr '\n' ' ' | grep -q "consistent with the following platform tag: \"manylinux_2_28_$arch\""; then
-      note "$name: auditwheel show: manylinux_2_28_$arch"
+    # auditwheel show names the oldest policy the wheel meets; manylinux_2_28 needs it to be 2_28 or older.
+    oldest=$(printf '%s' "$shown" | tr '\n' ' ' | sed -n "s/.*consistent with the following platform tag: \"manylinux_2_\([0-9]*\)_$arch\".*/\1/p")
+    if [ -n "$oldest" ] && [ "$oldest" -le 28 ]; then
+      note "$name: auditwheel show: meets manylinux_2_${oldest}_$arch, so manylinux_2_28_$arch holds"
     else
       note "$name: auditwheel show FAILED: $(printf '%s' "$shown" | tr '\n' ' ')"
     fi
