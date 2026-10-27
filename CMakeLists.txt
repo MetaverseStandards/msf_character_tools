@@ -16,6 +16,12 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
                 OUTPUT_VARIABLE nanobind_ROOT OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 find_package(nanobind CONFIG REQUIRED)
 
+option(MSF_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer (scripts/ci_local.sh --sanitize)" OFF)
+if(MSF_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
 # Vendored; see NOTICE.md.
 add_library(ryu STATIC core/third_party/ryu/ryu/d2s.c)
 target_include_directories(ryu PUBLIC core/third_party/ryu)
