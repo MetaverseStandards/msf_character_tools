@@ -141,6 +141,7 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 | `max_generated_bytes` | 512 MiB | Replaces the 64 MiB glTF input limit for the GLB. |
 | `max_accessor_components`, `max_total_accessor_components` | 4,000,000, 16,000,000 | Can be lowered, not raised. Integrity checks and the geometry evaluation budget use these defaults for generated snapshots. |
 | `max_reader_memory`, `timeout_s` | 2 GiB, 300 s | Used by isolated conversion. |
+| `max_animation_values` | 16,000,000 | Values sampled before conversion; FBX counts samples × (16 × nodes + blend channels) and refuses beyond it before sampling. |
 
 glTF formats refuse `isolate`, `limits` and `options` with `E_SOURCE_OPTIONS`.
 
@@ -186,7 +187,7 @@ Install the `msf-tools-ufbx` package (`pip install ./native/ufbx` from a checkou
 - **Meshes:** one glTF mesh per FBX mesh, shared by its instances, with control points as vertices and faces triangulated by ufbx. Hole faces, faces with fewer than three corners and empty meshes are counted in `W_SKIPPED`. A mesh with a vertex cache deformer keeps its own points; the cache file is never read, and `W_POINTS_ANIMATION_DROPPED` is declared at the mesh's node (`E_POINTS_ANIMATION_DROPPED` under strict losses).
 - **Skin:** one glTF skin per skinned mesh. Each cluster's bone becomes a joint whose inverse bind matrix is ufbx's geometry-to-bone matrix. Weights follow the shared influence rules (`I_INFLUENCES_N`, `W_INFLUENCES_TRUNCATED`, `W_WEIGHTS_NORMALIZED`, `W_UNWEIGHTED_VERTICES`, which binds to the nearest ancestor joint of the mesh, else the skeleton root). Rigid, dual-quaternion and blended skinning are stored as linear blend skinning (`W_SKINNING_METHOD`). A mesh with more than one skin deformer is refused.
 - **Blend shapes:** each blend channel becomes a morph target keyed `<deformer name>/<channel name>`, with `[k]` on repeated names. The keyframe at full weight is kept and other keyframes are dropped (`W_INBETWEENS_DROPPED`; `E_INBETWEEN_UNSUPPORTED` under strict losses). A channel with no full-weight keyframe uses its largest keyframe scaled to full weight (`W_INBETWEEN_PARTIAL`). Static channel weights (`DeformPercent / 100`) become the default weights.
-- **Animation:** the first animation stack, or the one named or numbered by `options["animation"]`, is sampled from its start to its end at `options["sample_rate"]` (default: the scene frame rate) by evaluating the scene, so animated TRS is in exactly the same space as the static pose. Other stacks are declared as `W_ANIMATIONS_SKIPPED`, negative start times as `W_TIME_SHIFTED`, and more than 100,000 samples is `E_RESOURCE_LIMIT`. Channels that never change are left out.
+- **Animation:** the first animation stack, or the one named or numbered by `options["animation"]`, is sampled from its start to its end at `options["sample_rate"]` (default: the scene frame rate) by evaluating the scene, so animated TRS is in exactly the same space as the static pose. Other stacks are declared as `W_ANIMATIONS_SKIPPED`, negative start times as `W_TIME_SHIFTED`, and more than 100,000 samples, or more sampled values than `max_animation_values`, is `E_RESOURCE_LIMIT`. Channels that never change are left out.
 
 ## Mapping and samples
 

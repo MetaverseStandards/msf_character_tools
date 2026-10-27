@@ -8,6 +8,7 @@ Static and animated node TRS both come from ufbx's node-to-parent matrices.
 """
 from __future__ import annotations
 
+from array import array
 import math
 
 from msf_tools_ufbx import UFBX_VERSION, ffi, lib
@@ -39,7 +40,7 @@ class FbxAdapter:
                      "Raise limits.max_reader_memory, or reduce the source.")
             raise SourceParseError(message or "ufbx could not read the file.")
         try:
-            return _Scene(out[0], options).convert(self)
+            return _Scene(out[0], options, limits).convert(self)
         finally:
             lib.msf_fbx_close(out[0])
 
@@ -75,8 +76,8 @@ def _quaternions(rows):
 
 
 class _Scene:
-    def __init__(self, handle, options):
-        self.h, self.options = handle, options
+    def __init__(self, handle, options, limits):
+        self.h, self.options, self.limits = handle, options, limits
         self.info = ffi.new("msf_fbx_info *")
         lib.msf_fbx_info_get(handle, self.info)
         self.nodes = []
@@ -402,16 +403,25 @@ class _Scene:
             fail("E_RESOURCE_LIMIT", "/", f"The animation needs {len(times)} samples, over the {MAX_SAMPLES} limit.",
                  "Lower options.sample_rate.")
         nodes, channels = len(self.nodes), self.info.blend_channels
+        values = len(times) * (16 * nodes + channels)
+        if values > self.limits.max_animation_values:
+            fail("E_RESOURCE_LIMIT", "/", f"The animation needs {values} sampled values ({len(times)} samples of {nodes} nodes "
+                 f"and {channels} blend channels), over the {self.limits.max_animation_values} limit.",
+                 "Lower options.sample_rate, or raise limits.max_animation_values.")
         to_parent = ffi.new("double[]", 16 * nodes or 1)
         weights = ffi.new("double[]", channels or 1)
         err = ffi.new("char[512]")
-        matrices, weight_rows = [], []
+        # One flat array of doubles per node: sample k's matrix is values 16k to 16k + 15.
+        matrices = [array("d") for _ in range(nodes)]
+        weight_values = array("d")
         for t in times:
             if not lib.msf_fbx_evaluate(self.h, chosen, t, to_parent, ffi.NULL, nodes, weights, channels, err, 512):
                 fail("E_SOURCE_VALUE", "/", "The FBX reader could not evaluate the animation: "
                      + ffi.string(err).decode("utf-8", "replace")[:300])
-            matrices.append([_matrix(to_parent[16 * i:16 * i + 16]) for i in range(nodes)])
-            weight_rows.append([float(weights[c]) for c in range(channels)])
+            raw = ffi.buffer(to_parent, 8 * 16 * nodes)
+            for i in range(nodes):
+                matrices[i].frombytes(raw[128 * i:128 * i + 128])
+            weight_values.frombytes(ffi.buffer(weights, 8 * channels))
         shift = min(0.0, times[0])
         if shift < 0:
             losses.append(skinning.warning("W_TIME_SHIFTED", "/", f"Shifted the animation by {-shift:g} seconds so it starts at 0."))
@@ -419,9 +429,10 @@ class _Scene:
         out, animated = [], set()
         for k, shim in enumerate(order):
             path = node_paths[shim]
-            series = [sample[shim] for sample in matrices]
-            if all(s == series[0] for s in series):
+            flat = matrices[shim]
+            if all(flat[j:j + 16] == flat[0:16] for j in range(16, len(flat), 16)):
                 continue
+            series = [list(flat[j:j + 16]) for j in range(0, len(flat), 16)]
             animated.add(shim)
             if any(transforms.has_shear(s) for s in series):
                 _shear(path)
@@ -445,7 +456,7 @@ class _Scene:
                 ids.append(cid[0])
             if not ids:
                 continue
-            rows = [tuple(row[i] for i in ids) for row in weight_rows]
+            rows = [tuple(weight_values[r * channels + i] for i in ids) for r in range(len(times))]
             if any(row != rows[0] for row in rows):
                 out.append(glb.Channel(node=k, path="weights", times=seconds, values=tuple(rows)))
         return ((glb.Animation(channels=tuple(out)),) if out else ()), losses, animated

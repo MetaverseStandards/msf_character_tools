@@ -2,6 +2,7 @@
 """The FBX adapter on ufbx, with ASCII FBX files written by the test writer."""
 import math
 import unittest
+import unittest.mock
 
 import msf_tools as m
 from msf_tools.common import thaw
@@ -374,6 +375,34 @@ class FbxAnimation(unittest.TestCase):
         shifted = good(m.inspect_asset(animated(start=-0.5).text(), 'fbx'))
         self.assertIn(('W_TIME_SHIFTED', '/'), codes(shifted))
         self.assertAlmostEqual(m.sample_animation(shifted, 0, 1.0).value[1]['translation'][0], 10.0, places=5)
+
+    def test_long_clips_on_large_rigs_are_refused_before_sampling(self):
+        from msf_tools.sources import fbx
+        real = fbx.lib
+
+        class NoEvaluation:
+            def __getattr__(self, name):
+                if name == 'msf_fbx_evaluate':
+                    raise AssertionError('the animation was sampled before the limit was checked')
+                return getattr(real, name)
+
+        scene = Scene()
+        parent = 0
+        for k in range(200):
+            parent = scene.model(f'n{k}', parent)
+        scene.animation('Long', 0.0, 3000.0, [(parent, 'Lcl Translation', {
+            'X': [(0.0, 0.0), (3000.0, 1.0)], 'Y': [(0.0, 0.0), (3000.0, 0.0)], 'Z': [(0.0, 0.0), (3000.0, 0.0)]})])
+        with unittest.mock.patch.object(fbx, 'lib', NoEvaluation()):
+            result = m.inspect_asset(scene.text(), 'fbx')
+        self.assertEqual(errors(result), [('E_RESOURCE_LIMIT', '/')])
+        self.assertIn('max_animation_values', result.report.diagnostics[0].remediation)
+
+    def test_the_animation_value_limit_counts_samples_nodes_and_channels(self):
+        # 25 samples x (2 nodes x 16 matrix values + 2 blend weights) = 850 values.
+        data = animated().text()
+        good(m.inspect_asset(data, 'fbx', limits=m.sources.SourceLimits(max_animation_values=850)))
+        result = m.inspect_asset(data, 'fbx', limits=m.sources.SourceLimits(max_animation_values=849))
+        self.assertEqual(errors(result), [('E_RESOURCE_LIMIT', '/')])
 
     def test_animated_skin_matches_ufbx_skinning(self):
         scene, _ = skinned_scene()

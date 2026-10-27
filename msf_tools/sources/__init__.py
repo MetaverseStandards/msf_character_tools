@@ -41,7 +41,9 @@ class SourceLimits:
     The component limits may be lowered but not raised: later integrity checks
     re-validate generated snapshots against the generated defaults.
     `max_usdz_members`, `max_reader_memory` and `timeout_s` are enforced by the
-    adapters and by isolated conversion.
+    adapters and by isolated conversion. `max_animation_values` bounds the
+    values an adapter samples before converting them (FBX: samples x
+    (16 x nodes + blend channels)).
     """
     max_source_bytes: int = 512 * 1024 * 1024
     max_dependency_bytes: int = 1024 * 1024 * 1024
@@ -52,6 +54,7 @@ class SourceLimits:
     max_total_accessor_components: int = GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS
     max_reader_memory: int = 2 * 1024 * 1024 * 1024
     timeout_s: int = 300
+    max_animation_values: int = GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS
 
     def __post_init__(self):
         ceilings = {"max_source_bytes": MAX_SOURCE_BYTES_CEILING,
