@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 import random
 import struct
-import sys
+import subprocess
 import unittest
 from types import MappingProxyType
 from unittest import mock
@@ -177,13 +177,19 @@ class Numbers(unittest.TestCase):
         parsed_alike(self, data)
 
 
-def goldens():
-    """Every JSON file in the repository, and the JSON chunk of every GLB."""
-    import subprocess
-    names = subprocess.run(['git', '-C', str(ROOT), 'ls-files', '*.json', '*.gltf', '*.glb'], capture_output=True,
-                           text=True, check=True).stdout.split()
+def git(root, *args):
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, check=True).stdout
+
+
+def goldens(root=ROOT, commit=None):
+    """Every JSON file in a repository (the work tree, or a commit read from Git), and each GLB's JSON chunk."""
+    if commit is None:
+        names = git(root, 'ls-files', '*.json', '*.gltf', '*.glb').decode().split()
+    else:
+        names = [n for n in git(root, 'ls-tree', '-r', '--name-only', commit).decode().split()
+                 if n.endswith(('.json', '.gltf', '.glb'))]
     for name in names:
-        data = (ROOT / name).read_bytes()
+        data = (root / name).read_bytes() if commit is None else git(root, 'show', f'{commit}:{name}')
         if name.endswith('.glb'):
             length = struct.unpack_from('<I', data, 12)[0]
             data = data[20:20 + length]
@@ -199,8 +205,19 @@ class Documents(unittest.TestCase):
         return actual
 
     def test_every_json_golden_round_trips_byte_for_byte(self):
+        self.assertGreater(self.round_trip(goldens()), 3, 'no canonical goldens found')
+
+    @unittest.skipUnless(GATE, 'gate tier: MSF_GATE=1')
+    def test_every_rcef_json_golden_round_trips_byte_for_byte(self):
+        root = Path(os.environ.get('MSF_RCEF_ROOT', Path.home() / '.local/share/msf/RCEF'))
+        commit = os.environ.get('MSF_RCEF_COMMIT', '0d90172')
+        if not (root / '.git').exists():
+            self.skipTest(f'no RCEF checkout at {root}')
+        self.assertGreaterEqual(self.round_trip(goldens(root, commit)), 2, 'RCEF generated/ goldens were not canonical')
+
+    def round_trip(self, documents):
         count = 0
-        for name, data in goldens():
+        for name, data in documents:
             with self.subTest(name=name):
                 self.assertIsNotNone(core.parse_json(data), 'the core declined the document')
                 parsed = self.assertSameOutcome(parse_json, data)[1]
@@ -210,7 +227,7 @@ class Documents(unittest.TestCase):
                     if canonical_json(parse_json(data)) == data:
                         self.assertEqual(written, data)
                         count += 1
-        self.assertGreater(count, 3, 'no canonical goldens found')
+        return count
 
     def test_values_records_build_are_written_like_the_reference(self):
         rng = random.Random(5)

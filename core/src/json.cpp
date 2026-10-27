@@ -222,9 +222,7 @@ private:
         if (real) {
             Value v = Value::make_real(0.0);
             // Correctly rounded like float(); out of range gives inf or a signed zero.
-            auto r = fast_float::from_chars(lexeme.data(), lexeme.data() + lexeme.size(), v.number);
-            if (r.ec == std::errc::result_out_of_range && std::isfinite(v.number) && v.number != 0.0)
-                v.number = std::copysign(HUGE_VAL, v.number);
+            fast_float::from_chars(lexeme.data(), lexeme.data() + lexeme.size(), v.number);
             v.text = std::move(lexeme);
             return v;
         }
