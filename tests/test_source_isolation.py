@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 """Source conversion in a separate reader process."""
 import os
+from pathlib import Path
 import struct
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 import msf_tools as m
 from msf_tools.report import Fault
@@ -68,6 +70,30 @@ class IsolatedConversion(unittest.TestCase):
             time.sleep(0.01)
         else:
             self.fail('the reader process left a child running')
+
+    def test_a_parent_exception_still_reaps_the_reader(self):
+        seen = []
+
+        def interrupt(pid):
+            seen.append(pid)
+            raise KeyboardInterrupt
+
+        with mock.patch.object(_worker, 'footprint', interrupt), self.assertRaises(KeyboardInterrupt):
+            run(b'sleep')
+        with self.assertRaises(ProcessLookupError):
+            os.kill(seen[0], 0)
+
+    def test_isolated_reads_count_against_the_resolver_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / 'layers').mkdir()
+            (root / 'layers' / 'sub.usda').write_bytes(b'#usda 1.0\n' + b' ' * 590)
+            resolver = m.LocalResolver(root, max_total_bytes=1000)
+            data = fake.source(fake.scene())
+            _worker.run(MODULE, data, 'usda', resolver, SourceLimits(), OPTIONS)
+            with self.assertRaises(Fault) as caught:
+                _worker.run(MODULE, data, 'usda', resolver, SourceLimits(), OPTIONS)
+        self.assertEqual(caught.exception.diagnostic.code, 'E_RESOURCE_LIMIT')
 
     def test_malformed_worker_responses_are_protocol_errors(self):
         good = _worker.frame({'protocol': _worker.PROTOCOL, 'ok': True, 'adapter': ['a', '1', 'r 1'], 'node_paths': ['/A'],

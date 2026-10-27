@@ -113,7 +113,7 @@ def _resolver_spec(resolver):
     if resolver is None:
         return None
     return {"root": str(resolver.root), "max_resource_bytes": resolver.max_resource_bytes,
-            "max_total_bytes": resolver.max_total_bytes}
+            "max_total_bytes": resolver.max_total_bytes, "consumed": resolver._consumed}
 
 
 class _Reader(threading.Thread):
@@ -226,26 +226,31 @@ def run(module, data, fmt, resolver, limits, options, *, timeout=None):
             thread.start()
         failure = None
         deadline = time.monotonic() + timeout
-        while failure is None:
-            try:
-                proc.wait(timeout=POLL_SECONDS)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            # proc.wait() has not reaped the worker, so its pid still names it and is safe to sample.
-            used = footprint(proc.pid)
-            if used is not None and used > limits.max_reader_memory:
-                failure = ("E_SOURCE_MEMORY", f"The reader process used {used} bytes, over the {limits.max_reader_memory}-byte limit.",
-                           "Raise limits.max_reader_memory, or reduce the source.")
-            elif time.monotonic() > deadline:
-                failure = ("E_SOURCE_TIMEOUT", f"The reader process did not finish within {timeout:g} seconds.",
-                           "Raise limits.timeout_s, or check the source for unbounded content.")
-            elif stdout.overflow:
-                failure = ("E_SOURCE_PROTOCOL", "The reader process sent more output than the generated-GLB limit allows.",
-                           "Raise limits.max_generated_bytes, or reduce the source.")
-            if failure is not None:
+        try:
+            while failure is None:
+                try:
+                    proc.wait(timeout=POLL_SECONDS)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+                # proc.wait() has not reaped the worker, so its pid still names it and is safe to sample.
+                used = footprint(proc.pid)
+                if used is not None and used > limits.max_reader_memory:
+                    failure = ("E_SOURCE_MEMORY", f"The reader process used {used} bytes, over the {limits.max_reader_memory}-byte limit.",
+                               "Raise limits.max_reader_memory, or reduce the source.")
+                elif time.monotonic() > deadline:
+                    failure = ("E_SOURCE_TIMEOUT", f"The reader process did not finish within {timeout:g} seconds.",
+                               "Raise limits.timeout_s, or check the source for unbounded content.")
+                elif stdout.overflow:
+                    failure = ("E_SOURCE_PROTOCOL", "The reader process sent more output than the generated-GLB limit allows.",
+                               "Raise limits.max_generated_bytes, or reduce the source.")
+                if failure is not None:
+                    _kill_group(proc)
+            proc.wait()
+        finally:
+            if proc.returncode is None:
                 _kill_group(proc)
-        proc.wait()
+                proc.wait()
         for thread in (stdout, stderr, writer):
             thread.join()
     if failure is not None:
@@ -256,7 +261,13 @@ def run(module, data, fmt, resolver, limits, options, *, timeout=None):
         how = (f"was killed by signal {-proc.returncode}" if proc.returncode < 0 else f"exited with status {proc.returncode}")
         fail("E_SOURCE_CRASHED", "/", f"The reader process {how}." + (f" Its last output: {tail}" if tail else ""),
              "Report the source file; the reader crashed on it.")
-    return parse_response(bytes(stdout.data), limits)
+    generated, identity = parse_response(bytes(stdout.data), limits)
+    if resolver is not None:
+        # The worker read through its own copy of the resolver, so its reads are added to the caller's budget here.
+        resolver._consumed += sum(length for _, _, length in generated.dependencies)
+        if resolver._consumed > resolver.max_total_bytes:
+            fail("E_RESOURCE_LIMIT", "/resources", "Resource exceeds explicit resolver budget.")
+    return generated, identity
 
 
 class IsolatedAdapter:
@@ -291,7 +302,10 @@ def main():
         resolver = None
         if header["resolver"] is not None:
             from ..snapshot import LocalResolver
-            resolver = LocalResolver(**header["resolver"])
+            spec = dict(header["resolver"])
+            consumed = spec.pop("consumed")
+            resolver = LocalResolver(**spec)
+            resolver._consumed = consumed
         try:
             adapter = importlib.import_module(header["adapter"]).ADAPTER
         except ImportError as exc:
