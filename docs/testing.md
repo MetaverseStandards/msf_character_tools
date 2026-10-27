@@ -43,7 +43,15 @@ Fixture generation is deterministic. Regenerating fixtures must leave checked-in
 
 ## Examples tier
 
-`tests/test_examples.py` runs the scripts in `examples/` (see `examples/README.md`) as a user would, in subprocesses, on the assets `examples/fetch_assets.py` downloads at pinned revisions. The checks do not rely on msf-tools for the expected values. They use asset hashes and counts, a morph delta applied by hand, usd-core's `BakeSkinning`, linearity of the FBX shape key in its weight, and the Fox Decimal oracle when `MSF_REAL_ASSETS` is set. They also check that the command line rebuilds the morph cube's sidecar, mapping and evaluated frames byte for byte. The tier runs when `MSF_EXAMPLE_ASSETS` names the download folder.
+`tests/test_examples.py` runs the scripts in `examples/` (see `examples/README.md`) as a user would, in subprocesses, on the assets `examples/fetch_assets.py` downloads at pinned revisions. The expected values do not come from msf-tools:
+- asset hashes, counts and licence text;
+- GLB data read with `struct`, with a morph delta applied by hand;
+- usd-core's `BakeSkinning`;
+- ufbx's own skinning of the Kenney character, and ufbx's evaluation of the writer-made FBX cube at each mapped shape-key weight;
+- Kenney's separate GLB export of the character, within 1e-3 of the bounding-box diagonal;
+- the Fox Decimal oracle, when `MSF_REAL_ASSETS` is set.
+
+The check that the command line rebuilds the cube's files byte for byte is a reproducibility check only. The tier runs when `MSF_EXAMPLE_ASSETS` names the download folder.
 
 ## USD strict tier and demo
 

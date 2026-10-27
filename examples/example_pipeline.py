@@ -9,8 +9,10 @@ Outputs, in the folder given by --out:
   annotations.json, sidecar.json   the input to annotate_asset and the hash-bound sidecar it wrote
   samples.json, mapping.json, evaluated.json   source frames, the compiled mapping and the mapped frames
   render/         world-space positions per pose (<pose>.f32, little-endian float32 xyz),
-                  shared triangle indices (mesh.u32, little-endian uint32) and render.json,
-                  a job list for the meshrender tool (run it from inside render/)
+                  shared triangle indices (mesh.u32, little-endian uint32), render.json,
+                  a job list for the meshrender tool (run it from inside render/), and
+                  CREDITS.txt; render.json carries the same credit as "credit" and as each
+                  job's "caption", to be shown with any frame made from these files
 """
 import argparse
 from collections.abc import Mapping
@@ -275,8 +277,11 @@ def run(args, *, name, data, fmt, asset, binding=None, clips=(), resolver=None, 
     length = math.sqrt(sum(c * c for c in direction))
     camera = {'position': [c + distance * d / length for c, d in zip(centre, direction)], 'target': centre,
               'up': [0, 1, 0], 'yfov': 35}
-    write_json(render / 'render.json', {'width': 1280, 'height': 720, 'jobs': [
-        {'positions': row['file'], 'indices': 'mesh.u32', 'camera': camera, 'out': f'{row["name"]}.png'} for row in rows]})
+    credit = f'{asset["name"]}: {asset["credit"]} Licence: {asset["license"]}.'
+    (render / 'CREDITS.txt').write_text(credit + '\n')
+    write_json(render / 'render.json', {'width': 1280, 'height': 720, 'credit': credit, 'jobs': [
+        {'positions': row['file'], 'indices': 'mesh.u32', 'camera': camera, 'out': f'{row["name"]}.png', 'caption': credit}
+        for row in rows]})
     with open(out / 'poses.csv', 'w', newline='') as handle:
         writer = csv.writer(handle)
         writer.writerow(['pose', 'how', 'vertices', 'triangles', 'min_x', 'min_y', 'min_z', 'max_x', 'max_y', 'max_z'])
