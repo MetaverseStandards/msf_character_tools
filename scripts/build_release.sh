@@ -10,9 +10,11 @@
 # by default python3.11 and python3.12 on PATH, or the venvs in the local
 # workspace $MSF. On Linux they are built in the manylinux_2_28 container for the
 # machine's architecture (MSF_MANYLINUX_IMAGE, run with MSF_PODMAN, default
-# podman) with its /opt/python cp311 and cp312, then tagged by auditwheel repair;
-# the container reaches PyPI for the build requirements through HTTPS_PROXY when
-# that is set. The sdist is built on the host with MSF_PY312 either way.
+# podman) with its /opt/python cp311 and cp312, then tagged by auditwheel repair.
+# The container builds offline: the host downloads the pinned build requirements,
+# and ninja for the container's platform, into a wheelhouse first (through
+# HTTPS_PROXY when that is set). The sdist is built on the host with MSF_PY312
+# either way.
 # Needs uv (UV, or on PATH, or $MSF/_tools/boot/bin/uv).
 set -eu
 out=$(cd "$(dirname "${1:?usage: scripts/build_release.sh OUTDIR [COMMIT]}")" && pwd)/$(basename "$1")
@@ -42,13 +44,20 @@ mkdir "$scratch/unpacked"
 tar -xzf "$sdist" -C "$scratch/unpacked"
 if [ "$(uname -s)" = Linux ]; then
   image="${MSF_MANYLINUX_IMAGE:-quay.io/pypa/manylinux_2_28_$(uname -m)}"
+  "$uv" venv -q --seed --python "$py312" "$scratch/download"
+  requirements=$("$py312" -c 'import sys, tomllib; print(" ".join(tomllib.load(open(sys.argv[1], "rb"))["build-system"]["requires"]))' \
+    "$scratch/src/pyproject.toml")
+  for version in 3.11 3.12; do
+    # Word splitting is wanted: the requirements are separate arguments.
+    # shellcheck disable=SC2086
+    "$scratch/download/bin/python" -m pip download -q --only-binary=:all: --platform "manylinux_2_28_$(uname -m)" \
+      --python-version "$version" -d "$scratch/wheelhouse" $requirements ninja==1.13.2
+  done
   # Word splitting is wanted: MSF_PODMAN may carry podman's own options.
   # shellcheck disable=SC2086
-  ${MSF_PODMAN:-podman} run --rm --network host -v "$scratch:/io" -e SOURCE_DATE_EPOCH \
-    -e HTTPS_PROXY="${HTTPS_PROXY:-}" -e HTTP_PROXY="${HTTP_PROXY:-}" -e https_proxy="${HTTPS_PROXY:-}" -e http_proxy="${HTTP_PROXY:-}" \
-    "$image" bash -euc '
+  ${MSF_PODMAN:-podman} run --rm --network none -v "$scratch:/io" -e SOURCE_DATE_EPOCH "$image" bash -euc '
       for py in cp311-cp311 cp312-cp312; do
-        (cd /io/unpacked/msf_tools-* && /opt/python/$py/bin/python -m pip wheel -q --no-deps -w /io/raw .)
+        (cd /io/unpacked/msf_tools-* && /opt/python/$py/bin/python -m pip wheel -q --no-deps --no-index --find-links /io/wheelhouse -w /io/raw .)
       done
       for wheel in /io/raw/*.whl; do auditwheel repair -w /io/repaired "$wheel" >/dev/null; done
       { echo "image $(cat /etc/os-release | grep ^PRETTY_NAME | cut -d= -f2) $(auditwheel --version)"; gcc --version | head -1; } > /io/toolchain.txt'
