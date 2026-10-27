@@ -124,6 +124,20 @@ else
   lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at $real)")
 fi
 
+# docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
+if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/Models" ] && [ -n "$corpus" ] && [ -x "$py312" ]; then
+  fresh="$MSF/_tools/parity.md"
+  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
+      && cmp -s "$fresh" docs/parity.md; then
+    lines+=("- docs/parity.md: matches a fresh measurement")
+  else
+    lines+=("- docs/parity.md: STALE or generator failed (rerun python -B scripts/parity_table.py with the asset variables set)")
+    failed=1
+  fi
+else
+  lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos and ufbx corpus inputs)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then
