@@ -107,3 +107,13 @@ Local qualification is limited to the recorded macOS arm64 CPython3.11.17 and
 wheel, Windows bindings, asset backend, ABI3, free-threaded/GIL/threading or
 zero-copy support follows. Packaging/verifier/consumer acceptance remains a
 separate gate. No production rig accuracy or device timing guarantee is supplied.
+
+## ufbx reader for FBX sources (`native/ufbx`)
+
+`native/ufbx` is the separate `msf-tools-ufbx` package used by the FBX adapter. It vendors ufbx 0.23.1 (`vendor/ufbx.c`, `vendor/ufbx.h`, used under its MIT option; see `vendor/LICENSE.ufbx`) and a small C shim (`msf_ufbx_shim.h`/`.c`), built with cffi as the abi3 module `msf_tools_ufbx._native`. The pinned commit and file hashes are in `docs/source-lock.json`. ufbx is compiled without stdio, OBJ, geometry caches, subdivision and tessellation, and scenes are only ever loaded from memory with external files off.
+
+```sh
+pip install ./native/ufbx      # needs a C compiler; builds and installs msf_tools_ufbx
+```
+
+Tests that need it skip when it is not installed. `tests/test_source_fbx_corpus.py` runs over ufbx's own test corpus when `MSF_UFBX_CORPUS` names an extracted ufbx source tree at the pinned commit; the corpus is never committed.

@@ -51,6 +51,21 @@ else
   lines+=("- OpenUSD assets tier: SKIPPED (no assets at $openusd)")
 fi
 
+# Optional tier on ufbx's own FBX corpus, kept out of the fast suite.
+corpus="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
+if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_ufbx' 2>/dev/null; then
+  output=$(MSF_UFBX_CORPUS="$corpus" "$py312" -B -m unittest discover -s tests -p 'test_source_fbx_corpus.py' 2>&1)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- ufbx corpus tier: OK")
+  else
+    lines+=("- ufbx corpus tier: FAILED")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- ufbx corpus tier: SKIPPED (needs msf-tools-ufbx installed and the corpus under \$MSF/_viz/assets/ufbx)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then
