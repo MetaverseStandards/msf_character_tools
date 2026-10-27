@@ -16,7 +16,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path[:0] = [str(ROOT / 'tests'), str(ROOT)]
+sys.path[:0] = [str(ROOT / 'tests' / 'public'), str(ROOT / 'tests'), str(ROOT)]
 
 import msf_tools as m  # noqa: E402
 from msf_tools.sources import fbx as fbx_source  # noqa: E402
@@ -135,7 +135,7 @@ def dcc_rows():
     if not os.environ.get('MSF_UFBX_CORPUS'):
         yield 'Not run: set MSF_UFBX_CORPUS to the ufbx corpus checkout.'
         return
-    import test_source_fbx_dcc as dcc
+    from internal import test_source_fbx_dcc as dcc
     counts = {}
     for fbx, obj, stack, seconds, flags in dcc.pairings():
         outcome = dcc.compare(fbx, obj, stack, seconds, flags)[0]
@@ -163,7 +163,7 @@ def main(output):
         '',
         '### Synthetic USD scenes',
         '',
-        'Each scene from `tests/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core '
+        'Each scene from `tests/public/make_source_fixtures.py` is read as USDA, USDC and USDZ and compared with usd-core '
         '(world points at every authored time, `BakeSkinning` for skinned meshes). The FBX twin is the same scene written '
         'by the test FBX writer from msf-tools\' reading of the USD and read back through the FBX adapter. That column is a '
         'consistency check (msf writer to msf reader), not an independent reference: it shows the two readers agree on '
@@ -174,7 +174,7 @@ def main(output):
         '### Khronos sample assets: round trip through msf\'s FBX writer',
         '',
         'Each asset re-authored as FBX by msf-tools\' test writer with the same nodes, meshes, skins, morph targets and '
-        'first animation, then read back (`tests/test_source_twins.py`). This is a consistency check, not an independent '
+        'first animation, then read back (`tests/public/test_source_twins.py`). This is a consistency check, not an independent '
         'reference.',
         '',
         *khronos_rows(),
@@ -186,7 +186,7 @@ def main(output):
         '### FBX behaviour with no USD counterpart',
         '',
         'Pivots, offsets, pre- and post-rotation and the three inherit types are checked against an independent '
-        'FBX SDK transform formula and the archived affine witness points (`tests/test_source_fbx.py`). glTF and USD '
+        'FBX SDK transform formula and the archived affine witness points (`tests/public/test_source_fbx.py`). glTF and USD '
         'cannot express them, so there is nothing to compare across formats.',
         '',
         '## Exporter tier',
@@ -204,7 +204,7 @@ def main(output):
         '### DCC reference frames from the ufbx corpus',
         '',
         'The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools\' world points '
-        '(`tests/test_source_fbx_dcc.py`), with the axes and unit read from each file\'s own header. "explained" rows '
+        '(`tests/internal/test_source_fbx_dcc.py`), with the axes and unit read from each file\'s own header. "explained" rows '
         'differ only on meshes that carry a declared loss that changes points; "refused" rows are singular transforms; '
         '"skipped" rows are OBJ files in skin bind space, frames ufbx evaluates without extrapolation, files with only '
         'skipped surface kinds, and skinned meshes at rest whose rest pose differs from the bind pose.',

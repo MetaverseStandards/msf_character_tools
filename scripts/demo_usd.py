@@ -16,7 +16,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import msf_tools as m  # noqa: E402
 
-RIG = Path(__file__).resolve().parent.parent / 'tests' / 'fixtures' / 'source' / 'rig.usda'
+RIG = Path(__file__).resolve().parent.parent / 'tests' / 'public' / 'fixtures' / 'source' / 'rig.usda'
 SIGNAL = {'id': 'lift', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'literal'}
 
 
