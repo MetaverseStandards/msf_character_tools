@@ -7,5 +7,6 @@ Original schemas and documentation: CC-BY-SA-4.0. JSON Schema draft 2020-12:
 - [report.schema.json](report.schema.json): singular diagnostic `ref`, losses and report version.
 - [sidecar.schema.json](sidecar.schema.json): versioned structural scalar morph bindings and hashes.
 - [samples.schema.json](samples.schema.json): input/evaluated sample frame array.
+- [diagnostics.toml](diagnostics.toml): every diagnostic code, with severity, strict-losses rename, meaning and the release that added it.
 
 The [reference](../docs/reference.md) defines Python dataclasses and snapshot/compiled/helper outputs. These portable schemas describe JSON shapes; runtime validation additionally enforces finite binary64 values, unique IDs across fragments, referential integrity, sparse binary bounds, domains, ordered coefficient arity and graph cycles. Standard JSON has no NaN/infinity literals. A third-party schema validator is optional and is not a runtime dependency.

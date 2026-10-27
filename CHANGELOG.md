@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Added
+- `schemas/diagnostics.toml` lists every diagnostic code with its severity, strict-losses rename, meaning and the release that added it. A test keeps it in step with the source. `E_OPERATOR_VERSION` is reserved for operators 1.1.
+
 ## 0.2.0.dev0 (unreleased)
 
 ### Added
