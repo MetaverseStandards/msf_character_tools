@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Run what .github/workflows/check.yml runs, on local Python 3.11 and 3.12
+# The CI run: what .github/workflows/check.yml (dormant) would run, on local Python 3.11 and 3.12
 # environments, then print a summary block for a pull-request description.
 # Interpreters default to $MSF/_tools/venv3.11 and venv3.12; override with
 # MSF_PY311 / MSF_PY312.
@@ -163,21 +163,37 @@ else
   lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")
 fi
 
-if ! command -v cmake >/dev/null 2>&1; then
-  lines+=("- Native pilot: SKIPPED (cmake not found)")
-elif ! command -v c++ >/dev/null 2>&1; then
-  lines+=("- Native pilot: SKIPPED (no C++ compiler)")
-else
-  build=$(mktemp -d)
-  if cmake -S . -B "$build" -DMSF_BUILD_NATIVE_PILOT=ON >/dev/null \
-      && cmake --build "$build" --config Release >/dev/null \
-      && ctest --test-dir "$build" -C Release --output-on-failure >/dev/null; then
-    lines+=("- Native pilot: build and ctest OK")
+# A wheel built from a clean clone of HEAD, through an sdist as `uv build` does, must record HEAD.
+if [ -x "$uv" ] && [ -x "$py312" ]; then
+  scratch=$(mktemp -d)
+  head=$(git rev-parse HEAD)
+  if git clone -q --no-hardlinks . "$scratch/src" && git -C "$scratch/src" checkout -q "$head" \
+      && (cd "$scratch/src" && "$uv" build -q --python "$py312" --out-dir "$scratch/dist" >/dev/null 2>&1) \
+      && "$py312" -I - "$scratch/dist" "$head" <<'PY'
+import json, sys, tomllib, zipfile
+from pathlib import Path
+dist, head = Path(sys.argv[1]), sys.argv[2]
+version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+[wheel] = dist.glob('*.whl')
+sys.exit(json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json')) != {'version': version, 'commit': head})
+PY
+  then
+    lines+=("- Build record: a wheel built from HEAD via its sdist records HEAD")
   else
-    lines+=("- Native pilot: FAILED (rerun cmake/ctest in $build for details)")
+    lines+=("- Build record: FAILED (rerun uv build in a clean clone and read msf_tools/_build_info.json)")
     failed=1
   fi
-  [ $failed -eq 0 ] && rm -rf "$build"
+  rm -rf "$scratch"
+else
+  lines+=("- Build record: SKIPPED (needs uv and Python 3.12)")
+fi
+
+# cmake and ninja for the C++ core are uv tools under $MSF/_tools/bin; nothing builds with them yet.
+export PATH="$MSF/_tools/bin:$PATH"
+if command -v cmake >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1; then
+  lines+=("- Build tools: cmake $(cmake --version | head -1 | cut -d' ' -f3), ninja $(ninja --version)")
+else
+  lines+=("- Build tools: cmake or ninja MISSING (see docs/building.md)")
 fi
 
 commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)

@@ -16,4 +16,4 @@ Release checklist:
 - State unsupported capabilities, resource limits, performance measurements and remaining artist/semantic gates.
 - Confirm publisher/release reviewer and approved source revision before publishing; avoid changes in consumers' inherited survey byte formats.
 
-Additional formats, native packaging on three operating systems, bindings beyond the bounded kernel and production artist acceptance require separate scope/owner/effort decisions. Current local checks do not establish those release gates.
+Additional formats, native packaging on three operating systems, the C++ core that replaces the removed native pilot, and production artist acceptance require separate scope/owner/effort decisions. Current local checks do not establish those release gates.

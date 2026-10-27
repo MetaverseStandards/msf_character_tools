@@ -20,7 +20,7 @@ Final local gate:30 tests passed on Python3.12.15 and the installed Python3.11.1
 | Curves/hierarchy | STEP, endpoints, component LINEAR, shortest quaternion slerp; duration-scaled Hermite with raw quaternion tangents; shear/singular reparent rejection |
 | CLI preservation | Annotate/check output aliases, hardlinks/symlinks refused before any replacement; source bytes unchanged |
 
-Shared combined analytical tolerance: max component absolute error <1e-6 m. Independent host fixture integration uses its declared1e-5 m position tolerance. Native agreement uses `abs1e-9 + rel1e-8` where documented by native tests. Skin weight sum tolerance1e-6 is a project acceptance choice; weights are not normalized. Quaternion authored unit-length tolerance 0.00769 (the glTF-Validator's) and affine bottom-row tolerance1e-7 for binary32 IBM are project checks, not universal equivalence promises.
+Shared combined analytical tolerance: max component absolute error <1e-6 m. Independent host fixture integration uses its declared1e-5 m position tolerance. Skin weight sum tolerance1e-6 is a project acceptance choice; weights are not normalized. Quaternion authored unit-length tolerance 0.00769 (the glTF-Validator's) and affine bottom-row tolerance1e-7 for binary32 IBM are project checks, not universal equivalence promises.
 
 ## Reproduction
 
@@ -33,7 +33,7 @@ python3 -B check.py
 
 Fixture generation is deterministic. Regenerating fixtures must leave checked-in source/golden bytes equal; it must not derive analytical golden values from evaluator output. Installed wheel tests should run from an outside working directory with both Python3.11 and3.12. Cross-platform CI executes reference commands; native gates belong to native build integration.
 
-`scripts/ci_local.sh` runs the same commands as `.github/workflows/check.yml` on local Python 3.11 and 3.12 environments (`$MSF/_tools/venv3.11` and `venv3.12` by default, or `MSF_PY311` / `MSF_PY312`). It also runs the native build and CTest when `cmake` and a C++ compiler are present, and otherwise reports them as SKIPPED. It ends with a summary block for pull-request descriptions and exits nonzero if any check fails. Use it while hosted CI is unavailable.
+`scripts/ci_local.sh` is the CI run while `.github/workflows/check.yml` is dormant (GitHub Actions is blocked by account billing). It runs the unittest suite and `check.py` on local Python 3.11 and 3.12 environments (`$MSF/_tools/venv3.11` and `venv3.12` by default, or `MSF_PY311` / `MSF_PY312`), then the optional asset tiers. It also builds a wheel from a clean clone of HEAD and checks its build record, and reports the cmake and ninja versions under `$MSF/_tools/bin` (see [building](building.md)). It ends with a summary block for pull-request descriptions and exits nonzero if any check fails. Use it while hosted CI is unavailable.
 
 ## Real-asset recipe tier
 

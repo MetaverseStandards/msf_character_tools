@@ -8,9 +8,15 @@
 - Authoring schema 1.1 adds the evidence status `calibrated_software`, which mapping compilation treats as `proposed`.
 - The authoring and pack JSON schemas accept versions 1.0 and 1.1.
 
+- Built packages carry `msf_tools/_build_info.json`, `{"version": ..., "commit": ...}`, naming the source commit; see `docs/building.md`.
+
+### Removed
+- The pybind11 native numerical pilot (`native/src`, `native/include`, `native/tests`, `native/benchmark.py`, `CMakeLists.txt` and `tests/test_native_consumer.py`). The C++ core will replace it. The FBX reader in `native/ufbx` is unchanged.
+
 ### Changed
 - A rule naming `piecewise_linear` in a document with `operator_version = "1.0"` now fails with `E_OPERATOR_VERSION` alone, whatever its knots. It used to fail with `E_UNKNOWN_KEY` for its `knots` key, or `E_ENUM` without one.
 - The `E_ENUM` messages for unknown `schema_version` and `operator_version` values list `1.0, 1.1`.
+- `.github/workflows/check.yml` is dormant while GitHub Actions is blocked by account billing; it no longer lists Windows or the native job. `scripts/ci_local.sh` is the CI run.
 
 ### Unchanged
 - 1.0 documents give the same packs, outputs and goldens byte for byte, and every other refusal of a 1.0 document keeps its code, reference and message.

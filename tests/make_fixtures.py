@@ -156,7 +156,7 @@ def eight_weighted():
 
 
 def native_agreement():
-    """One-vertex skinned/morphed asset shared by the Python and native agreement tests."""
+    """One-vertex skinned/morphed asset with two instances of one mesh."""
     binary = bytearray()
     views, accessors = [], []
 
