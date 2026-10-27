@@ -16,7 +16,7 @@ from pxr import Sdf, Tf, Usd, UsdGeom, UsdLux, UsdShade, UsdSkel
 from ..common import digest
 from ..report import Diagnostic, fail
 from . import Generated, SourceParseError
-from . import glb, paths, transforms
+from . import glb, paths, skinning, transforms
 
 _EARLIEST = Usd.TimeCode.EarliestTime()
 
@@ -377,53 +377,17 @@ def _influences(target, skeleton, count, path, mode):
         if any(str(t) not in skeleton.tokens for t in order):
             fail("E_SOURCE_VALUE", path, "skel:joints names a joint the skeleton does not have.")
         mapping = [skeleton.tokens[str(t)] for t in order]
-    rows, losses = [], []
-    normalized = unweighted = truncated = widest = 0
-    dropped = 0.0
+    merged_rows = []
     for v in range(count):
-        merged = {}
-        for joint, weight in zip(indices[size * v:size * v + size], weights[size * v:size * v + size]):
-            if not math.isfinite(weight) or weight < 0 or not 0 <= joint < len(mapping):
-                fail("E_SOURCE_VALUE", path, "Joint influences need valid joint indices and finite nonnegative weights.")
-            if weight > 0:
-                merged[mapping[joint]] = merged.get(mapping[joint], 0.0) + weight
-        total = math.fsum(merged.values())
-        if total == 0:
-            unweighted += 1
-            merged = {skeleton.root: 1.0}
-        elif abs(total - 1) > 1e-6:
-            normalized += 1
-        pairs = sorted(merged.items(), key=lambda jw: (-jw[1], jw[0]))
-        if len(pairs) > 4 and mode == "top4":
-            truncated += 1
-            dropped = max(dropped, pairs[4][1] / total)
-            pairs = pairs[:4]
-        widest = max(widest, len(pairs))
-        rows.append(tuple(sorted(pairs)))
-    if widest > 4:
-        losses.append(Diagnostic("I_INFLUENCES_N", "info", path, f"Vertices have up to {widest} joint influences, stored in "
-                                 f"{(widest + 3) // 4} JOINTS/WEIGHTS sets.", "No action needed."))
-    if truncated:
-        losses.append(_warning("W_INFLUENCES_TRUNCATED", path, f"{_count(truncated, 'vertex', 'vertices')} kept only their four "
-                               f"largest influences; the largest dropped weight is {dropped:.6g}."))
-    if normalized:
-        losses.append(_warning("W_WEIGHTS_NORMALIZED", path, f"Normalized the weights of {_count(normalized, 'vertex', 'vertices')} "
-                               "that did not sum to 1."))
-    if unweighted:
-        losses.append(_warning("W_UNWEIGHTED_VERTICES", path, f"Bound {_count(unweighted, 'unweighted vertex', 'unweighted vertices')} "
-                               "to the skeleton root joint."))
+        joints = indices[size * v:size * v + size]
+        if any(not 0 <= joint < len(mapping) for joint in joints):
+            fail("E_SOURCE_VALUE", path, "Joint influences need valid joint indices.")
+        merged_rows.append(skinning.merge(zip((mapping[j] for j in joints), weights[size * v:size * v + size]), path))
+    rows, losses = skinning.influence_rows(merged_rows, skeleton.root, mode, path)
     method = str(target.GetSkinningMethod())
     if method != "classicLinear":
-        losses.append(_warning("W_SKINNING_METHOD", path, f"Skinning method {method} is stored as linear blend skinning."))
-    return tuple(rows), losses
-
-
-def _count(n, one, many):
-    return f"{n} {one if n == 1 else many}"
-
-
-def _warning(code, ref, message):
-    return Diagnostic(code, "warning", ref, message, "Review the declared loss.")
+        losses.append(skinning.method_loss(path, method))
+    return rows, losses
 
 
 def _quaternions(rows):
@@ -463,7 +427,7 @@ def _animate(stage, entries, skeletons, weighted, conversion):
     shift = min(0.0, codes[0])
     losses = []
     if shift < 0:
-        losses.append(_warning("W_TIME_SHIFTED", "/", f"Shifted time codes by {-shift:g} so the animation starts at 0 seconds."))
+        losses.append(skinning.warning("W_TIME_SHIFTED", "/", f"Shifted time codes by {-shift:g} so the animation starts at 0 seconds."))
     times = tuple((c - shift) / rate for c in codes)
     poses = {}
     channels = []
@@ -527,13 +491,13 @@ def _convert(stage, adapter, dependencies, external, options):
             parent = parent.GetParent()
         if parent:
             children[index[prim_paths[parent.GetPath()]]].append(i)
-    def skinning(prim):
+    def skinned_by(prim):
         found = bound.get(prim.GetPath())
         if found is None or found[0] not in skeletons or not skeletons[found[0]].paths or not found[1].HasJointInfluences():
             return None
         return found
 
-    used = {skinning(prim)[0] for _, prim, _ in entries if prim is not None and skinning(prim) is not None}
+    used = {skinned_by(prim)[0] for _, prim, _ in entries if prim is not None and skinned_by(prim) is not None}
     skin_of = {path: k for k, path in enumerate(sorted(used, key=lambda path: index[skeletons[path].owner]))}
     nodes, meshes, target_keys, losses, weighted = [], [], [], [], {}
     for i, (path, prim, joint) in enumerate(entries):
@@ -545,7 +509,7 @@ def _convert(stage, adapter, dependencies, external, options):
             name = skeleton.paths[j].rsplit("/", 1)[1]
             nodes.append(glb.Node(name=paths.unescape(name), children=tuple(children[i]), **_trs(local, path)))
             continue
-        skinned = skinning(prim)
+        skinned = skinned_by(prim)
         binding = bound.get(prim.GetPath())
         animation = skeletons[binding[0]].query.GetAnimQuery() if binding is not None and binding[0] in skeletons else None
         local = _local(prim, path, conversion)
@@ -555,14 +519,14 @@ def _convert(stage, adapter, dependencies, external, options):
                     or UsdGeom.Xformable(prim).TransformMightBeTimeVarying()):
                 _shear(path)
             baked, local = local, None
-            losses.append(_warning("W_SHEAR_BAKED", path, "Sheared transform baked into the mesh points."))
+            losses.append(skinning.warning("W_SHEAR_BAKED", path, "Sheared transform baked into the mesh points."))
         elif local is not None and transforms.determinant(local) < 0:
             losses.append(Diagnostic("I_MIRRORED", "info", path, "Mirrored transform stored as a negative X scale.", "No action needed."))
         mesh_index = skin_index = static_weights = None
         if prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(prim)
             if mesh.GetSubdivisionSchemeAttr().Get() != UsdGeom.Tokens.none:
-                losses.append(_warning("W_SUBDIV_CAGE", path, "Subdivision surface uses its control cage."))
+                losses.append(skinning.warning("W_SUBDIV_CAGE", path, "Subdivision surface uses its control cage."))
             left = mesh.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded
             if left:
                 losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
@@ -572,8 +536,8 @@ def _convert(stage, adapter, dependencies, external, options):
             if points:
                 tokens, keys, offsets, inbetweens = _blend_shapes(prim, points, path)
                 if inbetweens:
-                    losses.append(_warning("W_INBETWEENS_DROPPED", path,
-                                           f"Dropped {_count(inbetweens, 'in-between shape', 'in-between shapes')}; the main shapes are kept."))
+                    losses.append(skinning.warning("W_INBETWEENS_DROPPED", path,
+                                           f"Dropped {skinning.count(inbetweens, 'in-between shape', 'in-between shapes')}; the main shapes are kept."))
                 offsets = [tuple(conversion.point(o) for o in target) for target in offsets]
                 flip = left
                 if skinned is not None:
