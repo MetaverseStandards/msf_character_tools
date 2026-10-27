@@ -245,8 +245,19 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
 
 
 def _program_document(compiled):
-    return canonical_json({"instructions": compiled.instructions, "required_inputs": compiled.required_inputs,
-                           "output_ids": compiled.output_ids})
+    # Not canonical_json: views rebuilt from these bytes must keep key order and
+    # the sign of zero, which canonical_json drops.
+    views = {"instructions": compiled.instructions, "required_inputs": compiled.required_inputs,
+             "output_ids": compiled.output_ids}
+    return json.dumps(_plain(views), ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8", "surrogatepass")
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_plain(v) for v in value]
+    return value
 
 
 class _Inexact(Exception):

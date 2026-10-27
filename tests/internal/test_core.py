@@ -56,6 +56,7 @@ class CoreTests(unittest.TestCase):
             reference = build(doc)
             expected = m.evaluate_mapping(reference, samples)
         self.assertEqual(compiled.to_dict(), reference.to_dict())
+        self.assertTrue(same(compiled.instructions, reference.instructions), (compiled.instructions, reference.instructions))
         actual = m.evaluate_mapping(compiled, samples)
         self.assertEqual(actual.report.to_dict(), expected.report.to_dict())
         if expected.ok:
@@ -68,6 +69,15 @@ class CoreTests(unittest.TestCase):
         result = self.assertSameAsReference(affine(1 + 2**-30, -1), [frame({'in': 1 - 2**-30})])
         self.assertIsNotNone(result.value._core, 'evaluation did not take the core path')
         self.assertTrue(same(result.value.samples[0]['values']['out'], 0.0))
+
+    def test_signed_zero_coefficients_keep_their_sign(self):
+        result = self.assertSameAsReference(affine(1, -0.0, low=-1, high=1), [frame({'in': -0.0})])
+        self.assertIsNotNone(result.value._core)
+        self.assertTrue(same(result.value.samples[0]['values']['out'], -0.0))
+        knots = [[0, 1.59], [7.9e299, 1.13], [1e300, -0.0]]
+        result = self.assertSameAsReference(ops.document(knots, low=0, high=1e300, out_low=-1, out_high=2), [frame({'in': 1e300})])
+        self.assertIsNotNone(result.value._core)
+        self.assertTrue(same(result.value.samples[0]['values']['out'], -0.0))
 
     def test_gaze_matches_reference_bit_for_bit(self):
         rng = random.Random(7)
