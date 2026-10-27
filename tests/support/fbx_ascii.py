@@ -86,6 +86,23 @@ class Scene:
             self.connect(bone, cluster)
         return skin
 
+    def blend(self, geometry, name, channels):
+        """channels: (name, deform percent, [(full weight percent, point indices, offsets)]); returns channel ids."""
+        deformer = self._add(f'\tDeformer: @ID@, "Deformer::{name}", "BlendShape" {{\n\t\tVersion: 100\n\t}}\n', geometry)
+        ids = []
+        for channel_name, percent, shapes in channels:
+            text = (f'\tDeformer: @ID@, "SubDeformer::{channel_name}", "BlendShapeChannel" {{\n\t\tVersion: 100\n'
+                    f'\t\tDeformPercent: {_numbers([float(percent)])}\n'
+                    + _array("FullWeights", [float(w) for w, _, _ in shapes], "\t\t") + "\t}\n")
+            channel = self._add(text, deformer)
+            ids.append(channel)
+            for k, (_, indexes, offsets) in enumerate(shapes):
+                shape = (f'\tGeometry: @ID@, "Geometry::{channel_name}{k}", "Shape" {{\n\t\tVersion: 100\n'
+                         + _array("Indexes", indexes, "\t\t") + _array("Vertices", [float(c) for o in offsets for c in o], "\t\t")
+                         + _array("Normals", [0.0] * (3 * len(offsets)), "\t\t") + "\t}\n")
+                self._add(shape, channel)
+        return ids
+
     def text(self):
         s = self.settings
         props = "".join(f'\t\tP: "{k}", "int", "Integer", "",{v}\n' for k, v in (

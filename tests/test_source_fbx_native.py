@@ -140,6 +140,30 @@ class UfbxShim(unittest.TestCase):
                 self.assertEqual(kind[0], method)
                 self.assertEqual(lib.msf_fbx_skin_sizes(handle, 0, 1, sizes), 0)
 
+    def test_blend_channels_keyframes_and_names(self):
+        from msf_tools_ufbx import ffi, lib
+        scene = Scene()
+        body = scene.model('Body', kind='Mesh')
+        geometry = scene.mesh(body, 'Body', [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [[0, 1, 2]])
+        scene.blend(geometry, 'Face', [('smile', 25, [(50, [2], [(0, 0.25, 0)]), (100, [1, 2], [(0, 0, 1), (0, 1, 0)])]),
+                                       ('blink', 0, [(100, [0], [(1, 0, 0)])])])
+        handle = self.scene(scene.text())
+        sizes = ffi.new('uint32_t[2]')
+        self.assertEqual(lib.msf_fbx_blend_sizes(handle, 0, 0, sizes), 1)
+        self.assertEqual(tuple(sizes), (2, 3))
+        deformer, counts, indices = ffi.new('uint32_t *'), ffi.new('uint32_t[2]'), ffi.new('uint32_t[3]')
+        offsets, targets, weight = ffi.new('double[9]'), ffi.new('double[2]'), ffi.new('double *')
+        names = ffi.new('const char *[2]')
+        lengths = ffi.new('size_t[2]')
+        self.assertEqual(lib.msf_fbx_blend_fill(handle, 0, 0, deformer, counts, indices, offsets, targets, 2, 3, weight, names, lengths), 1)
+        self.assertEqual((deformer[0], list(counts), list(indices), list(targets)), (0, [1, 2], [2, 1, 2], [0.5, 1.0]))
+        self.assertEqual(list(offsets)[3:6], [0.0, 0.0, 1.0])
+        self.assertAlmostEqual(weight[0], 0.25)
+        self.assertEqual([ffi.unpack(names[k], lengths[k]).decode() for k in range(2)], ['Face', 'smile'])
+        self.assertEqual(lib.msf_fbx_blend_sizes(handle, 0, 1, sizes), 1)
+        self.assertEqual(tuple(sizes), (1, 1))
+        self.assertEqual(lib.msf_fbx_blend_sizes(handle, 0, 2, sizes), 0)
+
 
 class VendoredUfbx(unittest.TestCase):
     def test_vendored_files_match_the_source_lock(self):

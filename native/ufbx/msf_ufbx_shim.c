@@ -246,3 +246,63 @@ int msf_fbx_skin_fill(const msf_fbx *h, uint32_t m, uint32_t d, uint32_t *vertex
     *skinning_method = (int)skin->skinning_method;
     return written == entries;
 }
+
+static const ufbx_blend_channel *channel_at(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *deformer_index,
+                                            const ufbx_blend_deformer **deformer) {
+    const ufbx_mesh *mesh = mesh_at(h, m);
+    if (!mesh) return NULL;
+    uint32_t seen = 0;
+    for (size_t d = 0; d < mesh->blend_deformers.count; d++) {
+        const ufbx_blend_deformer *blend = mesh->blend_deformers.data[d];
+        if (c < seen + blend->channels.count) {
+            if (deformer_index) *deformer_index = (uint32_t)d;
+            if (deformer) *deformer = blend;
+            return blend->channels.data[c - seen];
+        }
+        seen += (uint32_t)blend->channels.count;
+    }
+    return NULL;
+}
+
+int msf_fbx_blend_sizes(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t sizes[2]) {
+    const ufbx_blend_channel *channel = channel_at(h, m, c, NULL, NULL);
+    if (!channel || !sizes) return 0;
+    uint32_t total = 0;
+    for (size_t k = 0; k < channel->keyframes.count; k++) {
+        const ufbx_blend_shape *shape = channel->keyframes.data[k].shape;
+        total += shape ? (uint32_t)shape->num_offsets : 0;
+    }
+    sizes[0] = (uint32_t)channel->keyframes.count;
+    sizes[1] = total;
+    return 1;
+}
+
+int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *deformer, uint32_t *key_counts,
+                       uint32_t *indices, double *offsets, double *target_weights, uint32_t keyframes, uint32_t total,
+                       double *weight, const char **names, size_t *name_lengths) {
+    const ufbx_blend_deformer *blend = NULL;
+    const ufbx_blend_channel *channel = channel_at(h, m, c, deformer, &blend);
+    uint32_t sizes[2];
+    if (!channel || !key_counts || !indices || !offsets || !target_weights || !weight || !names || !name_lengths) return 0;
+    if (!msf_fbx_blend_sizes(h, m, c, sizes) || sizes[0] != keyframes || sizes[1] != total) return 0;
+    uint32_t written = 0;
+    for (uint32_t k = 0; k < keyframes; k++) {
+        const ufbx_blend_keyframe key = channel->keyframes.data[k];
+        uint32_t count = key.shape ? (uint32_t)key.shape->num_offsets : 0;
+        key_counts[k] = count;
+        target_weights[k] = key.target_weight;
+        for (uint32_t i = 0; i < count; i++) {
+            indices[written] = key.shape->offset_vertices.data[i];
+            offsets[3 * written + 0] = key.shape->position_offsets.data[i].x;
+            offsets[3 * written + 1] = key.shape->position_offsets.data[i].y;
+            offsets[3 * written + 2] = key.shape->position_offsets.data[i].z;
+            written++;
+        }
+    }
+    *weight = channel->weight;
+    names[0] = blend->name.data;
+    name_lengths[0] = blend->name.length;
+    names[1] = channel->name.data;
+    name_lengths[1] = channel->name.length;
+    return written == total;
+}
