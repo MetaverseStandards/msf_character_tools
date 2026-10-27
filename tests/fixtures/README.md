@@ -8,7 +8,7 @@ Clip `CombinedReference` index0 spans0..2 seconds. Node5 morph weights animate; 
 
 `eight-weighted.gltf` binds two points to eight joints each, with nonzero weights split across `JOINTS_0`/`WEIGHTS_0` and `JOINTS_1`/`WEIGHTS_1`; its expected positions follow from the joint translations and one quarter turn, computed directly in the test.
 
-`native-agreement.gltf` is a one-vertex skinned, morphed and animated asset with two instances of one mesh. `native/tests/test_agreement.py` and `test_core_semantics.py` both read it.
+`native-agreement.gltf` is a one-vertex skinned, morphed and animated asset with two instances of one mesh. `test_core_semantics.py` reads it; it was shared with the native pilot, removed in 0.3.0.
 
 `simple-skin.gltf` is the Khronos **SimpleSkin** sample (glTF-Embedded) by Marco Hutter, **CC0-1.0**, copied unchanged from KhronosGroup/glTF-Sample-Assets commit 8f492390ddc7a2ae221a1369ef560589cf8c70fb. Its rotation keys are up to 2.3e-4 off unit length, which glTF-Validator accepts. It is not generated.
 

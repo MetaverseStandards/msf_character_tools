@@ -17,9 +17,10 @@ Every built package contains `msf_tools/_build_info.json`:
 
 `setup.py` writes the file at build time, so it is never checked in (`.gitignore` lists it):
 
-- A build from the top of a Git checkout with no changes to tracked files records `HEAD`. This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
-- An sdist has no `.git`, so building one writes the record into the sdist, and a wheel built from that sdist copies it if its version matches.
-- Any other build, such as one from a checkout with uncommitted changes, an editable install, or a source tree that is not the top of a checkout, records no commit and omits the file; non-editable builds print a warning. RCEF then refuses the install, as it does for any install without a source commit.
+- A build from the top of a Git checkout records `HEAD` when no tracked file has changed and no untracked file sits under `msf_tools/`, where setuptools would build it into the wheel. This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
+- Inside a Git checkout only Git counts: a stray `msf_tools/_build_info.json` there is never used.
+- An sdist has no `.git`, so building one writes the record into the sdist. A wheel built from that sdist outside any Git checkout copies it if its version matches.
+- Any other build, such as one from a checkout with uncommitted changes or untracked package files, an editable install, or a source tree inside a checkout but not at its top, records no commit and omits the file; non-editable builds print a warning. RCEF then refuses the install, as it does for any install without a source commit.
 
 A checked-in file cannot work, because a commit cannot contain its own hash.
 
