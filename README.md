@@ -20,6 +20,8 @@ python3 -m venv .venv
 .venv/bin/python -m msf_tools --help
 ```
 
+For a walkthrough that takes a real glTF, USD and FBX asset each through inspection, a sidecar binding, a mapping and posed geometry, see [examples/README.md](examples/README.md).
+
 There are no runtime dependencies. Setuptools is the installation build backend. The repository root supports `python -m msf_tools` without installation; consumers should import an installed package or explicitly select a local tools path.
 
 ## Six public APIs
