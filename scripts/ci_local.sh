@@ -179,7 +179,10 @@ fi
 if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
   san_cc="${MSF_SANITIZE_CC:-cc}"
   compilers=()
-  [ -n "${MSF_SANITIZE_CC:-}" ] && compilers=(-DCMAKE_C_COMPILER="$MSF_SANITIZE_CC" -DCMAKE_CXX_COMPILER="${MSF_SANITIZE_CXX:-c++}")
+  asan_dir=build/core-asan-3.12
+  # A build directory per compiler: CMake will not switch compilers in an existing one.
+  [ -n "${MSF_SANITIZE_CC:-}" ] && compilers=(-DCMAKE_C_COMPILER="$MSF_SANITIZE_CC" -DCMAKE_CXX_COMPILER="${MSF_SANITIZE_CXX:-c++}") \
+    && asan_dir=build/core-asan-$(basename "$MSF_SANITIZE_CC")-3.12
   case "$(uname -s)" in
     Darwin) preload=(DYLD_INSERT_LIBRARIES="$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)") ;;
     *) if "$san_cc" --version 2>/dev/null | grep -q clang; then
@@ -188,8 +191,8 @@ if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
          preload=(LD_PRELOAD="$("$san_cc" -print-file-name=libasan.so)")
        fi ;;
   esac
-  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON ${compilers[@]+"${compilers[@]}"} >/dev/null 2>&1 \
-      && cmake --build build/core-asan-3.12 >/dev/null 2>&1; then
+  if cmake -S . -B "$asan_dir" -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON ${compilers[@]+"${compilers[@]}"} >/dev/null 2>&1 \
+      && cmake --build "$asan_dir" >/dev/null 2>&1; then
     output=$(env "${preload[@]}" ASAN_OPTIONS=detect_leaks=0:strip_env=0 UBSAN_OPTIONS=print_stacktrace=1 "$py312" -B - <<'PY' 2>&1
 import sys, unittest
 sys.path[:0] = ['tests', 'tests/public']
@@ -207,7 +210,7 @@ PY
 )
     tier "Sanitizer tier (ASan + UBSan core with ufbx; public suite less 1 isolated-worker test, core, record and FBX tests)" $? "$output"
   else
-    lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
+    lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B $asan_dir -DMSF_SANITIZE=ON)")
     failed=1
   fi
   # Restore the normal 3.12 build. Copy only the newest extension: an older build directory can
