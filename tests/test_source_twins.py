@@ -20,7 +20,7 @@ from test_source_usd import trs
 
 ROOT = Path(os.environ['MSF_KHRONOS_ASSETS']) if os.environ.get('MSF_KHRONOS_ASSETS') else None
 PRESENT = HAVE_UFBX and ROOT is not None and (ROOT / 'Models').is_dir()
-MODELS = ('AnimatedMorphCube', 'Fox', 'MorphPrimitivesTest', 'RiggedFigure')
+MODELS = ('AnimatedMorphCube', 'Fox', 'MorphPrimitivesTest', 'RiggedFigure', 'SimpleSkin')
 
 
 def quaternion_matrix(q):
@@ -32,7 +32,9 @@ def quaternion_matrix(q):
 
 def euler_xyz(q):
     """FBX Euler degrees (rotation order XYZ, so R = Rz * Ry * Rx) for a glTF quaternion."""
-    r = quaternion_matrix(q)
+    # Authored glTF quaternions may be slightly off unit length (SimpleSkin is); evaluation normalizes them.
+    length = math.sqrt(sum(c * c for c in q))
+    r = quaternion_matrix([c / length for c in q])
     ry = math.asin(max(-1.0, min(1.0, -r[2][0])))
     return tuple(math.degrees(a) for a in (math.atan2(r[2][1], r[2][2]), ry, math.atan2(r[1][0], r[0][0])))
 
