@@ -50,7 +50,8 @@ if [ "$(uname -s)" = Linux ]; then
   for version in 3.11 3.12; do
     # Word splitting is wanted: the requirements are separate arguments.
     # shellcheck disable=SC2086
-    "$scratch/download/bin/python" -m pip download -q --only-binary=:all: --platform "manylinux_2_28_$(uname -m)" \
+    "$scratch/download/bin/python" -m pip download -q --only-binary=:all: \
+      --platform "manylinux_2_28_$(uname -m)" --platform "manylinux_2_17_$(uname -m)" --platform "manylinux_2_12_$(uname -m)" \
       --python-version "$version" -d "$scratch/wheelhouse" $requirements ninja==1.13.2
   done
   # Word splitting is wanted: MSF_PODMAN may carry podman's own options.
