@@ -23,7 +23,7 @@ import tomllib
 import unittest
 
 from msf_tools import _native
-from internal import oracle
+from internal import oracle, workspace
 
 GATE = os.environ.get('MSF_GATE') == '1'
 ROOT = Path(__file__).resolve().parents[2]
@@ -282,10 +282,10 @@ class AgainstTheOracle(unittest.TestCase):
 
     @unittest.skipUnless(GATE, 'gate tier: MSF_GATE=1')
     def test_rcef_authoring(self):
-        root = Path(os.environ.get('MSF_RCEF_ROOT', Path.home() / '.local/share/msf/RCEF'))
+        root = workspace.rcef_root()
         commit = os.environ.get('MSF_RCEF_COMMIT', '0d90172')
-        if not (root / '.git').exists():
-            self.skipTest(f'no RCEF checkout at {root}')
+        if root is None or not (root / '.git').exists():
+            self.skipTest(f'no RCEF checkout at {root}' if root else 'no RCEF checkout (set MSF_RCEF_ROOT)')
         archive = subprocess.run(['git', '-C', str(root), 'archive', commit], check=True, capture_output=True).stdout
         with tempfile.TemporaryDirectory() as tmp:
             with tarfile.open(fileobj=io.BytesIO(archive)) as tar:

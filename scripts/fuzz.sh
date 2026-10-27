@@ -9,14 +9,20 @@
 # Compilers without the fuzzer runtime (Apple clang) need MSF_LIBFUZZER, a
 # libFuzzer.a built from compiler-rt; see docs/testing.md. Seeds come from the
 # tracked fixtures and, when present, the ufbx corpus (MSF_UFBX_CORPUS) and the
-# Khronos assets (MSF_KHRONOS_ASSETS). Corpora persist in build/fuzz/corpus and
+# Khronos assets (MSF_KHRONOS_ASSETS), which default into the local workspace
+# $MSF as in scripts/ci_local.sh. MSF_PY312 (default python3.12, or the workspace
+# venv) configures the build. Corpora persist in build/fuzz/corpus and
 # findings land in build/fuzz/artifacts. Exits nonzero on any finding.
 set -u
 cd "$(dirname "$0")/.." || exit 2
 seconds="${1:-60}"
-MSF="${MSF:-$HOME/.local/share/msf}"
-export PATH="$MSF/_tools/bin:$PATH"
-py="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
+MSF="${MSF:-}"
+if [ -n "$MSF" ]; then
+  export PATH="$MSF/_tools/bin:$PATH"
+  py="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
+else
+  py="${MSF_PY312:-$(command -v python3.12)}"
+fi
 out=build/fuzz
 flags=(-DMSF_FUZZ=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DPython_EXECUTABLE="$py")
 [ -n "${MSF_LIBFUZZER:-}" ] && flags+=(-DMSF_LIBFUZZER="$MSF_LIBFUZZER")
@@ -24,17 +30,17 @@ harnesses=(gltf data_uri paths fbx)
 cmake -S . -B "$out" -G Ninja "${flags[@]}" >/dev/null || exit 2
 cmake --build "$out" --target "${harnesses[@]/#/fuzz_}" >/dev/null || exit 2
 
-ufbx="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
-khronos="${MSF_KHRONOS_ASSETS:-$MSF/_viz/assets/khronos}"
+ufbx="${MSF_UFBX_CORPUS:-${MSF:+$MSF/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274}}"
+khronos="${MSF_KHRONOS_ASSETS:-${MSF:+$MSF/_viz/assets/khronos}}"
 python3 -B - "$out/seed" "$ufbx" "$khronos" <<'PY' || exit 2
 import hashlib, pathlib, re, subprocess, sys
-seed, ufbx, khronos = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3])
+seed, ufbx, khronos = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 def put(kind, data):
     (seed / kind).mkdir(parents=True, exist_ok=True)
     (seed / kind / hashlib.sha1(data).hexdigest()).write_bytes(data)
 # The first byte of a glTF input picks the container (bit 0) and the resolver (bit 1).
 tracked = subprocess.run(['git', 'ls-files'], capture_output=True, text=True, check=True).stdout.split()
-glbs = [pathlib.Path(f) for f in tracked if f.endswith('.glb')] + sorted((khronos / 'Models').rglob('*.glb'))
+glbs = [pathlib.Path(f) for f in tracked if f.endswith('.glb')] + (sorted(pathlib.Path(khronos, 'Models').rglob('*.glb')) if khronos else [])
 for path in glbs:
     if path.stat().st_size < 200_000:
         put('gltf', b'\x01' + path.read_bytes())

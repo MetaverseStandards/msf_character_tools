@@ -23,6 +23,7 @@ from unittest import mock
 from msf_tools import _native
 from msf_tools.common import canonical_json, parse_json
 from msf_tools.report import Fault
+from internal import workspace
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIRED = os.environ.get('MSF_REQUIRE_CORE') == '1'
@@ -216,10 +217,10 @@ class Documents(unittest.TestCase):
 
     @unittest.skipUnless(GATE, 'gate tier: MSF_GATE=1')
     def test_every_rcef_json_golden_round_trips_byte_for_byte(self):
-        root = Path(os.environ.get('MSF_RCEF_ROOT', Path.home() / '.local/share/msf/RCEF'))
+        root = workspace.rcef_root()
         commit = os.environ.get('MSF_RCEF_COMMIT', '0d90172')
-        if not (root / '.git').exists():
-            self.skipTest(f'no RCEF checkout at {root}')
+        if root is None or not (root / '.git').exists():
+            self.skipTest(f'no RCEF checkout at {root}' if root else 'no RCEF checkout (set MSF_RCEF_ROOT)')
         self.assertGreaterEqual(self.round_trip(goldens(root, commit)), 2, 'RCEF generated/ goldens were not canonical')
 
     def round_trip(self, documents):

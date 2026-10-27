@@ -21,11 +21,13 @@ import struct
 import subprocess
 import sys
 
-MSF = Path(os.environ.get('MSF', Path.home() / '.local/share/msf'))
 ROOT = Path(__file__).resolve().parents[2]
-PYTHON = Path(os.environ.get('MSF_ORACLE_PYTHON', MSF / '_tools/oracle-venv/bin/python'))
+# MSF_ORACLE_PYTHON names an interpreter with msf-tools 0.3.0 installed; within a
+# local workspace ($MSF) it defaults to $MSF/_tools/oracle-venv.
+_default = Path(os.environ['MSF']) / '_tools/oracle-venv/bin/python' if os.environ.get('MSF') else None
+PYTHON = Path(os.environ['MSF_ORACLE_PYTHON']) if os.environ.get('MSF_ORACLE_PYTHON') else _default
 REQUIRED = os.environ.get('MSF_REQUIRE_ORACLE') == '1'
-AVAILABLE = PYTHON.exists()
+AVAILABLE = PYTHON is not None and PYTHON.exists()
 # Set iteration order follows str hashes; with a fixed PYTHONHASHSEED, which the
 # oracle inherits, both sides iterate sets alike.
 SAME_HASHING = os.environ.get('PYTHONHASHSEED', 'random') != 'random'
@@ -160,4 +162,4 @@ def skip_reason():
         return None
     if REQUIRED:
         raise RuntimeError(f'MSF_REQUIRE_ORACLE=1 but there is no oracle Python at {PYTHON}')
-    return f'no 0.3.0 oracle at {PYTHON}'
+    return f'no 0.3.0 oracle at {PYTHON}' if PYTHON else 'no 0.3.0 oracle (set MSF_ORACLE_PYTHON)'

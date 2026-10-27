@@ -39,5 +39,46 @@
       "core/third_party/ufbx/ufbx.h": "f787be529af577efc04f3e3e735844a08556718dbb613d1211c2b313d72895dc"
     },
     "version": "0.23.1"
+  },
+  {
+    "bytes": 8304010,
+    "id": "ryu",
+    "retrieved": "2026-10-27",
+    "sha256": "5c039f2957769c5f61a8699b12d8703043b3f47c3ac6e2124c5a04afb6819f29",
+    "url": "https://codeload.github.com/ulfjack/ryu/tar.gz/4c0618b0e44f7ef027ebae05d2cc7812048f7c8f",
+    "vendored": {
+      "core/third_party/ryu/LICENSE-Apache2": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "core/third_party/ryu/LICENSE-Boost": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+      "core/third_party/ryu/ryu/common.h": "0bbd71d26da6193e678d0776cf418f43f287c73d6fd6725353df0aadf70f2a19",
+      "core/third_party/ryu/ryu/d2s.c": "d24323c7eb77d63f1e52c415212b50060b776f0883525d907d04954fcd48cf64",
+      "core/third_party/ryu/ryu/d2s_full_table.h": "2618f6e5fae6c4443899b184efe3d08295dd267dc9f1a994c983c7caca59ebe6",
+      "core/third_party/ryu/ryu/d2s_intrinsics.h": "1d05702f2edacce428223d4b43dd3095c1bd1f3ad30128ce1761d84356dddc7d",
+      "core/third_party/ryu/ryu/d2s_small_table.h": "54fec51f1c5eed786a8ce6de881b81582dd71f0812dcd4324b37396617bb0fa9",
+      "core/third_party/ryu/ryu/digit_table.h": "8b782573abc0b8554d74163ae6c02f0beb5c30d1e63eaebdb0ddf2c98d817e01",
+      "core/third_party/ryu/ryu/ryu.h": "b7feab0ba1df5e9ef3d602f386592ad152491405e49b408fb21c0e0e9e6bfb16"
+    },
+    "version": "4c0618b0e44f7ef027ebae05d2cc7812048f7c8f"
+  },
+  {
+    "bytes": 154257,
+    "id": "fast_float",
+    "retrieved": "2026-10-27",
+    "sha256": "71bb9e865b888df01351558db5a39586d13ea97ada162156b3a07784d8c1b26b",
+    "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/refs/tags/v8.3.2",
+    "vendored": {
+      "core/third_party/fast_float/LICENSE-APACHE": "097a889aa954d04e088b790b10a4014d6189561d0a6013935a73ce3d4ddaaf06",
+      "core/third_party/fast_float/LICENSE-BOOST": "8d8291caf1cee26d23acf3eb67c9f9a2d58f1c681b16a4fbe8cbfb9e3c0b5a9b",
+      "core/third_party/fast_float/LICENSE-MIT": "e562f3f974ced7e69dd1db77b820b36bcf8f30377f1aa105723fba449c53c4e6",
+      "core/third_party/fast_float/include/fast_float/ascii_number.h": "d3f3607d4e7aa0279322a4a847f8d5f937634b8938daa4c0f785d69981a91120",
+      "core/third_party/fast_float/include/fast_float/bigint.h": "ba39c5d8d8c8fe9ca8d7300aea8392a4367fd60689a9b8e3268aadceca729e53",
+      "core/third_party/fast_float/include/fast_float/constexpr_feature_detect.h": "2dd2dc5f98a8f1a78813e62d47e82a19ebe42af726356723d60f6eb387c6dd38",
+      "core/third_party/fast_float/include/fast_float/decimal_to_binary.h": "5f4d50ddfac62add34b6682fc0cded2af3e875716aeaa3c9bfdee0a87d9e797c",
+      "core/third_party/fast_float/include/fast_float/digit_comparison.h": "69fb10f59005eabf0d44a5caf4733fd97a3838a8ac7090c4dc6e3e9e61a31ac3",
+      "core/third_party/fast_float/include/fast_float/fast_float.h": "fec4c0dc177fb3986a9007824c81fb93338ef83a6dba23325d430174a8686ce1",
+      "core/third_party/fast_float/include/fast_float/fast_table.h": "c18e0a0a2513215730557cc1dd53541cacd72855ddc0287934e78b364f989edb",
+      "core/third_party/fast_float/include/fast_float/float_common.h": "63c9b24f189b98389e2f2b422419e0b037369e9d830fca3558af3980f6f34657",
+      "core/third_party/fast_float/include/fast_float/parse_number.h": "f7435c8f2fafd6ef024869f862eca442963d7bb4fde468b38d46303eddf5a74c"
+    },
+    "version": "8.3.2"
   }
 ]

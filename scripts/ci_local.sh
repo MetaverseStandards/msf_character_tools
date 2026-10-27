@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: MIT
 # The CI run: what .github/workflows/check.yml (dormant) would run, on local Python 3.11 and 3.12
 # environments, then print a summary block for a pull-request description.
-# Interpreters default to $MSF/_tools/venv3.11 and venv3.12; override with
-# MSF_PY311 / MSF_PY312.
+# Interpreters are MSF_PY311 / MSF_PY312, by default python3.11 and python3.12 on
+# PATH. MSF names an optional local workspace: with it set, the interpreters
+# default to $MSF/_tools/venv3.11 and venv3.12, cmake, ninja and uv come from
+# $MSF/_tools, the 0.3.0 oracle from $MSF/_tools/oracle-venv, RCEF from $MSF/RCEF
+# and the asset tiers from $MSF/_viz/assets. Each optional input also has its own
+# variable (see docs/testing.md); tiers whose inputs are absent are skipped.
 #
 #   --gate      add the gate tier: 10^7 floats against repr, wider JSON fuzzing,
 #               and RCEF's JSON goldens (MSF_RCEF_ROOT, MSF_RCEF_COMMIT)
@@ -24,20 +28,34 @@ for arg in "$@"; do
     *) echo "usage: scripts/ci_local.sh [--gate] [--sanitize] [--fuzz]" >&2; exit 2 ;;
   esac
 done
-MSF="${MSF:-$HOME/.local/share/msf}"
+MSF="${MSF:-}"
 failed=0
 lines=()
 
 seconds() { python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.1f}")' "$1"; }
 
-uv="${UV:-$MSF/_tools/boot/bin/uv}"
-export UV_CACHE_DIR="${UV_CACHE_DIR:-$MSF/_tools/uv-cache}"
+# interpreter VERSION: MSF_PY3xx, else the workspace venv, else pythonX.Y on PATH.
+interpreter() {
+  local var="MSF_PY${1/./}"
+  if [ -n "${!var:-}" ]; then echo "${!var}"
+  elif [ -n "$MSF" ]; then echo "$MSF/_tools/venv$1/bin/python"
+  else command -v "python$1" || echo "python$1"
+  fi
+}
+# workspace SUBPATH: $MSF/SUBPATH in a workspace, else nothing.
+workspace() { [ -n "$MSF" ] && echo "$MSF/$1"; }
+
+if [ -n "$MSF" ]; then
+  uv="${UV:-$MSF/_tools/boot/bin/uv}"
+  export UV_CACHE_DIR="${UV_CACHE_DIR:-$MSF/_tools/uv-cache}"
+  export PATH="$MSF/_tools/bin:$PATH"
+else
+  uv="${UV:-$(command -v uv)}"
+fi
 
 # Build the C++ core in place for each Python, then require it in the suites.
-export PATH="$MSF/_tools/bin:$PATH"
 for version in 3.11 3.12; do
-  var="MSF_PY${version/./}"
-  py="${!var:-$MSF/_tools/venv$version/bin/python}"
+  py=$(interpreter $version)
   [ -x "$py" ] || continue
   start=$(python3 -c 'import time; print(time.time())')
   if cmake -S . -B "build/core-$version" -G Ninja -DPython_EXECUTABLE="$py" -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
@@ -50,8 +68,17 @@ for version in 3.11 3.12; do
   fi
 done
 export MSF_REQUIRE_CORE=1
-# Differential tests against the 0.3.0 oracle venv fail instead of skipping without it.
-export MSF_REQUIRE_ORACLE="${MSF_REQUIRE_ORACLE-1}"
+# Differential tests against the 0.3.0 oracle (MSF_ORACLE_PYTHON) skip without it, except in a
+# workspace, where a missing oracle fails them; MSF_REQUIRE_ORACLE overrides either way.
+[ -n "$MSF" ] && export MSF_ORACLE_PYTHON="${MSF_ORACLE_PYTHON:-$MSF/_tools/oracle-venv/bin/python}"
+if [ -n "$MSF" ]; then export MSF_REQUIRE_ORACLE="${MSF_REQUIRE_ORACLE-1}"; else export MSF_REQUIRE_ORACLE="${MSF_REQUIRE_ORACLE-0}"; fi
+if [ -n "${MSF_ORACLE_PYTHON:-}" ] && [ -x "$MSF_ORACLE_PYTHON" ]; then
+  lines+=("- Oracle: msf-tools 0.3.0 at $MSF_ORACLE_PYTHON")
+elif [ "$MSF_REQUIRE_ORACLE" = 1 ]; then
+  lines+=("- Oracle: MISSING at ${MSF_ORACLE_PYTHON:-(MSF_ORACLE_PYTHON unset)}, and MSF_REQUIRE_ORACLE=1")
+else
+  lines+=("- Oracle: not found, so the differential tests skip (set MSF_ORACLE_PYTHON to a Python with msf-tools 0.3.0)")
+fi
 # 0.3.0 iterated sets of channel IDs; with one seed here and in the oracle, both sides order them alike.
 export PYTHONHASHSEED="${PYTHONHASHSEED-0}"
 
@@ -82,16 +109,18 @@ tier() {
   fi
 }
 
-# A missing or broken FBX or USD reader fails the suites instead of skipping their tests.
-export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx,usd}"
+# A missing or broken reader fails the suites instead of skipping their tests: FBX is compiled
+# in, so always; USD (usd-core, the usd extra) in a workspace, or when MSF_REQUIRE_FORMATS says so.
+if [ -n "$MSF" ]; then export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx,usd}"; else export MSF_REQUIRE_FORMATS="${MSF_REQUIRE_FORMATS-fbx}"; fi
 
+interpreters=0
 for version in 3.11 3.12; do
-  var="MSF_PY${version/./}"
-  py="${!var:-$MSF/_tools/venv$version/bin/python}"
+  py=$(interpreter $version)
   if [ ! -x "$py" ]; then
     lines+=("- Python $version: SKIPPED (no interpreter at $py)")
     continue
   fi
+  interpreters=$((interpreters + 1))
   exact=$("$py" -c 'import platform; print(platform.python_version())')
   summary=()
   for suite in public internal; do
@@ -110,8 +139,12 @@ for version in 3.11 3.12; do
   if "$py" -B check.py >/dev/null 2>&1; then check="check.py OK"; else check="check.py FAILED"; failed=1; fi
   lines+=("- Python $exact: unittest ${summary[0]}; ${summary[1]}; $check")
 done
+if [ $interpreters -eq 0 ]; then
+  lines+=("- Suites: FAILED (no Python 3.11 or 3.12 found; set MSF_PY311 or MSF_PY312)")
+  failed=1
+fi
 
-py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
+py312=$(interpreter 3.12)
 if [ -x "$py312" ]; then
   if unexercised=$(PYTHONPATH=.:tests "$py312" -B tests/internal/test_diagnostics_registry.py 2>&1); then
     lines+=("- Diagnostics registry: $unexercised")
@@ -129,8 +162,7 @@ fi
 # Gate tier (--gate): the G1 checks too slow for the fast suite.
 if [ $gate -eq 1 ] && [ -x "$py312" ]; then
   for version in 3.11 3.12; do
-    var="MSF_PY${version/./}"
-    py="${!var:-$MSF/_tools/venv$version/bin/python}"
+    py=$(interpreter $version)
     [ -x "$py" ] || continue
     start=$(python3 -c 'import time; print(time.time())')
     output=$(MSF_GATE=1 suites "$py" '' 'test_core_*.py')
@@ -188,54 +220,55 @@ else
 fi
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
-openusd="${MSF_OPENUSD_ASSETS:-$MSF/_viz/assets/openusd}"
-if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
+openusd="${MSF_OPENUSD_ASSETS:-$(workspace _viz/assets/openusd)}"
+if [ -n "$openusd" ] && [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
   output=$(MSF_OPENUSD_ASSETS="$openusd" suites "$py312" test_source_openusd.py '')
   tier "OpenUSD assets tier" $? "$output"
 else
-  lines+=("- OpenUSD assets tier: SKIPPED (no assets at $openusd)")
+  lines+=("- OpenUSD assets tier: SKIPPED (no assets at ${openusd:-MSF_OPENUSD_ASSETS})")
 fi
 
 # Optional tier on ufbx's own FBX corpus, kept out of the fast suite.
-corpus="${MSF_UFBX_CORPUS:-$(ls -d "$MSF"/_viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274 2>/dev/null)}"
+corpus="${MSF_UFBX_CORPUS:-$(workspace _viz/assets/ufbx/ufbx-26a482ae66871d7de36eb722aa060bce95bce274)}"
 if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ]; then
   output=$(MSF_UFBX_CORPUS="$corpus" suites "$py312" '' 'test_source_fbx_[cd]*.py')
   tier "ufbx corpus tier (loading, inspection, DCC reference frames, 0.3.0 oracle)" $? "$output"
 else
-  lines+=("- ufbx corpus tier: SKIPPED (needs the corpus under \$MSF/_viz/assets/ufbx)")
+  lines+=("- ufbx corpus tier: SKIPPED (no ufbx 0.23.1 source tree at ${corpus:-MSF_UFBX_CORPUS})")
 fi
 
 # Optional tier: Khronos sample assets re-authored as FBX, kept out of the fast suite.
-khronos="${MSF_KHRONOS_ASSETS:-$MSF/_viz/assets/khronos}"
-if [ -d "$khronos/Models" ] && [ -x "$py312" ]; then
+khronos="${MSF_KHRONOS_ASSETS:-$(workspace _viz/assets/khronos)}"
+if [ -n "$khronos" ] && [ -d "$khronos/Models" ] && [ -x "$py312" ]; then
   output=$(MSF_KHRONOS_ASSETS="$khronos" suites "$py312" test_source_twins.py '')
   tier "Khronos FBX twins tier" $? "$output"
 else
-  lines+=("- Khronos FBX twins tier: SKIPPED (needs \$MSF/_viz/assets/khronos)")
+  lines+=("- Khronos FBX twins tier: SKIPPED (no glTF-Sample-Assets checkout at ${khronos:-MSF_KHRONOS_ASSETS})")
 fi
 
 # Optional tier: the 09K real-asset harness recipes, one test per CASE_MATRIX ID.
-real="${MSF_REAL_ASSETS:-$MSF/_viz/assets/real09K}"
-if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -x "$py312" ]; then
+real="${MSF_REAL_ASSETS:-$(workspace _viz/assets/real09K)}"
+if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -x "$py312" ]; then
   output=$(MSF_REAL_ASSETS="$real" suites "$py312" test_real_assets.py test_real_assets_internal.py)
   tier "Real-asset recipe tier" $? "$output" 2
 else
-  lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at $real)")
+  lines+=("- Real-asset recipe tier: SKIPPED (no 09K inputs at ${real:-MSF_REAL_ASSETS})")
 fi
 
 # Optional tier: the end-to-end examples, run as scripts on the fetched assets.
-examples="${MSF_EXAMPLE_ASSETS:-$MSF/_viz/assets/examples}"
-if [ -f "$examples/Fox.glb" ] && [ -x "$py312" ]; then
+examples="${MSF_EXAMPLE_ASSETS:-$(workspace _viz/assets/examples)}"
+if [ -n "$examples" ] && [ -f "$examples/Fox.glb" ] && [ -x "$py312" ]; then
   output=$(MSF_EXAMPLE_ASSETS="$examples" MSF_REAL_ASSETS="$real" suites "$py312" test_examples.py test_examples_internal.py)
   tier "Examples tier" $? "$output" 2
 else
-  lines+=("- Examples tier: SKIPPED (run examples/fetch_assets.py --dest $examples)")
+  lines+=("- Examples tier: SKIPPED (run examples/fetch_assets.py --dest DIR and set MSF_EXAMPLE_ASSETS=DIR)")
 fi
 
 # docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
-if [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -d "$khronos/Models" ] && [ -n "$corpus" ] \
-    && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
-  fresh="$MSF/_tools/parity.md"
+if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -n "$khronos" ] && [ -d "$khronos/Models" ] \
+    && [ -d "$corpus/data" ] && [ -n "$examples" ] && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
+  mkdir -p build
+  fresh=build/parity.md
   if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
       && cmp -s "$fresh" docs/parity.md; then
     lines+=("- docs/parity.md: matches a fresh measurement")
@@ -249,7 +282,7 @@ fi
 
 # A wheel built from a clean clone of HEAD, through an sdist as `uv build` does, must record HEAD
 # and hold exactly the tracked modules plus the extension.
-if [ -x "$uv" ] && [ -x "$py312" ]; then
+if [ -n "$uv" ] && [ -x "$uv" ] && [ -x "$py312" ]; then
   scratch=$(mktemp -d)
   head=$(git rev-parse HEAD)
   if git clone -q --no-hardlinks . "$scratch/src" && git -C "$scratch/src" checkout -q "$head" \
@@ -278,7 +311,7 @@ else
   lines+=("- Build record: SKIPPED (needs uv and Python 3.12)")
 fi
 
-# cmake and ninja for the C++ core are uv tools under $MSF/_tools/bin, put first on PATH above.
+# cmake and ninja for the C++ core: from PATH, which in a workspace starts with $MSF/_tools/bin.
 if command -v cmake >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1; then
   lines+=("- Build tools: cmake $(cmake --version | head -1 | cut -d' ' -f3), ninja $(ninja --version)")
 else

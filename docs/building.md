@@ -8,10 +8,10 @@ Original documentation: CC-BY-SA-4.0.
 
 The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Authoring, packs, mappings and `math3d` exist only in the core, so msf-tools needs the extension; `MSF_TOOLS_PURE=1` skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths and the remaining Python reference paths.
 
-For work in a checkout, build the extension in place next to the modules:
+For work in a checkout, build the extension in place next to the modules. CMake finds nanobind through the chosen interpreter, so install it there first (`python3.12 -m pip install nanobind`). The interpreters that `scripts/ci_local.sh` uses (`MSF_PY311`, `MSF_PY312`) need it too.
 
 ```sh
-cmake -S . -B build/core-3.12 -G Ninja -DPython_EXECUTABLE=$MSF/_tools/venv3.12/bin/python -DMSF_CORE_IN_PLACE=ON
+cmake -S . -B build/core-3.12 -G Ninja -DPython_EXECUTABLE=python3.12 -DMSF_CORE_IN_PLACE=ON
 cmake --build build/core-3.12
 ```
 
@@ -46,11 +46,11 @@ A checked-in file cannot work, because a commit cannot contain its own hash.
 
 ## Tools
 
-CMake and Ninja for the C++ core are installed as uv tools under `$MSF/_tools`:
+CMake and Ninja come from `PATH`. In the maintainers' local workspace (`MSF`, see [testing](testing.md)) they are uv tools under `$MSF/_tools`:
 
 ```sh
 UV_TOOL_DIR=$MSF/_tools/uv-tools UV_TOOL_BIN_DIR=$MSF/_tools/bin uv tool install cmake
 UV_TOOL_DIR=$MSF/_tools/uv-tools UV_TOOL_BIN_DIR=$MSF/_tools/bin uv tool install ninja
 ```
 
-`scripts/ci_local.sh` puts `$MSF/_tools/bin` first on `PATH` and reports both versions. The FBX reader (ufbx in `core/third_party/ufbx` and the shim in `core/src`) is part of the same CMake build.
+With `MSF` set, `scripts/ci_local.sh` puts `$MSF/_tools/bin` first on `PATH`; either way it reports both versions. The FBX reader (ufbx in `core/third_party/ufbx` and the shim in `core/src`) is part of the same CMake build.

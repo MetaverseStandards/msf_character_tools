@@ -139,7 +139,7 @@ multiply computes a*b (b first). C++ multiply intentionally returns Result<Mat4>
 requiring callers to rebuild and check success. The native contract (`native/README.md` at 746a5fe)
 gave the exact surface, error codes, ownership and numerical policy. Independent
 literal binding oracles and supplemental agreement run on actual local bindings
-ON builds for macOS arm64 CPython3.11.17 and3.12.15+meta. Fresh independent review
+ON builds for macOS arm64 CPython 3.11.17 and 3.12.15 (a vendor-patched build). Fresh independent review
 of this candidate remains required before root commits it.
 
 ## Remaining gates
