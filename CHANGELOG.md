@@ -1,13 +1,12 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0
 
 ### Added
 - `schemas/diagnostics.toml` lists every diagnostic code with its severity, strict-losses rename, meaning and the release that added it. A test keeps it in step with the source.
 - Operators 1.1: `piecewise_linear`, with monotone knots spanning the input domain exactly and no extrapolation; new diagnostic `E_KNOTS`.
 - Authoring schema 1.1 adds the evidence status `calibrated_software`, which mapping compilation treats as `proposed`.
 - The authoring and pack JSON schemas accept versions 1.0 and 1.1.
-
 - Built packages carry `msf_tools/_build_info.json`, `{"version": ..., "commit": ...}`, naming the source commit; see `docs/building.md`.
 
 ### Removed
