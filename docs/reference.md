@@ -146,7 +146,13 @@ glTF formats refuse `limits` and `options` with `E_SOURCE_OPTIONS`.
 
 #### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
 
-Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Local transforms come from the earliest authored time and must be affine, free of shear and nonsingular. A layer with sublayers, references or payloads is refused with `E_SOURCE_REFERENCE` for now, and reader errors are `E_SOURCE_PARSE`.
+Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Local transforms come from the earliest authored time and must be affine, free of shear and nonsingular. Reader errors in any layer are `E_SOURCE_PARSE`.
+
+Before a stage is opened, every layer named by a sublayer, reference or payload is gathered:
+
+- Layer paths must start with `./` or `../` and stay inside the source root; absolute paths, URLs, search paths and escapes are `E_SOURCE_REFERENCE`, as are value clips.
+- Outside a USDZ, the resolver fetches each layer by its anchored path (for example `parts/sub.usda`). A missing resolver or an unreadable layer is `E_SOURCE_REFERENCE`. Fetched layers are recorded in `source.dependencies`, and `max_dependencies`/`max_dependency_bytes` are checked after each fetch.
+- Inside a USDZ, layers must be members of the package and are not fetched. The archive must be readable, with stored, unencrypted, uniquely named relative members, at most `max_usdz_members` of them; otherwise it is `E_USDZ_ARCHIVE`.
 
 ## Mapping and samples
 

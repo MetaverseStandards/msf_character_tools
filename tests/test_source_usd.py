@@ -1,13 +1,24 @@
 # SPDX-License-Identifier: MIT
 """The USD adapter with the real usd-core reader; skipped when pxr is not installed."""
 import importlib.util
+import io
 import struct
 import unittest
+import zipfile
 
 import msf_tools as m
-from msf_tools.common import thaw
+from msf_tools.common import digest, thaw
+from msf_tools.sources import SourceLimits
 
 HAVE_USD = importlib.util.find_spec('pxr') is not None
+
+
+def setUpModule():
+    # Importing pxr takes about half a second; pay it once here, not inside the first test.
+    if HAVE_USD:
+        importlib.import_module('msf_tools.sources.usd')
+
+
 SIGNAL = {'id': 'smile', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'literal'}
 
 FACE = b'''#usda 1.0
@@ -93,6 +104,109 @@ class UsdWalkingSkeleton(unittest.TestCase):
     def test_reader_errors_are_parse_diagnostics(self):
         result = m.inspect_asset(b'#usda 1.0\ndef Mesh "x" { garbage', 'usda')
         self.assertEqual([d.code for d in result.report.diagnostics], ['E_SOURCE_PARSE'])
+
+
+def layer(body, header=''):
+    return (f'#usda 1.0\n({header})\n' if header else '#usda 1.0\n').encode() + body.encode()
+
+
+ROOT_WITH_SUBLAYER = layer('def Xform "Root" (references = @./parts/ref.usda@</Thing>) {}\n',
+                           'subLayers = [@./parts/sub.usda@]')
+SUB = layer('def Xform "FromSub" {}\n')
+REF = layer('def Xform "Thing"\n{\n    def Xform "Inner" {}\n}\n')
+
+
+def usdz(members, compress=zipfile.ZIP_STORED, encrypt=False):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        for name, payload in members:
+            info = zipfile.ZipInfo(name)
+            info.compress_type = compress
+            archive.writestr(info, payload)
+    data = bytearray(buffer.getvalue())
+    if encrypt:
+        # zipfile clears flag bits on write, so set the encryption bit in both headers by hand.
+        for magic, offset in ((b'PK\x03\x04', 6), (b'PK\x01\x02', 8)):
+            at = data.find(magic)
+            data[at + offset] |= 0x1
+    return bytes(data)
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdDependencies(unittest.TestCase):
+    files = {'parts/sub.usda': SUB, 'parts/ref.usda': REF}
+
+    def errors(self, result):
+        return [(d.code, d.ref) for d in result.report.diagnostics if d.severity == 'error']
+
+    def test_relative_layers_are_fetched_through_the_resolver(self):
+        snapshot = good(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=self.files.__getitem__))
+        self.assertEqual(snapshot.source['node_paths'], ('/FromSub', '/Root', '/Root/Inner'))
+        self.assertEqual(thaw(snapshot.source['dependencies']),
+                         [{'uri': uri, 'sha256': digest(self.files[uri]), 'byte_length': len(self.files[uri])}
+                          for uri in ('parts/ref.usda', 'parts/sub.usda')])
+
+    def test_unsafe_or_unresolvable_references_are_refused(self):
+        self.assertEqual(self.errors(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda')), [('E_SOURCE_REFERENCE', '/')])
+        for asset in ('/etc/layer.usda', 'https://example.invalid/a.usda', 'parts/sub.usda', '../outside.usda',
+                      './parts/../../outside.usda', 'C:/layer.usda'):
+            with self.subTest(asset=asset):
+                data = layer('def Xform "Root" {}\n', f'subLayers = [@{asset}@]')
+                self.assertEqual(self.errors(m.inspect_asset(data, 'usda', resolver=lambda uri: SUB)), [('E_SOURCE_REFERENCE', '/')])
+        clipped = layer('def Xform "Root" (\n    clips = {\n        dictionary default = {\n'
+                        '            asset[] assetPaths = [@/etc/clip.usda@]\n            string primPath = "/Root"\n'
+                        '        }\n    }\n)\n{\n}\n')
+        self.assertEqual(self.errors(m.inspect_asset(clipped, 'usda', resolver=lambda uri: SUB)), [('E_SOURCE_REFERENCE', '/')])
+        broken = dict(self.files, **{'parts/sub.usda': b'#usda 1.0\ndef Xform "x" { garbage'})
+        self.assertEqual(self.errors(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=broken.__getitem__)),
+                         [('E_SOURCE_PARSE', '/')])
+
+    def test_dependency_limits_apply_while_fetching(self):
+        fetched = []
+        def resolver(uri):
+            fetched.append(uri)
+            return self.files[uri]
+        result = m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=resolver, limits=SourceLimits(max_dependencies=1))
+        self.assertEqual(self.errors(result), [('E_RESOURCE_LIMIT', '/source/dependencies')])
+        self.assertEqual(len(fetched), 2)
+        result = m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=self.files.__getitem__,
+                                 limits=SourceLimits(max_dependency_bytes=len(SUB) + len(REF) - 1))
+        self.assertEqual(self.errors(result), [('E_RESOURCE_LIMIT', '/source/dependencies')])
+
+    def test_usdz_packages_keep_dependencies_inside(self):
+        package = usdz([('root.usda', ROOT_WITH_SUBLAYER), ('parts/sub.usda', SUB), ('parts/ref.usda', REF)])
+        snapshot = good(m.inspect_asset(package, 'usdz'))
+        self.assertEqual(snapshot.source['node_paths'], ('/FromSub', '/Root', '/Root/Inner'))
+        self.assertEqual(snapshot.source['dependencies'], ())
+        missing = usdz([('root.usda', ROOT_WITH_SUBLAYER), ('parts/sub.usda', SUB)])
+        self.assertEqual(self.errors(m.inspect_asset(missing, 'usdz', resolver=self.files.__getitem__)), [('E_SOURCE_REFERENCE', '/')])
+
+    def test_unsafe_usdz_archives_are_refused(self):
+        root = layer('def Xform "Root" {}\n')
+        for package in (usdz([('root.usda', root)], compress=zipfile.ZIP_DEFLATED), usdz([('root.usda', root)], encrypt=True),
+                        usdz([('root.usda', root), ('../escape.usda', SUB)]), usdz([('root.usda', root), ('/abs.usda', SUB)]),
+                        usdz([('root.usda', root), ('a\\b.usda', SUB)]), usdz([('root.usda', root), ('root.usda', root)]),
+                        b'PK\x03\x04not a zip'):
+            with self.subTest(package=package[:40]):
+                self.assertEqual(self.errors(m.inspect_asset(package, 'usdz')), [('E_USDZ_ARCHIVE', '/')])
+        many = usdz([('root.usda', root), ('a.usda', SUB), ('b.usda', SUB)])
+        self.assertEqual(self.errors(m.inspect_asset(many, 'usdz', limits=SourceLimits(max_usdz_members=2))), [('E_USDZ_ARCHIVE', '/')])
+        self.assertTrue(m.inspect_asset(many, 'usdz', limits=SourceLimits(max_usdz_members=3)).ok)
+
+    def test_usdc_bytes_inspect_like_usda(self):
+        from pxr import Sdf
+        import tempfile, os
+        source = Sdf.Layer.CreateAnonymous('face.usda')
+        source.ImportFromString(FACE.decode())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'face.usdc')
+            source.Export(path)
+            data = open(path, 'rb').read()
+        crate = good(m.inspect_asset(data, 'usdc'))
+        text = good(m.inspect_asset(FACE, 'usda'))
+        self.assertEqual(crate.source['format'], 'usdc')
+        self.assertEqual(good(m.inspect_asset(data, 'usd')).source['format'], 'usdc')
+        self.assertEqual(crate.document, text.document)
 
 
 if __name__ == '__main__':
