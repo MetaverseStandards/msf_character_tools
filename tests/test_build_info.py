@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 """setup.py writes msf_tools/_build_info.json, {"version", "commit"}, into built packages."""
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import shutil
@@ -83,6 +85,25 @@ class Sdist(Tree):
             raise FileNotFoundError('git')
         self.assertIsNone(self.build_info(git=missing))
         self.assertEqual(self.build_info(git=missing, carried=STRAY), STRAY)
+
+
+class StaleBuild(unittest.TestCase):
+    def test_a_module_left_in_build_lib_by_an_earlier_build_is_not_shipped(self):
+        from setuptools.dist import Distribution
+        build_lib = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, build_lib)
+        (build_lib / 'msf_tools').mkdir()
+        (build_lib / 'msf_tools/zz_deleted.py').write_text('gone = True\n')
+        command = setup.BuildPy(Distribution({'name': 'msf-tools', 'version': '1.2.3', 'packages': ['msf_tools', 'msf_tools.sources'],
+                                               'script_name': 'setup.py'}))
+        command.build_lib = str(build_lib)
+        command.ensure_finalized()
+        with contextlib.chdir(ROOT), patch.object(setup, 'build_info', return_value=STRAY), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            command.run()
+        built = {p.relative_to(build_lib).as_posix() for p in build_lib.rglob('*') if p.is_file()}
+        self.assertNotIn('msf_tools/zz_deleted.py', built)
+        self.assertLessEqual({'msf_tools/__init__.py', 'msf_tools/sources/__init__.py', 'msf_tools/_build_info.json'}, built)
 
 
 if __name__ == '__main__':
