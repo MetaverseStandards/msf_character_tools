@@ -126,9 +126,6 @@ class BranchFixes(unittest.TestCase):
         attrs=d['meshes'][0]['primitives'][0]['attributes']
         attrs.update(JOINTS_1=attrs['JOINTS_0'],WEIGHTS_1=attrs['WEIGHTS_0'])
         self.bad(self.inspect(d),'E_SKIN_WEIGHTS')
-        # An admitted later set of all zeros still exceeds the evaluator contract.
-        eight=self.good(m.inspect_asset((ROOT/'tests/fixtures/eight-influence.gltf').read_bytes(),'gltf'))
-        self.bad(m.evaluate_geometry(eight),'E_INFLUENCE_LIMIT')
 
     def test_step_subnormal_preceding_exact_final_and_geometry(self):
         snap=self.good(self.inspect(curve_document()))

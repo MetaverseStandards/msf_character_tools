@@ -1,0 +1,19 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    upAxis = "Y"
+    timeCodesPerSecond = 24
+)
+
+def Xform "Mover"
+{
+    double3 xformOp:translate.timeSamples = {-12: (0, 0, 0), 12: (0, 3, 0)}
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    def Mesh "Quad"
+    {
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        uniform token subdivisionScheme = "none"
+    }
+}

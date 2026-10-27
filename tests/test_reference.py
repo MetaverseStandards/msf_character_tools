@@ -341,12 +341,58 @@ class GeometryTests(Checks):
                 self.assert_instance_budget_refusal(m.evaluate_geometry(s))
 
     def test_shared_skin_is_counted_once(self):
-        # Two instances x 6 vertices x 3 x (1 + 3 targets) = 144, plus 16 x 4 joints for the one shared skin.
+        # Two instances x 6 vertices x 3 x (1 + 3 targets) = 144, plus 2 x 6 vertices x 8 joint and weight
+        # components = 96, plus 16 x 4 joints for the one shared skin.
         s=self.good(m.inspect_asset((FIX/"combined.gltf").read_bytes(),"gltf"))
-        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",208):
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",304):
             self.good(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
-        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",207):
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",303):
             self.assert_instance_budget_refusal(m.evaluate_geometry(s,animation_id=0,timestamp=.5))
+
+    def test_budget_counts_every_influence_set(self):
+        # 2 vertices x 3, plus 2 vertices x 2 sets x 8 joint and weight components, plus 16 x 8 joints.
+        s=self.good(m.inspect_asset((FIX/"eight-weighted.gltf").read_bytes(),"gltf"))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",166):
+            self.good(m.evaluate_geometry(s))
+        with patch.object(geometry,"MAX_EVALUATION_COMPONENTS",165):
+            self.assert_instance_budget_refusal(m.evaluate_geometry(s))
+
+    def test_eight_influences_match_direct_equations(self):
+        s=self.good(m.inspect_asset((FIX/"eight-weighted.gltf").read_bytes(),"gltf"))
+        weights=(.25,.125,.125,.125,.125,.125,.0625,.0625)
+        def moved(j,p):
+            x,y,z=(-p[1],p[0],p[2]) if j==7 else p
+            return (x+j/8,y+2*j/8,z-j/8)
+        wanted=[[math.fsum(w*moved(j,p)[k] for j,w in zip(order,weights)) for k in range(3)]
+                for p,order in (((1,0,0),range(8)),((0,1,0),range(7,-1,-1)))]
+        actual=self.good(m.evaluate_geometry(s)).to_dict()["instances"][0]["primitives"][0]["positions"]
+        for a,w in zip(actual,wanted):
+            for x,y in zip(a,w):self.assertAlmostEqual(x,y,places=12)
+
+    def test_four_influence_geometry_is_unchanged_from_v02(self):
+        # Digests of canonical geometry at 9ac984d, before N-influence skinning; at most four influences each.
+        pinned={"combined":("4d4067c1a7631c25328176f60577b3d456890579a40c0a44464d4a47c4f60f8b",
+                            "8d2c81112e6918f130064e9eb61690acc4ebd91ba5f16f9b6119747908068182",
+                            "5df1591f759c5f39f660e456196911ce7abc524d6289e8123fb34fd155a47fc0"),
+                "native-agreement":("4bcbb845cceea3ba675283209b56fd4d30bc69435095357c0ea418a225702dde",
+                                    "db0be5076d258a33325296667be7655358f602a384f93085a6e57edf6193cebd",
+                                    "79d623b7113794e06665434f6f7c26fa2a41fe4c5fbc1e6d8b19c9e3a3d85623"),
+                "rest-not-bind":("7ce346793e7b51fa7e3fb765ed1358070cf09f8081dff6e0a6008e3ef237250f",
+                                 "0d9bbbb9105163448007c741a401062fe3beaec6fbc438d11ecf7ac67fb4e39d",
+                                 "d395d191dbe5cb0a13d2f1aff18ac0f3d542e68f9091eee9377495800ba8e8ed")}
+        for name,digests in pinned.items():
+            s=self.good(m.inspect_asset((FIX/f"{name}.gltf").read_bytes(),"gltf"))
+            for kwargs,digest in zip(({},{"animation_id":0,"timestamp":.5},{"animation_id":0,"timestamp":1.75}),digests):
+                with self.subTest(name=name,**kwargs):
+                    self.assertEqual(hashlib.sha256(m.canonical_json(self.good(m.evaluate_geometry(s,**kwargs)))).hexdigest(),digest)
+
+    def test_zero_weight_later_set_evaluates_like_four_influences(self):
+        eight=self.good(m.inspect_asset((FIX/"eight-influence.gltf").read_bytes(),"gltf"))
+        four=self.good(m.inspect_asset((FIX/"combined.gltf").read_bytes(),"gltf"))
+        for kwargs in ({},{"animation_id":0,"timestamp":.5},{"animation_id":0,"timestamp":1.75}):
+            with self.subTest(**kwargs):
+                self.assertEqual(m.canonical_json(self.good(m.evaluate_geometry(eight,**kwargs))),
+                                 m.canonical_json(self.good(m.evaluate_geometry(four,**kwargs))))
 
     def test_shared_skin_output_matches_separate_skins(self):
         doc=json.loads((FIX/"combined.gltf").read_bytes());shared=self.good(asset(doc))
@@ -400,7 +446,6 @@ class GeometryTests(Checks):
         a=self.good(m.evaluate_geometry(rest)).to_dict()["instances"][0]["primitives"][0]["positions"]
         b=self.good(m.evaluate_geometry(base)).to_dict()["instances"][0]["primitives"][0]["positions"]
         self.assertAlmostEqual(a[0][1]-b[0][1],.25*(.4+.3),places=7)
-        eight=self.good(m.inspect_asset((FIX/"eight-influence.gltf").read_bytes(),"gltf"));self.bad(m.evaluate_geometry(eight),"E_INFLUENCE_LIMIT")
         d=json.loads((FIX/"combined.gltf").read_bytes());d["extensionsRequired"]=["MSF_fixture_unknown"]
         s=self.good(asset(d));self.bad(m.evaluate_geometry(s),"E_REQUIRED_EXTENSION")
         self.bad(m.evaluate_geometry(base,node_transforms={5:{"scale":[0,1,1]}}),"E_SINGULAR")

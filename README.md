@@ -1,6 +1,6 @@
 # MSF Tools
 
-Python 3.11+ standard library reference for validated signal mappings and immutable glTF inspection. The package also supplies independent binary64 position evaluation for relative morph targets and conventional four influence linear blend skinning.
+Python 3.11+ standard library reference for validated signal mappings and immutable glTF inspection. The package also supplies independent binary64 position evaluation for relative morph targets and linear blend skinning over every influence set.
 
 ## Run
 
@@ -37,7 +37,7 @@ Every operation returns a frozen `Result(value, report)`. `.ok` indicates succes
 
 Inspection retains original asset bytes, complete JSON, opaque attributes/extensions, and every GLB chunk. External resources remain inventory unless an explicit resolver is supplied. Sidecars bind signals to structural mesh-instance morph indices and verify source/resource hashes; annotation writes a sidecar and leaves asset bytes unchanged.
 
-The evaluator supports positions, relative Basis morph deltas with signed weights, four influence LBS per instance, and one explicitly selected animation with STEP, LINEAR and CUBICSPLINE sampling. It rejects unsupported required extensions, eight influences, unavailable resources, singular mesh transforms and requests for other attributes. It does not establish visual, contact, calibration or universal format equivalence. The [test plan](docs/testing.md) records actual gates and tolerances.
+The evaluator supports positions, relative Basis morph deltas with signed weights, LBS over every JOINTS_n/WEIGHTS_n set per instance, and one explicitly selected animation with STEP, LINEAR and CUBICSPLINE sampling. It rejects unsupported required extensions, unavailable resources, singular mesh transforms and requests for other attributes. It does not establish visual, contact, calibration or universal format equivalence. The [test plan](docs/testing.md) records actual gates and tolerances.
 
 The original [combined fixture](tests/fixtures/README.md) includes jaw/head deformation, wink/smile/corrective targets, an accessory joint, unknown weighted joint, two mesh instances and independent analytical goldens. Geometry tests run without completing any external signal taxonomy.
 

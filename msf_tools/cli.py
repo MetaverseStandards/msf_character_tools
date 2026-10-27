@@ -13,6 +13,7 @@ from . import (load_authoring, compile_pack, inspect_asset, annotate_asset,
                evaluate_geometry, LocalResolver, coverage, survey_csv)
 from .common import canonical_json, digest, parse_json
 from .report import Result, Report, Diagnostic, Fault
+from .sources import SOURCE_FORMATS, SourceLimits
 
 
 def atomic_write(path, data):
@@ -72,7 +73,9 @@ def _input_paths(args):
             paths.extend(authoring_files(path))
         else:
             paths.append(path)
-        if field in ("asset", "source_asset", "target_asset") and getattr(args, "resolver_root", None) and path.is_file():
+        # A source's layers are known only once its reader has run; main() checks them against the output after inspection.
+        if (field in ("asset", "source_asset", "target_asset") and getattr(args, "resolver_root", None) and path.is_file()
+                and path.suffix.lstrip(".").lower() not in SOURCE_FORMATS):
             inventory = inspect_asset(path.read_bytes(), path.suffix.lstrip("."))
             if inventory.ok:
                 from urllib.parse import urlsplit, unquote
@@ -80,6 +83,11 @@ def _input_paths(args):
                     if resource.uri and not urlsplit(resource.uri).scheme and not urlsplit(resource.uri).netloc:
                         paths.append(Path(args.resolver_root) / unquote(resource.uri))
     return paths
+
+
+def _reads_source(args):
+    return any(getattr(args, field, None) and Path(getattr(args, field)).suffix.lstrip(".").lower() in SOURCE_FORMATS
+               for field in ("asset", "source_asset", "target_asset"))
 
 
 def _error(code, ref, message, remediation="Correct the input and rerun the command."):
@@ -101,17 +109,31 @@ def _pack(path):
     return _need(compile_pack(_need(load_authoring(path))))
 
 
-def _snapshot(args):
-    path = Path(args.asset)
+def _inspect(path, args, sidecar):
+    """Inspect a file by its suffix; source formats read in a separate process unless --in-process."""
+    path = Path(path)
+    fmt = path.suffix.lstrip(".")
     resolver = LocalResolver(args.resolver_root) if getattr(args, "resolver_root", None) else None
+    source = {}
+    if fmt.lower() in SOURCE_FORMATS:
+        limits = {k: v for k, v in (("timeout_s", args.source_timeout), ("max_source_bytes", args.max_source_bytes)) if v is not None}
+        source = {"isolate": not args.in_process, "limits": SourceLimits(**limits)}
+    result = inspect_asset(path.read_bytes(), fmt, resolver=resolver, sidecar=sidecar, **source)
+    if result.ok and resolver and result.value.source is not None:
+        from urllib.parse import unquote
+        args.fetched.extend(resolver.root / unquote(d["uri"]) for d in result.value.source["dependencies"])
+    return result
+
+
+def _snapshot(args):
     sidecar = parse_json(Path(args.sidecar).read_bytes()) if getattr(args, "sidecar", None) else None
-    return inspect_asset(path.read_bytes(), path.suffix.lstrip("."), resolver=resolver, sidecar=sidecar)
+    return _inspect(args.asset, args, sidecar)
 
 
 def _mapping(args):
     pack = _pack(args.authoring)
-    source = _need(profile_snapshot(pack, args.source_profile)) if args.source_profile else _need(inspect_asset(Path(args.source_asset).read_bytes(), Path(args.source_asset).suffix.lstrip("."), sidecar=parse_json(Path(args.source_sidecar).read_bytes()), resolver=LocalResolver(args.resolver_root) if args.resolver_root else None))
-    target = _need(profile_snapshot(pack, args.target_profile)) if args.target_profile else _need(inspect_asset(Path(args.target_asset).read_bytes(), Path(args.target_asset).suffix.lstrip("."), sidecar=parse_json(Path(args.target_sidecar).read_bytes()), resolver=LocalResolver(args.resolver_root) if args.resolver_root else None))
+    source = _need(profile_snapshot(pack, args.source_profile)) if args.source_profile else _need(_inspect(args.source_asset, args, parse_json(Path(args.source_sidecar).read_bytes())))
+    target = _need(profile_snapshot(pack, args.target_profile)) if args.target_profile else _need(_inspect(args.target_asset, args, parse_json(Path(args.target_sidecar).read_bytes())))
     return compile_mapping(pack, source, target, args.mapping, allow_approximation=args.allow_approximation)
 
 
@@ -155,6 +177,12 @@ def _check(args):
     return Result({"pack_sha256": pack.sha256, "outputs": [p.name for p in rendered]} if report.ok else None, report)
 
 
+def _source_flags(x):
+    x.add_argument("--in-process", action="store_true", help="read source formats in this process instead of a separate one")
+    x.add_argument("--source-timeout", type=int, metavar="SECONDS", help="time limit for reading a source format")
+    x.add_argument("--max-source-bytes", type=int, metavar="BYTES", help="size limit for a source format file")
+
+
 def parser():
     p = argparse.ArgumentParser(prog="msf-tools", description="Validated signal mapping and glTF reference tools")
     sub = p.add_subparsers(dest="command", required=True)
@@ -172,6 +200,7 @@ def parser():
         x.add_argument("--resolver-root")
         x.add_argument("--sidecar")
         x.add_argument("--output", required=command == "annotate")
+        _source_flags(x)
         if command == "annotate":
             x.add_argument("annotations")
         if command == "geometry":
@@ -190,6 +219,7 @@ def parser():
             x.add_argument(f"--{side}-sidecar")
         x.add_argument("--resolver-root")
         x.add_argument("--allow-approximation", action="store_true")
+        _source_flags(x)
         x.add_argument("--output")
     return p
 
@@ -197,6 +227,7 @@ def parser():
 def main(argv=None):
     try:
         args = parser().parse_args(argv)
+        args.fetched = []
         if args.command != "check" and args.output:
             _preflight([args.output], _input_paths(args))
         if args.command == "check":
@@ -218,7 +249,9 @@ def main(argv=None):
                     samples = samples["samples"]
                 result = evaluate_mapping(result.value, samples)
         payload = canonical_json(result.value) if result.ok else canonical_json(result.report)
-        if args.output:
+        # A failed source read lists no fetched layers, so its report is not written where a layer might be.
+        if args.output and (result.ok or not _reads_source(args)):
+            _preflight([args.output], args.fetched)
             atomic_write(args.output, payload)
         elif result.ok:
             sys.stdout.buffer.write(payload)

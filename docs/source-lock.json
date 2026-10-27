@@ -26,5 +26,18 @@
     "retrieved": "2026-10-07",
     "sha256": "a0bd498de6b7991f563789715e3cf9f9a77860b6bb5b2c2b072fb3bb36361008",
     "url": "https://raw.githubusercontent.com/creativecommons/legalcode/main/by-sa_4.0.txt"
+  },
+  {
+    "bytes": 11854324,
+    "id": "ufbx",
+    "retrieved": "2026-10-26",
+    "sha256": "18d5a7849378e3fe247b0df67cf845cb593c73172cbac0de99b5aba130542667",
+    "url": "https://codeload.github.com/ufbx/ufbx/tar.gz/26a482ae66871d7de36eb722aa060bce95bce274",
+    "vendored": {
+      "native/ufbx/vendor/LICENSE.ufbx": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391",
+      "native/ufbx/vendor/ufbx.c": "4a956c26a708e40d82ecb0aeaee54da709d5ba7c144c9642174970059bda7e1d",
+      "native/ufbx/vendor/ufbx.h": "f787be529af577efc04f3e3e735844a08556718dbb613d1211c2b313d72895dc"
+    },
+    "version": "0.23.1"
   }
 ]
