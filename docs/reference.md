@@ -164,13 +164,13 @@ Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (inst
   - `dualQuaternion` skinning is stored as linear blend skinning (`W_SKINNING_METHOD`).
 
   A skinned mesh or joint with shear is `E_SHEAR_UNSUPPORTED`.
-- **Blend shapes** keep their point indices, so sparse shapes stay sparse in the GLB. In-between shapes are dropped and the main shape kept (`W_INBETWEENS_DROPPED`; `E_INBETWEEN_UNSUPPORTED` under strict losses).
+- **Blend shapes** keep their point indices, so sparse shapes stay sparse in the GLB. A shape that authors only `normalOffsets` becomes an all-zero target. A mesh bound to a skeleton only for its blend shapes gets its weights animated without a skin. In-between shapes are dropped and the main shape kept (`W_INBETWEENS_DROPPED`; `E_INBETWEEN_UNSUPPORTED` under strict losses).
 - **Animation:** one glTF animation samples every animated transform, skeleton and blend-weight channel at the union of their authored time codes, kept within the stage's start and end time codes when those are authored and divided by `timeCodesPerSecond`. Negative time codes are shifted so the animation starts at 0 (`W_TIME_SHIFTED`). Samplers are LINEAR, with quaternions kept in one hemisphere. Channels whose value never changes are left out. Shear in any sample is `E_SHEAR_UNSUPPORTED`.
-- **Skipped prims:** curves, points, NURBS, implicit surfaces, point instancers, cameras, lights and materials are counted by type in one `W_SKIPPED`, together with hole faces. Xformable ones still become nodes.
+- **Skipped prims:** curves, points, NURBS, implicit surfaces, point instancers, cameras, lights and materials are counted by type in one `W_SKIPPED`, together with hole faces and time-sampled `points` (glTF can only animate points through morph targets, so the earliest sample is used). Xformable ones still become nodes.
 
 Before a stage is opened, every layer named by a sublayer, reference or payload is gathered:
 
-- Layer paths must start with `./` or `../` and stay inside the source root; absolute paths, URLs, search paths and escapes are `E_SOURCE_REFERENCE`, as are value clips.
+- Layer paths are relative to the layer that names them and must stay inside the source root. A bare path such as `sub.usda` is looked up next to that layer, which is the first place USD looks; USD search paths are never used. Absolute paths, URLs and other schemes, backslashes and escapes are `E_SOURCE_REFERENCE`, as are value clips.
 - Outside a USDZ, the resolver fetches each layer by its anchored path (for example `parts/sub.usda`). A missing resolver or an unreadable layer is `E_SOURCE_REFERENCE`. Fetched layers are recorded in `source.dependencies`, and `max_dependencies`/`max_dependency_bytes` are checked after each fetch.
 - Inside a USDZ, layers must be members of the package and are not fetched. The archive must be readable, with stored, unencrypted, uniquely named relative members, at most `max_usdz_members` of them; otherwise it is `E_USDZ_ARCHIVE`.
 

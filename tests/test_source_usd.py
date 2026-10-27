@@ -151,8 +151,8 @@ class UsdDependencies(unittest.TestCase):
 
     def test_unsafe_or_unresolvable_references_are_refused(self):
         self.assertEqual(self.errors(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda')), [('E_SOURCE_REFERENCE', '/')])
-        for asset in ('/etc/layer.usda', 'https://example.invalid/a.usda', 'parts/sub.usda', '../outside.usda',
-                      './parts/../../outside.usda', 'C:/layer.usda'):
+        for asset in ('/etc/layer.usda', 'https://example.invalid/a.usda', '../outside.usda', 'parts/../../outside.usda',
+                      './parts/../../outside.usda', 'C:/layer.usda', 'C:layer.usda', 'parts\\sub.usda'):
             with self.subTest(asset=asset):
                 data = layer('def Xform "Root" {}\n', f'subLayers = [@{asset}@]')
                 self.assertEqual(self.errors(m.inspect_asset(data, 'usda', resolver=lambda uri: SUB)), [('E_SOURCE_REFERENCE', '/')])
@@ -163,6 +163,13 @@ class UsdDependencies(unittest.TestCase):
         broken = dict(self.files, **{'parts/sub.usda': b'#usda 1.0\ndef Xform "x" { garbage'})
         self.assertEqual(self.errors(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=broken.__getitem__)),
                          [('E_SOURCE_PARSE', '/')])
+
+    def test_bare_relative_layer_paths_are_anchored_to_their_layer(self):
+        # USD tries a bare path next to the referring layer before any search path; only that first step is allowed.
+        fetched = []
+        data = layer('def Xform "Root" {}\n', 'subLayers = [@parts/sub.usda@]')
+        snapshot = good(m.inspect_asset(data, 'usda', resolver=lambda uri: fetched.append(uri) or SUB))
+        self.assertEqual((fetched, snapshot.source['node_paths']), (['parts/sub.usda'], ('/FromSub', '/Root')))
 
     def test_dependency_limits_apply_while_fetching(self):
         fetched = []
@@ -312,6 +319,16 @@ class UsdMeshesAndTransforms(unittest.TestCase):
             with self.subTest(ref=ref):
                 result = m.inspect_asset(data, 'usda')
                 self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', ref)])
+
+    def test_point_animation_is_skipped_and_declared(self):
+        data = layer(mesh('Tri', '[(0, 0, 0), (1, 0, 0), (0, 1, 0)]', '[3]', '[0, 1, 2]').replace(
+            'point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]',
+            'point3f[] points.timeSamples = {0: [(0, 0, 0), (1, 0, 0), (0, 1, 0)], 1: [(0, 0, 0), (2, 0, 0), (0, 1, 0)]}'),
+            'metersPerUnit = 1')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('W_SKIPPED', '/')])
+        self.assertEqual(thaw(snapshot.source['losses'])[0]['message'], 'Skipped 1 point animation.')
+        self.assertEqual(positions(snapshot), [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
     def test_holes_cages_winding_and_skipped_prims_are_declared(self):
         quads = mesh('Quads', '[(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)]', '[4, 4]',
@@ -559,3 +576,56 @@ class UsdIsolated(unittest.TestCase):
             isolated = good(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=m.LocalResolver(root), isolate=True))
         self.assertEqual(m.canonical_json(isolated.to_dict()), m.canonical_json(local.to_dict()))
         self.assertEqual(len(isolated.source['dependencies']), 2)
+
+
+BLEND_ONLY_RIG = """def SkelRoot "Rig"
+{
+    def Skeleton "Skel" (prepend apiSchemas = ["SkelBindingAPI"])
+    {
+        rel skel:animationSource = </Rig/Skel/Anim>
+        def SkelAnimation "Anim"
+        {
+            uniform token[] blendShapes = ["lift", "flat"]
+            float[] blendShapeWeights.timeSamples = {0: [0, 1], 24: [1, 1]}
+        }
+    }
+    def Mesh "Face" (prepend apiSchemas = ["SkelBindingAPI"])
+    {
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (0, 0, 2)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel skel:skeleton = </Rig/Skel>
+        uniform token[] skel:blendShapes = ["lift", "flat"]
+        rel skel:blendShapeTargets = [</Rig/Face/Lift>, </Rig/Face/Flat>]
+        def BlendShape "Lift"
+        {
+            uniform int[] pointIndices = [2]
+            uniform vector3f[] offsets = [(0, 1, 0)]
+        }
+        def BlendShape "Flat"
+        {
+            uniform int[] pointIndices = [0, 1]
+            uniform vector3f[] normalOffsets = [(0, 0, 1), (0, 0, 1)]
+        }
+    }
+}
+"""
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdBlendShapeBindings(unittest.TestCase):
+    def test_blend_weights_animate_meshes_bound_without_joints(self):
+        data = layer(BLEND_ONLY_RIG, 'metersPerUnit = 1\n    timeCodesPerSecond = 24')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertNotIn('skins', snapshot.document)
+        self.assertEqual(snapshot.source['target_keys'], (('lift', 'flat'),))
+        self.assertAlmostEqual(positions(snapshot, timestamp=0.5, animation_id=0)[2][1], 1.5, places=6)
+        for code in (0, 24):  # BakeSkinning writes points only at authored time codes
+            with self.subTest(code=code):
+                expected = baked_world_points(data, '/Rig/Face', code)
+                actual = world_points(snapshot, '/Rig/Face', timestamp=code / 24, animation_id=0)
+                for a, e in zip(actual, expected):
+                    self.assertLess(math.dist(a, e), 1e-6, (code, actual, expected))

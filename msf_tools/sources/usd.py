@@ -121,12 +121,14 @@ def _skipped_kind(prim):
     return None
 
 
+_PLURALS = {"hole face": "hole faces", "point animation": "point animations",
+            "external asset dependency": "external asset dependencies"}
+
+
 def _skipped(counts):
-    parts = [f"{n} {kind}" for kind, n in sorted(counts.items()) if kind not in ("hole face", "external asset dependency") and n]
-    for kind in ("hole face", "external asset dependency"):
-        if counts[kind]:
-            plural = {"hole face": "hole faces", "external asset dependency": "external asset dependencies"}[kind]
-            parts.append(f"{counts[kind]} {kind if counts[kind] == 1 else plural}")
+    """One W_SKIPPED counting skipped prims by type name, then the other skipped kinds."""
+    parts = [f"{n} {kind}" for kind, n in sorted(counts.items()) if kind not in _PLURALS and n]
+    parts += [f"{counts[kind]} {kind if counts[kind] == 1 else plural}" for kind, plural in _PLURALS.items() if counts[kind]]
     if not parts:
         return []
     text = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
@@ -146,6 +148,9 @@ def _blend_shapes(prim, points, path):
             fail("E_SOURCE_VALUE", path, f"Blend shape target {target} is not a BlendShape.")
         values = [tuple(map(float, v)) for v in shape.GetOffsetsAttr().Get() or ()]
         indices = shape.GetPointIndicesAttr().Get()
+        if not shape.GetOffsetsAttr().HasAuthoredValue():
+            # A shape that only moves normals leaves positions where they are.
+            values = [(0.0, 0.0, 0.0)] * (len(indices) if indices else len(points))
         dense = [(0.0, 0.0, 0.0)] * len(points)
         if indices is None or len(indices) == 0:
             if len(values) != len(points):
@@ -222,9 +227,13 @@ def _usdz_members(root, data, limits):
 
 
 def _anchor(asset, base):
-    """Resolve an authored layer path against the layer that names it, or refuse it."""
-    if not asset.startswith(("./", "../")) or "\\" in asset or "://" in asset:
-        fail("E_SOURCE_REFERENCE", "/", f"Layer path @{asset}@ is not a ./ or ../ relative path.",
+    """Resolve an authored layer path against the layer that names it, or refuse it.
+
+    USD looks for a bare path such as `sub.usda` next to the referring layer before
+    trying search paths. Only that first step is taken here, so search paths are never used.
+    """
+    if asset.startswith("/") or "\\" in asset or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", asset):
+        fail("E_SOURCE_REFERENCE", "/", f"Layer path @{asset}@ is not a relative path.",
              "Author layer references as paths relative to the referring layer.")
     anchored = posixpath.normpath(posixpath.join(posixpath.dirname(base), asset))
     if anchored == ".." or anchored.startswith("../") or anchored.startswith("/"):
@@ -330,7 +339,9 @@ class _Skeleton:
 
 
 def _skel_bindings(prims):
-    """Skinning queries keyed by mesh prim path, each with the skeleton prim path it binds to."""
+    """Skinning queries keyed by mesh prim path, each with the skeleton prim path it binds to.
+
+    A mesh can be bound only for its blend shapes, with no joint influences."""
     predicate = Usd.TraverseInstanceProxies()
     cache, bound, skeletons = UsdSkel.Cache(), {}, {}
     for prim in prims:
@@ -345,7 +356,7 @@ def _skel_bindings(prims):
                 fail("E_SOURCE_VALUE", _node_path(skel.GetPrim()), "Skeleton could not be read.")
             skeletons.setdefault(skel.GetPrim().GetPath(), (skel, query))
             for target in binding.GetSkinningTargets():
-                if target.GetPrim().IsA(UsdGeom.Mesh) and target.HasJointInfluences():
+                if target.GetPrim().IsA(UsdGeom.Mesh):
                     bound.setdefault(target.GetPrim().GetPath(), (skel.GetPrim().GetPath(), target))
     return skeletons, bound
 
@@ -516,9 +527,14 @@ def _convert(stage, adapter, dependencies, external, options):
             parent = parent.GetParent()
         if parent:
             children[index[prim_paths[parent.GetPath()]]].append(i)
-    skin_of = {}
-    for path, skeleton in sorted(skeletons.items(), key=lambda item: index[item[1].owner]):
-        skin_of[path] = len(skin_of)
+    def skinning(prim):
+        found = bound.get(prim.GetPath())
+        if found is None or found[0] not in skeletons or not skeletons[found[0]].paths or not found[1].HasJointInfluences():
+            return None
+        return found
+
+    used = {skinning(prim)[0] for _, prim, _ in entries if prim is not None and skinning(prim) is not None}
+    skin_of = {path: k for k, path in enumerate(sorted(used, key=lambda path: index[skeletons[path].owner]))}
     nodes, meshes, target_keys, losses, weighted = [], [], [], [], {}
     for i, (path, prim, joint) in enumerate(entries):
         if joint is not None:
@@ -529,9 +545,9 @@ def _convert(stage, adapter, dependencies, external, options):
             name = skeleton.paths[j].rsplit("/", 1)[1]
             nodes.append(glb.Node(name=paths.unescape(name), children=tuple(children[i]), **_trs(local, path)))
             continue
-        skinned = bound.get(prim.GetPath())
-        if skinned is not None and skinned[0] not in skeletons:
-            skinned = None
+        skinned = skinning(prim)
+        binding = bound.get(prim.GetPath())
+        animation = skeletons[binding[0]].query.GetAnimQuery() if binding is not None and binding[0] in skeletons else None
         local = _local(prim, path, conversion)
         baked = None
         if local is not None and transforms.has_shear(local):
@@ -550,6 +566,8 @@ def _convert(stage, adapter, dependencies, external, options):
             left = mesh.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded
             if left:
                 losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
+            if mesh.GetPointsAttr().GetNumTimeSamples() > 1:
+                skipped["point animation"] += 1  # glTF animates points only through morph targets
             points = [conversion.point(tuple(map(float, p))) for p in mesh.GetPointsAttr().Get(_EARLIEST) or ()]
             if points:
                 tokens, keys, offsets, inbetweens = _blend_shapes(prim, points, path)
@@ -570,12 +588,11 @@ def _convert(stage, adapter, dependencies, external, options):
                     influences, found_losses = _influences(skinned[1], skeletons[skinned[0]], len(points), path, options["influences"])
                     losses += found_losses
                     skin_index = skin_of[skinned[0]]
-                    anim = skeletons[skinned[0]].query.GetAnimQuery()
-                    if tokens and anim and anim.GetBlendShapeOrder():
-                        weighted[i] = (anim, tokens)
-                        static_weights = _blend_weights(anim, tokens, _EARLIEST)
-                        if not any(static_weights):
-                            static_weights = None
+                if tokens and animation and animation.GetBlendShapeOrder():
+                    weighted[i] = (animation, tokens)
+                    static_weights = _blend_weights(animation, tokens, _EARLIEST)
+                    if not any(static_weights):
+                        static_weights = None
                 mesh_index = len(meshes)
                 meshes.append(glb.Mesh(points=tuple(points), triangles=tuple(_triangles(mesh, path, flip, skipped)),
                                        targets=tuple(offsets), influences=influences))
