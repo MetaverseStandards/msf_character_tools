@@ -9,3 +9,7 @@ Clip `CombinedReference` index0 spans0..2 seconds. Node5 morph weights animate; 
 `native-agreement.gltf` is a one-vertex skinned, morphed and animated asset with two instances of one mesh. `native/tests/test_agreement.py` and `test_core_semantics.py` both read it.
 
 Regenerate using `python -B tests/make_fixtures.py`. Fixtures are intentionally small analytical examples, not artist acceptance assets. The source topology/opaque data remains untouched by inspection and sidecar annotation.
+
+## Synthetic USD fixtures
+
+`source/` holds original synthetic USDA scenes for the USD strict tier, one per case: skinned and animated rigs (Y-up metres and Z-up centimetres), dual-quaternion skinning, eight and constant influences, left-handed faces, an n-gon with a hole, a default subdivision cage, an in-between shape, shear on a static leaf, an interior node and an animated node, a rotated, uniformly scaled interior node, a mirrored node, negative time codes, instancing, a point instancer, sublayer/reference/payload layers under `source/layers/`, and an escaping sublayer. Same license and authorship as above. Regenerate with `python -B tests/make_source_fixtures.py`.

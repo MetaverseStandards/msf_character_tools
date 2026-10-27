@@ -1,0 +1,14 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Mesh "Ngon"
+{
+    point3f[] points = [(0, 0, 0), (2, 0, 0), (3, 1, 0), (1, 2, 0), (-1, 1, 0), (3, 3, 0), (4, 3, 0)]
+    int[] faceVertexCounts = [5, 3, 3]
+    int[] faceVertexIndices = [0, 1, 2, 3, 4, 2, 5, 3, 2, 6, 5]
+    uniform token subdivisionScheme = "none"
+    int[] holeIndices = [1]
+}

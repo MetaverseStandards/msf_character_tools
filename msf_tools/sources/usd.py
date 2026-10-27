@@ -257,6 +257,8 @@ def _materialize(tmp, data, fmt, resolver, limits):
         _refuse_clips(current)
         external.update(current.GetExternalAssetDependencies())
         for asset in sorted(current.GetCompositionAssetDependencies()):
+            if not asset:  # a reference to a prim in the same layer
+                continue
             anchored = _anchor(asset, location)
             if anchored in seen:
                 continue

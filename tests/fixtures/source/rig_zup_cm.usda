@@ -1,0 +1,55 @@
+#usda 1.0
+(
+    metersPerUnit = 0.01
+    upAxis = "Z"
+    timeCodesPerSecond = 24
+)
+
+def SkelRoot "Rig"
+{
+    def Skeleton "Skel" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        uniform token[] joints = ["root", "root/arm"]
+        uniform matrix4d[] bindTransforms = [((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)), ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 100, 1))]
+        uniform matrix4d[] restTransforms = [((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)), ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 100, 1))]
+        rel skel:animationSource = </Rig/Skel/Anim>
+        def SkelAnimation "Anim"
+        {
+            uniform token[] joints = ["root/arm"]
+            float3[] translations.timeSamples = {0: [(0, 0, 100)], 12: [(0, 0, 150.0)], 24: [(50.0, 0, 100)]}
+            quatf[] rotations.timeSamples = {0: [(1, 0, 0, 0)], 24: [(0.7071068, 0, -0.7071068, 0)]}
+            half3[] scales = [(1, 1, 1)]
+            uniform token[] blendShapes = ["lift"]
+            float[] blendShapeWeights.timeSamples = {0: [0], 24: [1]}
+        }
+    }
+    def Mesh "Body" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        point3f[] points = [(0, 0, 0), (100, 0, 0), (100, 0, 200), (0, 0, 200)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        uniform token subdivisionScheme = "none"
+        int[] primvars:skel:jointIndices = [0, 0, 0, 0, 1, 0, 1, 1] (
+            elementSize = 2
+            interpolation = "vertex"
+        )
+        float[] primvars:skel:jointWeights = [1, 0, 1, 0, 0.5, 0.5, 1, 0] (
+            elementSize = 2
+            interpolation = "vertex"
+        )
+        double3 xformOp:translate = (500, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel skel:skeleton = </Rig/Skel>
+        uniform token[] skel:blendShapes = ["lift"]
+        rel skel:blendShapeTargets = </Rig/Body/Lift>
+        def BlendShape "Lift"
+        {
+            uniform int[] pointIndices = [2]
+            uniform vector3f[] offsets = [(0, 0, 50.0)]
+        }
+    }
+}
