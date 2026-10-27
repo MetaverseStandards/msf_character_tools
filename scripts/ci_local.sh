@@ -65,6 +65,8 @@ done
 export MSF_REQUIRE_CORE=1
 # Differential tests against the 0.3.0 oracle venv fail instead of skipping without it.
 export MSF_REQUIRE_ORACLE="${MSF_REQUIRE_ORACLE-1}"
+# 0.3.0 iterated sets of channel IDs; with one seed here and in the oracle, both sides order them alike.
+export PYTHONHASHSEED="${PYTHONHASHSEED-0}"
 
 # unittest prints "Ran N tests" and OK/FAILED last; without them the run died part way.
 verdict_of() {
@@ -131,10 +133,10 @@ if [ -x "$py312" ]; then
   fi
 fi
 
-# The reference path alone must still pass the public gate.
+# The core's exact paths alone, without its fast paths, must still pass the public gate.
 if [ -x "$py312" ]; then
-  output=$(MSF_TOOLS_PURE=1 MSF_REQUIRE_CORE= suites "$py312" 'test*.py' '')
-  tier "Public suite on the pure-Python path (MSF_TOOLS_PURE=1, Python 3.12)" $? "$output"
+  output=$(MSF_TOOLS_PURE=1 suites "$py312" 'test*.py' '')
+  tier "Public suite without the fast paths (MSF_TOOLS_PURE=1, Python 3.12)" $? "$output"
 fi
 
 # Gate tier (--gate): the G1 checks too slow for the fast suite.
@@ -144,8 +146,8 @@ if [ $gate -eq 1 ] && [ -x "$py312" ]; then
     py="${!var:-$MSF/_tools/venv$version/bin/python}"
     [ -x "$py" ] || continue
     start=$(python3 -c 'import time; print(time.time())')
-    output=$(MSF_GATE=1 suites "$py" '' 'test_core_[jm]*.py')
-    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens, 10^6 hypot vectors per arity, 10^5 math3d cases vs the oracle; $(seconds "$start") s)" $? "$output"
+    output=$(MSF_GATE=1 suites "$py" '' 'test_core_[ajm]*.py')
+    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples; $(seconds "$start") s)" $? "$output"
   done
 else
   lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")
