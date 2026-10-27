@@ -141,7 +141,7 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 | `max_generated_bytes` | 512 MiB | Replaces the 64 MiB glTF input limit for the GLB. |
 | `max_accessor_components`, `max_total_accessor_components` | 4,000,000, 16,000,000 | Can be lowered, not raised. Integrity checks and the geometry evaluation budget use these defaults for generated snapshots. |
 | `max_reader_memory`, `timeout_s` | 2 GiB, 300 s | Used by isolated conversion. |
-| `max_animation_values` | 16,000,000 | Values sampled before conversion; FBX counts samples × (16 × nodes + blend channels) and refuses beyond it before sampling. |
+| `max_animation_values` | 16,000,000 | Values sampled before conversion: FBX counts samples × (16 × nodes + blend channels), USD time codes × (16 × animated nodes and joints + blend channels). Both refuse beyond it before sampling. |
 
 glTF formats refuse `isolate`, `limits` and `options` with `E_SOURCE_OPTIONS`.
 
@@ -168,7 +168,7 @@ Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (inst
 
   A skinned mesh or joint with shear is `E_SHEAR_UNSUPPORTED`.
 - **Blend shapes** keep their point indices, so sparse shapes stay sparse in the GLB. A shape that authors only `normalOffsets` becomes an all-zero target. A mesh bound to a skeleton only for its blend shapes gets its weights animated without a skin. In-between shapes are dropped and the main shape kept (`W_INBETWEENS_DROPPED`; `E_INBETWEEN_UNSUPPORTED` under strict losses).
-- **Animation:** one glTF animation samples every animated transform, skeleton and blend-weight channel at the union of their authored time codes, kept within the stage's start and end time codes when those are authored and divided by `timeCodesPerSecond`. Negative time codes are shifted so the animation starts at 0 (`W_TIME_SHIFTED`). Samplers are LINEAR, with quaternions kept in one hemisphere. Channels whose value never changes are left out. Shear in any sample is `E_SHEAR_UNSUPPORTED`.
+- **Animation:** one glTF animation samples every animated transform, skeleton and blend-weight channel at the union of their authored time codes, kept within the stage's start and end time codes when those are authored and divided by `timeCodesPerSecond`. Negative time codes are shifted so the animation starts at 0 (`W_TIME_SHIFTED`). Samplers are LINEAR, with quaternions kept in one hemisphere. Channels whose value never changes are left out. Shear in any sample is `E_SHEAR_UNSUPPORTED`. More sampled values than `max_animation_values` is `E_RESOURCE_LIMIT`, checked before any sample is taken.
 - **Skipped prims:** curves, points, NURBS, implicit surfaces, point instancers, cameras, lights and materials are counted by type in one `W_SKIPPED`, together with hole faces. Xformable ones still become nodes.
 - **Point animation:** glTF animates points only through morph targets, so a mesh whose points, topology, blend-shape offsets or skin primvars change over time keeps their earliest value, with one `W_POINTS_ANIMATION_DROPPED` per mesh naming the attributes (`E_POINTS_ANIMATION_DROPPED` under strict losses).
 
