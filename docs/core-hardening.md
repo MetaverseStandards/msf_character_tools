@@ -124,6 +124,8 @@ when adopting the stricter malformed/unsafe-input refusals.
 
 ## Strict native numerical pilot
 
+Removed in 0.3.0; the C++ core will replace it. This section records the pilot as it stood in 0.1.1. Its sources and contract are in Git history, last at commit 746a5fe.
+
 The native pilot now validates original Python numeric/bool/index/list inputs
 before conversion, including mutable program setters. Program getters return
 detached nested Domain/Instruction copies. Every supplied scalar value remains
@@ -134,8 +136,8 @@ validated without widening affine/TRS1e-10 or weight1e-6 tolerances.
 
 Named native/glTF storage adapters make the row/column conversion explicit;
 multiply computes a*b (b first). C++ multiply intentionally returns Result<Mat4>,
-requiring callers to rebuild and check success. See [native contract](../native/README.md)
-for the exact surface, error codes, ownership and numerical policy. Independent
+requiring callers to rebuild and check success. The native contract (`native/README.md` at 746a5fe)
+gave the exact surface, error codes, ownership and numerical policy. Independent
 literal binding oracles and supplemental agreement run on actual local bindings
 ON builds for macOS arm64 CPython3.11.17 and3.12.15+meta. Fresh independent review
 of this candidate remains required before root commits it.
