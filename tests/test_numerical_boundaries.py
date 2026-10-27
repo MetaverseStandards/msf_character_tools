@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: MIT
 """Literal analytical oracles for the complete pure numerical CONTRACT_03."""
+import base64
 import gc
+import json
 import math
 from pathlib import Path
+import struct
 import unittest
 
 import msf_tools as m
@@ -84,8 +87,9 @@ class NumericChecks(unittest.TestCase):
             result=m.inspect_asset(encode(node_asset({'matrix':cols})),'gltf')
             if accepted:self.good(result)
             else:self.bad(result,'E_TRANSFORM')
-        for squared,accepted in ((1+0.5e-5,True),(1+2e-5,False)):
-            q=(0,0,0,math.sqrt(squared))
+        # The Khronos glTF-Validator limit: | |q| - 1 | <= 0.00769.
+        for length,accepted in ((1.0076,True),(0.9924,True),(1.0078,False),(0.9922,False)):
+            q=(0,0,0,length)
             if accepted:self.assertEqual(h.authored_quaternion(q),q)
             else:self.fault('E_QUATERNION',h.authored_quaternion,q)
 
@@ -203,6 +207,22 @@ class NumericChecks(unittest.TestCase):
         snap=self.good(m.inspect_asset(encode(node_asset({})),'gltf'))
         self.bad(m.evaluate_geometry(snap,node_transforms={0:{'rotation':(0,0,0,2)}}),'E_QUATERNION')
         self.bad(m.inspect_asset(encode(node_asset({'rotation':(1e200,0,0,1e200)})),'gltf'),'E_QUATERNION')
+
+    def test_khronos_simple_skin_keys_are_accepted_and_normalized(self):
+        # SimpleSkin (CC0) authors 0.707/0.383 keys whose length is up to 2.3e-4 off one.
+        text=(ROOT/'tests'/'fixtures'/'simple-skin.gltf').read_text()
+        snap=self.good(m.inspect_asset(text.encode(),'gltf'))
+        quarter=self.good(m.evaluate_geometry(snap,timestamp=1.0,animation_id=0)).to_dict()['instances'][0]['primitives'][0]['positions']
+        # The top two vertices follow the second joint, a quarter turn about Z around (0, 1, 0).
+        for actual,wanted in zip(quarter[8:],([-1,0.5,0],[-1,1.5,0])):
+            for a,w in zip(actual,wanted):self.assertAlmostEqual(a,w,places=6)
+        doc=json.loads(text)
+        uri=doc['buffers'][3]['uri']
+        head,data=uri.split(',',1)
+        raw=bytearray(base64.b64decode(data))
+        struct.pack_into('<4f',raw,48+16*2,0,0,0.707*1.02,0.707*1.02)
+        doc['buffers'][3]['uri']=head+','+base64.b64encode(bytes(raw)).decode()
+        self.bad(m.inspect_asset(json.dumps(doc).encode(),'gltf'),'E_QUATERNION')
 
     def test_signed_huge_morph_and_overflow(self):
         snapshot=self.good(m.inspect_asset(encode(morph_asset()),'gltf'))

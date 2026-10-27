@@ -34,8 +34,8 @@ integers, including normalized accessors. Exact source parsing rejects fractiona
 integer bounds even when binary64 would round them to an integer; integral
 decimal/exponent syntax remains valid. There is no enclosure tolerance. Integer weight sums are exactly 255 or
 65535 for homogeneous normalized unsigned components. Floating/mixed weight sums
-retain the project's 1e-6 effective-value policy; authored quaternion keys retain
-its 1e-5 squared-length policy. These project tolerances are not physical error
+retain the project's 1e-6 effective-value policy; authored quaternions must be
+within 0.00769 of unit length, the Khronos glTF-Validator's limit. These project tolerances are not physical error
 budgets. Authored weights are never silently renormalized.
 
 Mixed morphless/targeted primitives work in any order, with zero delta for each
@@ -77,7 +77,7 @@ blend is accepted when no inverse/decomposition is needed.
 
 Existing Python role tolerances remain: point affine1e-7, node affine1e-12,
 reparent affine/axis orthogonality1e-9, exact IBM bottom row, floating skin sum1e-6,
-authored quaternion squared length1e-5. Authored matrix orthogonality and
+authored quaternion length within 0.00769 of one (glTF-Validator). Authored matrix orthogonality and
 normalized determinant magnitude use1e-9, the same decomposition role as
 reparent. These are project acceptance choices; no physical or universal
 conditioning budget follows. The primary glTF matrix conditions are at pinned
