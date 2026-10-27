@@ -114,7 +114,7 @@ The GLB bytes are deterministic for a fixed source, dependency set, adapter vers
 - geometry golden `asset_sha256`;
 - compiled-mapping `source_sha256` and `target_sha256`.
 
-Goldens and compiled mappings add a summary of how the snapshot was produced (`source`, or `source_adapter` / `target_adapter`). Sidecar `resource_hashes` lists the source dependencies.
+Goldens and compiled mappings add a summary of how the snapshot was produced (`source`, or `source_adapter` / `target_adapter`). Sidecar `resource_hashes` lists the source dependencies. In a generated snapshot's `to_dict`, `generated_sha256`, `document`, `resources` and `chunks` describe the generated GLB and can change when the reader version changes. Only `asset_sha256` and `source` identify the source.
 
 Node paths escape `%`, `/`, `#`, `[`, `]`, `:` and control characters in each component. `[k]` tells apart duplicate siblings, and `#helper:geometry` or `#helper:scale` marks reader-made helper nodes. glTF node `i` is the `i`-th path in order of unescaped components. A generated-snapshot binding must carry `ref.source_locator = <node path>#<target key>`, which is authoritative. The stored `node`, `mesh`, `target` and `locator` are hints:
 - if a different reader version moved them, the binding is admitted with the resolved indices and a `W_BINDING_REINDEXED` warning;
