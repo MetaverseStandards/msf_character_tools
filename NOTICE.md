@@ -6,6 +6,11 @@ License texts are in [LICENSES](LICENSES). The public glTF specification informs
 
 The C++ extension `msf_tools._core` in built wheels links nanobind 3.1.0 (BSD-3-Clause, copyright 2022 Wenzel Jakob; text in [LICENSES/BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt)), which includes tsl::robin_map (MIT, copyright 2017 Thibaut Goetghebuer-Planchon; its own text in [LICENSES/robin_map-MIT.txt](LICENSES/robin_map-MIT.txt)). Both license files ship in the wheel. nanobind is fetched at build time and not vendored here.
 
+The C++ core vendors two libraries under `core/third_party`, each with its license files, and both are compiled into the extension:
+
+- Ryu by Ulf Adams, commit 4c0618b0e44f7ef027ebae05d2cc7812048f7c8f (`ryu/`: the shortest float64 formatter), used under the Boost Software License 1.0 option of its Apache-2.0 OR BSL-1.0 terms; text in [LICENSES/BSL-1.0.txt](LICENSES/BSL-1.0.txt).
+- fast_float by Daniel Lemire and contributors, v8.3.2 (`fast_float/`: the float parser), used under the MIT option of its Apache-2.0 OR BSL-1.0 OR MIT terms; its copyright notice is in `core/third_party/fast_float/LICENSE-MIT`.
+
 Existing consumer repositories retain their inherited licenses independently. Installing optional build tools does not add their source code or licenses to this runtime package. The installation backend and interpreter are separately licensed tooling.
 
 The optional `native/ufbx` package (`msf-tools-ufbx`) vendors ufbx 0.23.1 by Samuli Raivio, used under the MIT License option of its dual MIT/Unlicense terms; the full text is in `native/ufbx/vendor/LICENSE.ufbx` and ships in that package. It is built with cffi (MIT). The `msf-tools` package itself contains no ufbx code.
