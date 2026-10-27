@@ -63,6 +63,13 @@ class Scene:
         body = "\t\tVersion: 232\n\t\tProperties70:  {\n" + "".join(line + "\n" for line in lines) + "\t\t}\n"
         return self._add(f'\tModel: @ID@, "Model::{name}", "{kind}" {{\n{body}\t}}\n', parent)
 
+    def attribute(self, model, kind):
+        """A node attribute such as "Camera" or "Light" on a model."""
+        return self._add(f'\tNodeAttribute: @ID@, "NodeAttribute::", "{kind}" {{\n\t\tTypeFlags: "{kind}"\n\t}}\n', model)
+
+    def material(self, model, name):
+        return self._add(f'\tMaterial: @ID@, "Material::{name}", "" {{\n\t\tVersion: 102\n\t\tShadingModel: "phong"\n\t}}\n', model)
+
     def mesh(self, model, name, points, faces):
         """faces: lists of point indices; the last index of each face is written as -(i + 1)."""
         indices = [i for face in faces for i in face[:-1] + [-face[-1] - 1]]

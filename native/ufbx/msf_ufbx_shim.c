@@ -110,6 +110,20 @@ int msf_fbx_node_get(const msf_fbx *h, uint32_t i, msf_fbx_node *out) {
     out->helper = node->is_geometry_transform_helper ? 1 : node->is_scale_helper ? 2 : 0;
     out->inherit_mode = (int)node->inherit_mode;
     out->original_inherit_mode = (int)node->original_inherit_mode;
+    switch (node->attrib_type) {
+    case UFBX_ELEMENT_LIGHT: out->skipped = "light"; break;
+    case UFBX_ELEMENT_CAMERA: out->skipped = "camera"; break;
+    case UFBX_ELEMENT_STEREO_CAMERA: out->skipped = "stereo camera"; break;
+    case UFBX_ELEMENT_CAMERA_SWITCHER: out->skipped = "camera switcher"; break;
+    case UFBX_ELEMENT_LINE_CURVE: out->skipped = "line curve"; break;
+    case UFBX_ELEMENT_NURBS_CURVE: out->skipped = "NURBS curve"; break;
+    case UFBX_ELEMENT_NURBS_SURFACE: out->skipped = "NURBS surface"; break;
+    case UFBX_ELEMENT_NURBS_TRIM_SURFACE: out->skipped = "NURBS trim surface"; break;
+    case UFBX_ELEMENT_PROCEDURAL_GEOMETRY: out->skipped = "procedural geometry"; break;
+    case UFBX_ELEMENT_MARKER: out->skipped = "marker"; break;
+    case UFBX_ELEMENT_LOD_GROUP: out->skipped = "LOD group"; break;
+    default: out->skipped = NULL; break;
+    }
     static const char *const pivot_props[] = {"RotationPivot", "ScalingPivot", "RotationOffset", "ScalingOffset",
                                               "PreRotation", "PostRotation"};
     ufbx_vec3 zero = {0.0, 0.0, 0.0};
@@ -204,6 +218,8 @@ int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out) {
     out->anim_stacks = (uint32_t)s->anim_stacks.count;
     out->helper_nodes = helpers;
     out->blend_channels = (uint32_t)s->blend_channels.count;
+    out->materials = (uint32_t)s->materials.count;
+    out->textures = (uint32_t)s->textures.count;
     out->unit_meters = s->settings.original_unit_meters;
     out->fps = s->settings.frames_per_second;
     out->ascii = s->metadata.ascii ? 1 : 0;

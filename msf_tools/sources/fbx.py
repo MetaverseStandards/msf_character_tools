@@ -86,7 +86,8 @@ class _Scene:
                 fail("E_SOURCE_VALUE", "/", "The FBX reader could not report a node.")
             self.nodes.append({"parent": node.parent, "name": ffi.unpack(node.name, node.name_len).decode("utf-8", "replace"),
                                "mesh": node.mesh, "helper": node.helper, "pivots": node.pivots,
-                               "to_parent": _matrix(node.to_parent)})
+                               "to_parent": _matrix(node.to_parent),
+                               "skipped": ffi.string(node.skipped).decode() if node.skipped != ffi.NULL else None})
         self.losses, self.skipped = [], {"empty mesh": 0, "hole face": 0, "point or line face": 0}
         sizes = ffi.new("uint32_t[6]")
         self.empty = {m for m in range(self.info.meshes) if lib.msf_fbx_mesh_sizes(self.h, m, sizes) and sizes[0] == 0}
@@ -174,9 +175,16 @@ class _Scene:
             mesh, skin = mesh_of_shim.get(shim, (None, None))
             weights = meshes[mesh].weights if mesh is not None and any(meshes[mesh].weights) else None
             nodes.append(glb.Node(name=None if node["helper"] else node["name"], children=tuple(children[k]), mesh=mesh, skin=skin, weights=weights, **trs))
-        skipped = [f"{n} {kind}{'' if n == 1 else 's'}" for kind, n in self.skipped.items() if n]
-        if skipped:
-            self.losses.append(skinning.warning("W_SKIPPED", "/", "Skipped " + " and ".join(skipped) + "."))
+        kinds = {}
+        for node in self.nodes:
+            if node["skipped"]:
+                kinds[node["skipped"]] = kinds.get(node["skipped"], 0) + 1
+        kinds.update({"material": info.materials, "texture": info.textures})
+        kinds.update(self.skipped)
+        parts = [f"{n} {kind}{'' if n == 1 else 'es' if kind.endswith(('h', 'x')) else 's'}" for kind, n in kinds.items() if n]
+        if parts:
+            text = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+            self.losses.append(skinning.warning("W_SKIPPED", "/", f"Skipped {text}."))
         try:
             raw = glb.write_glb(tuple(nodes), tuple(meshes), tuple(skins), animation, generator=f"{adapter.name} {adapter.version}")
         except ValueError as exc:

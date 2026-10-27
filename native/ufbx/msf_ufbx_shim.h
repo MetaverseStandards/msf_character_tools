@@ -16,6 +16,7 @@ typedef struct {
     uint32_t version;
     int axes_converted;
     uint32_t blend_channels; /* in the whole scene; see msf_fbx_blend_channel_id */
+    uint32_t materials, textures;
 } msf_fbx_info;
 
 typedef struct {
@@ -34,6 +35,7 @@ typedef struct {
     int inherit_mode;        /* ufbx_inherit_mode after compensation */
     int original_inherit_mode;
     int pivots;              /* nonzero when any pivot, offset or pre/post rotation is authored */
+    const char *skipped;     /* name of an attribute msf does not convert (camera, light, curve, ...), or NULL */
     double to_parent[16];    /* column-major 4x4 */
     double to_world[16];
 } msf_fbx_node;

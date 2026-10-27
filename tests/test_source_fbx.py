@@ -107,6 +107,16 @@ class FbxStatic(unittest.TestCase):
             parent = deep.model(f'n{k}', parent)
         self.assertEqual(errors(m.inspect_asset(deep.text(), 'fbx')), [('E_SOURCE_PARSE', '/')])
 
+    def test_cameras_lights_and_materials_are_counted_as_skipped(self):
+        scene = face()
+        scene.attribute(scene.model('Cam'), 'Camera')
+        scene.attribute(scene.model('Sun'), 'Light')
+        scene.material(1002, 'Skin')
+        snapshot = good(m.inspect_asset(scene.text(), 'fbx'))
+        self.assertEqual(codes(snapshot), [('W_SKIPPED', '/')])
+        self.assertEqual(thaw(snapshot.source['losses'])[0]['message'], 'Skipped 1 camera, 1 light and 1 material.')
+        self.assertIn('/Cam', snapshot.source['node_paths'])
+
     def test_unreadable_files_and_reader_memory(self):
         self.assertEqual(errors(m.inspect_asset(b'; FBX 7.4.0 project file\nObjects: { garbage', 'fbx')), [('E_SOURCE_PARSE', '/')])
         result = m.inspect_asset(face().text(), 'fbx', limits=m.sources.SourceLimits(max_reader_memory=4096))
