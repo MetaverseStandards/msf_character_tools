@@ -9,80 +9,67 @@ reader-made helper node. A target key is one or more components joined by
 `/`. A source locator is `<node path>#<target key>`, split at its last `#`.
 Escaping makes every raw separator unambiguous, and nodes sort by their
 unescaped components.
-"""
-import re
 
-_ESCAPED = frozenset("%/#[]:" + "".join(map(chr, range(0x20))) + "\x7f")
-_COMPONENT = re.compile(r"(?P<text>[^\[\]]*)(?:\[(?P<k>0|[1-9][0-9]*)\])?")
-_HELPER = re.compile(r"helper:(?P<kind>geometry|scale)(?:\[(?P<k>0|[1-9][0-9]*)\])?")
+Implemented in the C++ core (core/src/paths.cpp).
+"""
+from .. import _native
+
+_core = _native.required()
 HELPER_KINDS = ("geometry", "scale")
+_MESSAGES = {"escape": "Bad or unnecessary escape in {!r}.", "unescaped": "Unescaped special character in {!r}.",
+             "component": "Malformed path component {!r}.", "start": "Node path must start with '/': {!r}.",
+             "helper": "Malformed helper suffix in {!r}."}
+
+
+def _call(fn, *args):
+    try:
+        return fn(*args)
+    except _core.PathError as exc:
+        kind, text = exc.args
+        raise ValueError(_MESSAGES[kind].format(text)) from None
+
+
+def _index(k):
+    return None if k is None else int(k)
+
+
+def _text(k):
+    return None if k is None else f"{k}"
 
 
 def escape(name):
-    return "".join(f"%{ord(ch):02X}" if ch in _ESCAPED else ch for ch in name)
+    return _core._paths_escape(name)
 
 
 def unescape(text):
-    out, i = [], 0
-    while i < len(text):
-        ch = text[i]
-        if ch == "%":
-            code = text[i + 1:i + 3]
-            if not re.fullmatch("[0-9A-F]{2}", code) or chr(int(code, 16)) not in _ESCAPED:
-                raise ValueError(f"Bad or unnecessary escape in {text!r}.")
-            out.append(chr(int(code, 16)))
-            i += 3
-        elif ch in _ESCAPED:
-            raise ValueError(f"Unescaped special character in {text!r}.")
-        else:
-            out.append(ch)
-            i += 1
-    return "".join(out)
-
-
-def _component(name, k):
-    return escape(name) + ("" if k is None else f"[{k}]")
-
-
-def _parse_component(text):
-    match = _COMPONENT.fullmatch(text)
-    if match is None:
-        raise ValueError(f"Malformed path component {text!r}.")
-    return unescape(match["text"]), None if match["k"] is None else int(match["k"])
+    return _call(_core._paths_unescape, text)
 
 
 def node_path(components, helper=None):
     """`components` are (name, duplicate index or None); `helper` is (kind, index or None)."""
-    path = "/" + "/".join(_component(name, k) for name, k in components)
     if helper is not None:
         kind, k = helper
         if kind not in HELPER_KINDS:
             raise ValueError(f"Unknown helper kind {kind!r}.")
-        path += f"#helper:{kind}" + ("" if k is None else f"[{k}]")
-    return path
+        helper = (kind, _text(k))
+    return _core._paths_node_path([(name, _text(k)) for name, k in components], helper)
 
 
 def parse_node_path(path):
     if type(path) is not str or not path.startswith("/"):
         raise ValueError(f"Node path must start with '/': {path!r}.")
-    body, _, suffix = path.partition("#")
-    helper = None
-    if _:
-        match = _HELPER.fullmatch(suffix)
-        if match is None:
-            raise ValueError(f"Malformed helper suffix in {path!r}.")
-        helper = (match["kind"], None if match["k"] is None else int(match["k"]))
-    return [_parse_component(c) for c in body[1:].split("/")], helper
+    components, helper = _call(_core._paths_parse_node_path, path)
+    return [(name, _index(k)) for name, k in components], None if helper is None else (helper[0], _index(helper[1]))
 
 
 def target_key(components):
-    return "/".join(_component(name, k) for name, k in components)
+    return _core._paths_target_key([(name, _text(k)) for name, k in components])
 
 
 def parse_target_key(key):
     if type(key) is not str:
         raise ValueError("Target key must be a string.")
-    return [_parse_component(c) for c in key.split("/")]
+    return [(name, _index(k)) for name, k in _call(_core._paths_parse_target_key, key)]
 
 
 def locator(path, key):
