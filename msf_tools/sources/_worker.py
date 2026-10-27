@@ -5,6 +5,7 @@ Both directions carry an 8-byte big-endian header length, a JSON header, then
 raw bytes: the source on stdin, the generated GLB on stdout. The parent treats
 everything the worker sends as untrusted; the GLB is inspected again after this.
 """
+import ctypes
 import dataclasses
 import importlib
 import json
@@ -151,6 +152,54 @@ def _write(pipe, payload):
             pass
 
 
+def linux_footprint(status):
+    """VmRSS + VmSwap in bytes from the text of /proc/<pid>/status, or None without VmRSS."""
+    fields = {}
+    for line in status.splitlines():
+        key, _, value = line.partition(":")
+        if key in ("VmRSS", "VmSwap") and value.split():
+            fields[key] = int(value.split()[0]) * 1024
+    return sum(fields.values()) if "VmRSS" in fields else None
+
+
+_LIBPROC = []
+
+
+def _darwin_footprint(pid):
+    # ri_phys_footprint from rusage_info_v2: the figure the macOS memory-pressure killer uses,
+    # which also counts compressed pages. It follows a 16-byte UUID and seven 64-bit fields.
+    if not _LIBPROC:
+        _LIBPROC.append(ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True))
+    buffer = ctypes.create_string_buffer(512)
+    if _LIBPROC[0].proc_pid_rusage(ctypes.c_int(pid), ctypes.c_int(2), buffer) != 0:
+        return None
+    return struct.unpack_from("<Q", buffer.raw, 72)[0]
+
+
+def _ps_footprint(pid):
+    try:
+        out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True, timeout=5).stdout
+        return int(out.split()[0]) * 1024
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def footprint(pid):
+    """Physical memory used by `pid` in bytes, or None when it cannot be read."""
+    found = None
+    if sys.platform == "darwin":
+        try:
+            found = _darwin_footprint(pid)
+        except OSError:
+            found = None
+    elif sys.platform.startswith("linux"):
+        try:
+            found = linux_footprint(Path(f"/proc/{pid}/status").read_text())
+        except OSError:
+            found = None
+    return found if found is not None else _ps_footprint(pid)
+
+
 def _kill_group(proc):
     # Only called while proc has not been reaped, so its pid (and process group) cannot have been reused.
     try:
@@ -183,7 +232,12 @@ def run(module, data, fmt, resolver, limits, options, *, timeout=None):
                 break
             except subprocess.TimeoutExpired:
                 pass
-            if time.monotonic() > deadline:
+            # proc.wait() has not reaped the worker, so its pid still names it and is safe to sample.
+            used = footprint(proc.pid)
+            if used is not None and used > limits.max_reader_memory:
+                failure = ("E_SOURCE_MEMORY", f"The reader process used {used} bytes, over the {limits.max_reader_memory}-byte limit.",
+                           "Raise limits.max_reader_memory, or reduce the source.")
+            elif time.monotonic() > deadline:
                 failure = ("E_SOURCE_TIMEOUT", f"The reader process did not finish within {timeout:g} seconds.",
                            "Raise limits.timeout_s, or check the source for unbounded content.")
             elif stdout.overflow:

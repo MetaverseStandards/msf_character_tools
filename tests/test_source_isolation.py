@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT
 """Source conversion in a separate reader process."""
+import os
 import struct
+import tempfile
+import time
 import unittest
 
 from msf_tools.report import Fault
@@ -12,8 +15,8 @@ OPTIONS = {'influences': 'faithful', 'losses': 'declare'}
 MODULE = 'tests.support.misbehaving_adapter'
 
 
-def run(data, **kwargs):
-    return _worker.run(MODULE, data, 'usda', None, SourceLimits(), OPTIONS, **kwargs)
+def run(data, limits=SourceLimits(), **kwargs):
+    return _worker.run(MODULE, data, 'usda', None, limits, OPTIONS, **kwargs)
 
 
 class IsolatedConversion(unittest.TestCase):
@@ -42,6 +45,28 @@ class IsolatedConversion(unittest.TestCase):
         crashed = self.fault(b'exit')
         self.assertEqual(crashed.code, 'E_SOURCE_CRASHED')
         self.assertIn('reader gave up on the source', crashed.message)
+
+    def test_reader_memory_is_watched(self):
+        diagnostic = self.fault(b'hog', limits=SourceLimits(max_reader_memory=256 << 20), timeout=5)
+        self.assertEqual(diagnostic.code, 'E_SOURCE_MEMORY')
+        self.assertGreater(_worker.footprint(os.getpid()), 1 << 20)
+        self.assertEqual(_worker.linux_footprint('Name:\tpython\nVmRSS:\t  2048 kB\nVmSwap:\t   512 kB\n'), 2560 * 1024)
+        self.assertIsNone(_worker.linux_footprint('Name:\tzombie\n'))
+
+    def test_the_whole_process_group_is_killed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            record = os.path.join(tmp, 'child.pid')
+            self.assertEqual(self.fault(b'spawn:' + record.encode(), timeout=0.5).code, 'E_SOURCE_TIMEOUT')
+            with open(record) as handle:
+                child = int(handle.read())
+        for _ in range(100):  # the orphaned child is reaped by init shortly after it dies
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.01)
+        else:
+            self.fail('the reader process left a child running')
 
     def test_malformed_worker_responses_are_protocol_errors(self):
         good = _worker.frame({'protocol': _worker.PROTOCOL, 'ok': True, 'adapter': ['a', '1', 'r 1'], 'node_paths': ['/A'],

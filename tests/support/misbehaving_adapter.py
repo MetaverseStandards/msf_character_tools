@@ -2,6 +2,7 @@
 """A source adapter for isolation tests; the source bytes say how to misbehave."""
 import os
 import signal
+import subprocess
 import sys
 import time
 
@@ -28,6 +29,17 @@ class MisbehavingAdapter:
         if data == b'exit':
             sys.stderr.write('reader gave up on the source\n')
             sys.exit(3)
+        if data == b'hog':
+            chunks = []
+            for _ in range(32):  # stops at 1 GiB if nothing kills the process first
+                chunks.append(b'\x01' * (32 << 20))
+                time.sleep(0.01)
+            time.sleep(30)
+        if data.startswith(b'spawn:'):
+            child = subprocess.Popen(['sleep', '30'])
+            with open(data[len(b'spawn:'):], 'w') as handle:
+                handle.write(str(child.pid))
+            time.sleep(30)
         if data == b'parse':
             raise SourceParseError('line 1: unexpected token')
         if data == b'fault':
