@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import base64
 import binascii
 import importlib
+import importlib.util
 import math
 import os
 import re
@@ -653,15 +654,15 @@ def _parse_asset(raw, format):
 
 
 @public
-def inspect_asset(bytes, /, format, resolver=None, sidecar=None, *, limits=None, options=None):
+def inspect_asset(bytes, /, format, resolver=None, sidecar=None, *, isolate=False, limits=None, options=None):
     if type(format) is str and format.lower() in SOURCE_FORMATS and type(bytes) is type(b""):
-        return _inspect_source_format(bytes, format.lower(), resolver, sidecar, limits, options)
+        return _inspect_source_format(bytes, format.lower(), resolver, sidecar, limits, options, isolate)
     if type(bytes) is not type(b"") or type(format) is not str or format.lower() not in _GLTF_FORMATS:
         if type(format) is str and format.lower() not in _GLTF_FORMATS + SOURCE_FORMATS:
             fail("E_ASSET_TYPE", "/", "Expected a gltf/glb format or a source format: " + ", ".join(SOURCE_FORMATS) + ".")
         fail("E_ASSET_TYPE", "/", "Expected immutable bytes and gltf/glb format.")
-    if limits is not None or options is not None:
-        fail("E_SOURCE_OPTIONS", "/", "limits and options apply only to source formats.")
+    if limits is not None or options is not None or isolate is not False:
+        fail("E_SOURCE_OPTIONS", "/", "isolate, limits and options apply only to source formats.")
     return _inspect_gltf(bytes, format, resolver, sidecar)
 
 
@@ -709,6 +710,12 @@ def _source_options(options, fmt):
     return normalized
 
 
+def _missing_adapter(fmt):
+    extra = "FBX" if fmt == "fbx" else "USD"
+    fail("E_FORMAT_DEPENDENCY", "/", f"{extra} support is not installed in this build of msf-tools.",
+         f"Use an msf-tools release that includes {extra} support.")
+
+
 def _load_adapter(fmt):
     extra = "fbx" if fmt == "fbx" else "usd"
     module = _ADAPTER_MODULES[fmt]
@@ -716,13 +723,28 @@ def _load_adapter(fmt):
         return importlib.import_module(module).ADAPTER
     except ImportError as exc:
         if exc.name == module:
-            fail("E_FORMAT_DEPENDENCY", "/", f"{extra.upper()} support is not installed in this build of msf-tools.",
-                 f"Use an msf-tools release that includes {extra.upper()} support.")
+            _missing_adapter(fmt)
         fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
              f"pip install 'msf-tools[{extra}]'")
 
 
-def _inspect_source_format(data, fmt, resolver, sidecar, limits, options):
+def _isolated_adapter(fmt, resolver):
+    if resolver is not None and not isinstance(resolver, LocalResolver):
+        fail("E_ISOLATE_RESOLVER", "/", "An isolated reader can only use a LocalResolver or no resolver.",
+             "Pass a LocalResolver, or set isolate=False.")
+    module = _ADAPTER_MODULES[fmt]
+    # Look the module up without importing it, so the reader library is only ever loaded by the worker.
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except ImportError:
+        found = False
+    if not found:
+        _missing_adapter(fmt)
+    from .sources._worker import IsolatedAdapter
+    return IsolatedAdapter(module)
+
+
+def _inspect_source_format(data, fmt, resolver, sidecar, limits, options, isolate=False):
     concrete = _source_magic(data, fmt)
     if concrete is None:
         fail("E_FORMAT_MISMATCH", "/", f"Bytes do not start like a {fmt} file.")
@@ -735,7 +757,10 @@ def _inspect_source_format(data, fmt, resolver, sidecar, limits, options):
         fail("E_RESOURCE_LIMIT", "/", f"Source exceeds the {limits.max_source_bytes}-byte limit.")
     if resolver is not None and not callable(resolver):
         fail("E_RESOLVER", "/", "Resolver must be an explicitly supplied callable.")
-    return _inspect_source(_load_adapter(fmt), data, concrete, resolver, sidecar, options, limits)
+    if type(isolate) is not bool:
+        fail("E_SOURCE_OPTIONS", "/isolate", "isolate must be True or False.")
+    adapter = _isolated_adapter(fmt, resolver) if isolate else _load_adapter(fmt)
+    return _inspect_source(adapter, data, concrete, resolver, sidecar, options, limits)
 
 
 def _inspect_gltf(bytes, format, resolver, sidecar, *, max_asset_bytes=MAX_ASSET_BYTES,

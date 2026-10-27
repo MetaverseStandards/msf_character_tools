@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 
+import msf_tools as m
 from msf_tools.report import Fault
 from msf_tools.sources import SourceLimits, SourceParseError, _worker
 
@@ -82,6 +83,20 @@ class IsolatedConversion(unittest.TestCase):
                 _worker.parse_response(raw, SourceLimits())
             self.assertEqual(caught.exception.diagnostic.code, 'E_SOURCE_PROTOCOL')
         self.assertGreater(header_length, 0)
+
+
+class IsolateKeyword(unittest.TestCase):
+    def codes(self, result):
+        return [(d.code, d.ref) for d in result.report.diagnostics]
+
+    def test_isolate_is_checked_and_needs_a_local_resolver(self):
+        data = fake.source(fake.scene(dependencies=[]))
+        self.assertEqual(self.codes(m.inspect_asset(data, 'usda', resolver=lambda uri: b'', isolate=True)),
+                         [('E_ISOLATE_RESOLVER', '/')])
+        self.assertEqual(self.codes(m.inspect_asset(data, 'usda', isolate='yes')), [('E_SOURCE_OPTIONS', '/isolate')])
+        gltf = m.inspect_asset(b'{"asset":{"version":"2.0"}}', 'gltf', isolate=True)
+        self.assertEqual(self.codes(gltf), [('E_SOURCE_OPTIONS', '/')])
+        self.assertTrue(m.inspect_asset(b'{"asset":{"version":"2.0"}}', 'gltf', isolate=False).ok)
 
 
 if __name__ == '__main__':

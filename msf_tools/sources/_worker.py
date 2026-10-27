@@ -259,6 +259,21 @@ def run(module, data, fmt, resolver, limits, options, *, timeout=None):
     return parse_response(bytes(stdout.data), limits)
 
 
+class IsolatedAdapter:
+    """Stands in for the adapter in `module`; its identity is known once a conversion has run."""
+
+    def __init__(self, module):
+        self.module = module
+        self.name = self.version = self._reader = None
+
+    def convert(self, data, fmt, resolver, limits, options):
+        generated, (self.name, self.version, self._reader) = run(self.module, data, fmt, resolver, limits, options)
+        return generated
+
+    def reader(self):
+        return self._reader
+
+
 def _respond(out, header, payload=b""):
     out.write(frame(dict(header, protocol=PROTOCOL), payload))
     out.flush()

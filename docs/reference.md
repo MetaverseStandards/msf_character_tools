@@ -57,7 +57,7 @@ Unary/weighted output domain is checked during evaluation. Identity requires equ
 
 ```python
 inspect_asset(bytes, /, format, resolver=None, sidecar=None, *,
-              limits=None, options=None) -> Result[AssetSnapshot]
+              isolate=False, limits=None, options=None) -> Result[AssetSnapshot]
 annotate_asset(snapshot, annotations) -> Result[Sidecar]
 ```
 
@@ -142,7 +142,13 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 | `max_accessor_components`, `max_total_accessor_components` | 4,000,000, 16,000,000 | Can be lowered, not raised. Integrity checks and the geometry evaluation budget use these defaults for generated snapshots. |
 | `max_reader_memory`, `timeout_s` | 2 GiB, 300 s | Used by isolated conversion. |
 
-glTF formats refuse `limits` and `options` with `E_SOURCE_OPTIONS`.
+glTF formats refuse `isolate`, `limits` and `options` with `E_SOURCE_OPTIONS`.
+
+`isolate=True` runs the source reader in a new Python process (`python -I`, started from the msf-tools checkout or installation, with only `PATH`, `TMPDIR` and `PXR_WORK_THREAD_LIMIT=1` in its environment, in its own process group). The reader library is never imported by the calling process. The returned GLB is inspected again as untrusted input, so the snapshot is the same as without isolation. The resolver must be `None` or a `LocalResolver`, which the reader process rebuilds from its root and budgets; any other resolver is `E_ISOLATE_RESOLVER`. Failures:
+- running longer than `timeout_s` kills the process group: `E_SOURCE_TIMEOUT`;
+- physical memory over `max_reader_memory` (sampled every 100 ms) kills it too: `E_SOURCE_MEMORY`;
+- a reader process that exits with an error or a signal: `E_SOURCE_CRASHED`, with the end of its stderr;
+- a malformed response: `E_SOURCE_PROTOCOL`.
 
 #### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
 

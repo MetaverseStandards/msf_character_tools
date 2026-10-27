@@ -3,7 +3,9 @@
 import importlib.util
 import io
 import math
+from pathlib import Path
 import struct
+import tempfile
 import unittest
 import zipfile
 
@@ -543,3 +545,17 @@ class UsdAnimation(unittest.TestCase):
         self.assertEqual(positions(snapshot, morph_weights={0: [1.0]}), [[0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 2.0, 0.0]])
         strict = m.inspect_asset(data, 'usda', options={'losses': 'strict'})
         self.assertEqual([d.code for d in strict.report.diagnostics], ['E_INBETWEEN_UNSUPPORTED'])
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdIsolated(unittest.TestCase):
+    def test_isolated_reader_matches_in_process_with_a_local_resolver(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / 'parts').mkdir()
+            for uri, payload in UsdDependencies.files.items():
+                (root / uri).write_bytes(payload)
+            local = good(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=m.LocalResolver(root)))
+            isolated = good(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=m.LocalResolver(root), isolate=True))
+        self.assertEqual(m.canonical_json(isolated.to_dict()), m.canonical_json(local.to_dict()))
+        self.assertEqual(len(isolated.source['dependencies']), 2)
