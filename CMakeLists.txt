@@ -29,7 +29,7 @@ add_library(fast_float INTERFACE)
 target_include_directories(fast_float INTERFACE core/third_party/fast_float/include)
 
 add_library(msfcore STATIC core/src/authoring.cpp core/src/diagnostics.cpp core/src/json.cpp core/src/math3d.cpp
-            core/src/pack.cpp core/src/program.cpp core/src/sha256.cpp)
+            core/src/mapping.cpp core/src/pack.cpp core/src/program.cpp core/src/sha256.cpp)
 target_include_directories(msfcore PUBLIC core/include)
 target_link_libraries(msfcore PRIVATE ryu fast_float)
 set_target_properties(msfcore ryu PROPERTIES POSITION_INDEPENDENT_CODE ON)
