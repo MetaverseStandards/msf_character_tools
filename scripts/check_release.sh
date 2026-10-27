@@ -4,7 +4,10 @@
 # were built from:
 #   - each wheel holds exactly the commit's msf_tools/*.py, one _core extension,
 #     the build record naming the commit, and the licence files pyproject lists;
-#   - the extension links only system libraries and targets macOS 11.0;
+#   - macOS: the extension links only system libraries and targets macOS 11.0;
+#   - Linux: auditwheel show finds the manylinux_2_28 tag for this machine's
+#     architecture, nothing was vendored, and the extension needs only the C and
+#     C++ runtime libraries the policy allows;
 #   - each wheel installs, with the usd extra, into a fresh venv on its interpreter,
 #     imports its own extension, and passes the public suite there, unchanged;
 #   - the sdist carries docs/, schemas/ and the licences but no tests or examples.
@@ -65,15 +68,35 @@ print(f"{sdist.name}: contents and licence metadata {'ok' if good else 'FAILED'}
 sys.exit(not (ok and good))
 PY
 
-for wheel in "$dist"/*.whl; do
-  mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
-  so=$(ls "$scratch/whl"/msf_tools/_core.*.so)
-  others=$(otool -L "$so" | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)
-  [ -z "$others" ] && note "$(basename "$wheel"): links only system libraries ($(otool -L "$so" | tail -n +2 | awk '{print $1}' | tr '\n' ' '))" \
-    || note "$(basename "$wheel"): non-system libraries FAILED: $others"
-  minos=$(otool -l "$so" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
-  [ "$minos" = 11.0 ] && note "$(basename "$wheel"): targets macOS $minos" || note "$(basename "$wheel"): targets macOS $minos, FAILED (want 11.0)"
-done
+if [ "$(uname -s)" = Linux ]; then
+  "$uv" venv -q --python "$py312" "$scratch/audit" && "$uv" pip install -q --python "$scratch/audit/bin/python" auditwheel
+  arch=$(uname -m)
+  for wheel in "$dist"/*manylinux*.whl; do
+    name=$(basename "$wheel")
+    shown=$("$scratch/audit/bin/auditwheel" show "$wheel" 2>&1)
+    case "$name" in *"manylinux_2_28_$arch.whl") ;; *) note "$name: tag is not manylinux_2_28_$arch, FAILED" ;; esac
+    if printf '%s' "$shown" | tr '\n' ' ' | grep -q "consistent with the following platform tag: \"manylinux_2_28_$arch\""; then
+      note "$name: auditwheel show: manylinux_2_28_$arch"
+    else
+      note "$name: auditwheel show FAILED: $(printf '%s' "$shown" | tr '\n' ' ')"
+    fi
+    if unzip -l "$wheel" | grep -q '\.libs/'; then note "$name: auditwheel vendored libraries, FAILED"; fi
+    mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
+    needed=$(readelf -d "$scratch/whl"/msf_tools/_core.*.so | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
+    others=$(printf '%s' "$needed" | tr ' ' '\n' | grep -vE '^(libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|libpthread\.so\.0|libdl\.so\.2|ld-linux.*)?$' || true)
+    [ -z "$others" ] && note "$name: needs only $needed" || note "$name: needs other libraries, FAILED: $others"
+  done
+else
+  for wheel in "$dist"/*macosx*.whl; do
+    mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
+    so=$(ls "$scratch/whl"/msf_tools/_core.*.so)
+    others=$(otool -L "$so" | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)
+    [ -z "$others" ] && note "$(basename "$wheel"): links only system libraries ($(otool -L "$so" | tail -n +2 | awk '{print $1}' | tr '\n' ' '))" \
+      || note "$(basename "$wheel"): non-system libraries FAILED: $others"
+    minos=$(otool -l "$so" | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $2; exit}')
+    [ "$minos" = 11.0 ] && note "$(basename "$wheel"): targets macOS $minos" || note "$(basename "$wheel"): targets macOS $minos, FAILED (want 11.0)"
+  done
+fi
 
 # The public suite asserts that msf_tools is the one next to tests/, so the tests
 # go next to the installed package, in the throwaway venv's site-packages.
