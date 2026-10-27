@@ -61,8 +61,12 @@ for version in 3.11 3.12; do
 done
 
 py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
-if [ -x "$py312" ] && unexercised=$(PYTHONPATH=. "$py312" -B tests/test_diagnostics_registry.py 2>&1); then
-  lines+=("- Diagnostics registry: $unexercised")
+if [ -x "$py312" ]; then
+  if unexercised=$(PYTHONPATH=. "$py312" -B tests/test_diagnostics_registry.py 2>&1); then
+    lines+=("- Diagnostics registry: $unexercised")
+  else
+    lines+=("- Diagnostics registry: listing FAILED")
+  fi
 fi
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
