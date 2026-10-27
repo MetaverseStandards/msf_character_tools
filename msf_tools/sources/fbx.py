@@ -16,7 +16,7 @@ from msf_tools_ufbx import ffi, lib
 
 from . import ReaderMismatch
 
-SHIM_ABI = 4
+SHIM_ABI = 5
 # A stale build would still load, since cffi compiled it against its own declarations, and then fill fewer fields.
 if getattr(lib, "msf_fbx_shim_abi", None) is None or lib.msf_fbx_shim_abi() != SHIM_ABI:
     raise ReaderMismatch(f"The installed msf-tools-ufbx does not match this msf-tools (it needs shim ABI {SHIM_ABI}).",

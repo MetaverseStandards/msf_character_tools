@@ -231,10 +231,12 @@ int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out) {
     out->fps = s->settings.frames_per_second;
     out->ascii = s->metadata.ascii ? 1 : 0;
     out->version = s->metadata.version;
-    /* settings.axes keeps the file's own axes even when the load converts them. */
-    out->axes_converted = !(s->settings.axes.right == UFBX_COORDINATE_AXIS_POSITIVE_X
-                            && s->settings.axes.up == UFBX_COORDINATE_AXIS_POSITIVE_Y
-                            && s->settings.axes.front == UFBX_COORDINATE_AXIS_POSITIVE_Z);
+    /* settings.axes keeps the file's own axes even when the load converts them. ufbx converts only when all three
+       are known: a file without axis settings (FBX 5000 and earlier) keeps its own. */
+    out->axes_converted = ufbx_coordinate_axes_valid(s->settings.axes)
+                          && !(s->settings.axes.right == UFBX_COORDINATE_AXIS_POSITIVE_X
+                               && s->settings.axes.up == UFBX_COORDINATE_AXIS_POSITIVE_Y
+                               && s->settings.axes.front == UFBX_COORDINATE_AXIS_POSITIVE_Z);
     return 1;
 }
 

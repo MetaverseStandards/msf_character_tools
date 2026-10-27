@@ -15,6 +15,7 @@
 
 ### Fixed
 - An FBX stack whose stop time equals its last frame in binary32 is no longer refused.
+- An FBX file without axis settings (FBX 5000 and earlier) is no longer declared `I_AXES_CONVERTED`: ufbx leaves such axes as they are. The shim ABI is now 5 (`msf-tools-ufbx` 0.1.6).
 - Building `msf-tools-ufbx` with an interpreter whose link settings point at a missing toolchain, such as Meta's system `python3`, stops early with the remedy instead of a linker error.
 
 ## 0.1.1
