@@ -453,6 +453,23 @@ class FbxAnimation(unittest.TestCase):
         result = m.inspect_asset(data, 'fbx', limits=m.sources.SourceLimits(max_animation_values=849))
         self.assertEqual(errors(result), [('E_RESOURCE_LIMIT', '/')])
 
+    def test_reader_calls_that_report_failure_are_refused(self):
+        from msf_tools.sources import fbx
+        real = fbx.lib
+
+        def failing(name):
+            class Proxy:
+                def __getattr__(self, attr):
+                    return (lambda *args: 0) if attr == name else getattr(real, attr)
+            return Proxy()
+
+        skinned, _ = skinned_scene()
+        for name, data in (('msf_fbx_skin_sizes', skinned.text()), ('msf_fbx_blend_sizes', animated().text()),
+                           ('msf_fbx_stack_get', animated().text()), ('msf_fbx_blend_channel_id', animated().text())):
+            with self.subTest(name=name), unittest.mock.patch.object(fbx, 'lib', failing(name)):
+                result = m.inspect_asset(data, 'fbx', isolate=False)
+                self.assertEqual([d.code for d in result.report.diagnostics], ['E_SOURCE_VALUE'])
+
     def test_animated_skin_matches_ufbx_skinning(self):
         scene, _ = skinned_scene()
         arm = next(int(o.split(':')[1].split(',')[0]) for o in scene.objects if '"Model::Arm"' in o)
