@@ -13,9 +13,10 @@ python3 -B -m msf_tools evaluate examples/authoring wink examples/samples.json -
 python3 -B -m msf_tools geometry tests/public/fixtures/combined.gltf --animation 0 --time 0.5
 ```
 
-The commands above run from a checkout once the C++ core is built in place (see [building](docs/building.md)):
+The commands above run from a checkout once the C++ core is built in place (see [building](docs/building.md)); CMake finds nanobind through the interpreter, so install it there first:
 
 ```sh
+python3 -m pip install nanobind==3.1.0
 cmake -S . -B build/core -G Ninja -DPython_EXECUTABLE=python3 -DMSF_CORE_IN_PLACE=ON && cmake --build build/core
 ```
 
