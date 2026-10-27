@@ -221,6 +221,18 @@ class FbxPivots(unittest.TestCase):
                 wanted = [[sum(world[r][k] * p[k] for k in range(3)) + world[r][3] for r in range(3)] for p in [(1, 2, 3), (0, 0, 0), (0, 1, 0)]]
                 close(self, msf_world_points(snapshot, mesh_node(snapshot, '/Root/Arm'), 0.0), wanted)
 
+    def test_inherit_types_reproduce_the_codex_affine_witness_points(self):
+        # Literal points from the archived Codex FBX carry tests: parent Rz(90) with scale (2, 3, 4), child Rx(90),
+        # point (1, 2, 3).
+        for mode, expected in ((0, (12, 2, 6)), (1, (9, 2, 8)), (2, (3, 1, 2))):
+            with self.subTest(inherit_type=mode):
+                scene = Scene()
+                root = scene.model('Root', rotation=(0, 0, 90), scale=(2, 3, 4), inherit_type=1)
+                arm = scene.model('Arm', root, kind='Mesh', rotation=(90, 0, 0), inherit_type=mode)
+                scene.mesh(arm, 'Arm', [(1, 2, 3), (0, 0, 0), (0, 1, 0)], [[0, 1, 2]])
+                snapshot = good(m.inspect_asset(scene.text(), 'fbx'))
+                close(self, msf_world_points(snapshot, mesh_node(snapshot, '/Root/Arm'), 0.0)[:1], [expected])
+
 
 def skinned_scene(skinning='Linear', weights=None):
     scene = Scene()
