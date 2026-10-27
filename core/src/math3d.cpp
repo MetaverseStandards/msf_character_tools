@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT AND PSF-2.0
 #include "msf/math3d.hpp"
 
 #include <cfloat>
