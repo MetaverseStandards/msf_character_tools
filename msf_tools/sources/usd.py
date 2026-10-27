@@ -183,9 +183,28 @@ class UsdAdapter:
             except Tf.ErrorException as exc:
                 raise SourceParseError(str(exc).strip()) from None
             try:
-                return _convert(stage, self, dependencies, external, options)
+                generated = _convert(stage, self, dependencies, external, options)
+                _check_used_layers(stage, Path(tmp))
+                return generated
             finally:
                 del stage
+
+
+def _check_used_layers(stage, tmp):
+    """Refuse if any layer the stage used, clip layers included, came from outside the materialized folder.
+
+    The pre-scan should already stop every route out; this catches any it misses.
+    """
+    root = tmp.resolve()
+    for layer in stage.GetUsedLayers(includeClipLayers=True):
+        if layer.anonymous:
+            continue
+        real = layer.realPath.split("[", 1)[0]
+        try:
+            Path(real).resolve().relative_to(root)
+        except ValueError:
+            fail("E_SOURCE_REFERENCE", "/", f"usd-core loaded a layer from outside the source: {layer.identifier[:200]}",
+                 "Remove the reference, clip or other path that reaches outside the source.")
 
 
 def _open(identifier):
@@ -244,8 +263,14 @@ def _anchor(asset, base):
 def _refuse_clips(layer):
     # Value clips name layers that usd-core opens lazily, outside the closure checked here.
     clipped = []
-    layer.Traverse("/", lambda path: clipped.append(path) if path.IsPrimPath() and any(
-        layer.GetPrimAtPath(path).HasInfo(key) for key in ("clips", "clipSets")) else None)
+
+    def visit(path):
+        # Clips can sit on a variant spec (/A{v=x}) as well as a prim; a variant set path (/A{v=}) has no prim spec.
+        spec = layer.GetPrimAtPath(path) if path.IsPrimPath() or path.IsPrimVariantSelectionPath() else None
+        if spec and any(spec.HasInfo(key) for key in ("clips", "clipSets")):
+            clipped.append(path)
+
+    layer.Traverse("/", visit)
     if clipped:
         fail("E_SOURCE_REFERENCE", "/", f"Value clips on {clipped[0]} are not supported.",
              "Flatten the clips into the layer before inspecting.")

@@ -7,6 +7,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+import unittest.mock
 import zipfile
 
 import msf_tools as m
@@ -163,6 +164,31 @@ class UsdDependencies(unittest.TestCase):
         broken = dict(self.files, **{'parts/sub.usda': b'#usda 1.0\ndef Xform "x" { garbage'})
         self.assertEqual(self.errors(m.inspect_asset(ROOT_WITH_SUBLAYER, 'usda', resolver=broken.__getitem__)),
                          [('E_SOURCE_PARSE', '/')])
+
+    def clip_on_variant(self, host):
+        (host / 'clip.usda').write_text('#usda 1.0\nover "A" {\n    double3 xformOp:translate.timeSamples = {\n        0: (5, 0, 0),\n'
+                                        '    }\n    uniform token[] xformOpOrder = ["xformOp:translate"]\n}\n')
+        # Ivo's probe: clips authored on the variant spec itself, naming a host file outside the resolver root.
+        return (f'#usda 1.0\ndef Xform "A" (\n    variants = {{\n        string v = "x"\n    }}\n    prepend variantSets = "v"\n)\n{{\n'
+                f'    variantSet "v" = {{\n        "x" (\n            clips = {{\n                dictionary default = {{\n'
+                f'                    asset[] assetPaths = [@{host}/clip.usda@]\n                    string primPath = "/A"\n'
+                f'                    double2[] active = [(0, 0)]\n                    double2[] times = [(0, 0)]\n                }}\n'
+                f'            }}\n        ) {{\n            double3 xformOp:translate\n'
+                f'            uniform token[] xformOpOrder = ["xformOp:translate"]\n        }}\n    }}\n}}\n').encode()
+
+    def test_clips_on_variant_specs_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            host = Path(tmp).resolve()
+            result = m.inspect_asset(self.clip_on_variant(host), 'usda', resolver=m.LocalResolver(host))
+        self.assertEqual(self.errors(result), [('E_SOURCE_REFERENCE', '/')])
+
+    def test_layers_loaded_from_outside_the_materialized_folder_are_refused(self):
+        from msf_tools.sources import usd
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(usd, '_refuse_clips', lambda layer: None):
+            host = Path(tmp).resolve()
+            result = m.inspect_asset(self.clip_on_variant(host), 'usda', resolver=m.LocalResolver(host))
+        self.assertEqual(self.errors(result), [('E_SOURCE_REFERENCE', '/')])
+        self.assertIn('outside', result.report.diagnostics[0].message)
 
     def test_bare_relative_layer_paths_are_anchored_to_their_layer(self):
         # USD tries a bare path next to the referring layer before any search path; only that first step is allowed.
