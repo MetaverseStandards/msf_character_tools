@@ -17,7 +17,7 @@ cmake --build build/core-3.12
 
 `scripts/ci_local.sh` does this for each Python before running the suites. An editable install copies modules at install time, so prefer the in-place build. `-DMSF_SANITIZE=ON` builds with AddressSanitizer and UndefinedBehaviorSanitizer; `scripts/ci_local.sh --sanitize` uses it.
 
-The core vendors Ryu, fast_float and ufbx under `core/third_party` (see NOTICE.md). ufbx and its shim are the exception to the floating-point rule above: they are compiled with `-O2` and the compiler's default contraction, as 0.3.0's cffi build compiled them, so FBX conversions stay byte-identical to 0.3.0. Its diagnostic codes come from `core/include/msf/diagnostics.inc`, which `python3 -B tools/gen_diagnostics.py` generates from `schemas/diagnostics.toml`; regenerate it after editing the registry, and a test fails until you do.
+The core vendors Ryu, fast_float and ufbx under `core/third_party` (see NOTICE.md). ufbx and its shim are the exception to the floating-point rule above: they are compiled with `-O2` and the compiler's default contraction, as 0.3.0's cffi build compiled them, so FBX conversions stay byte-identical to 0.3.0. The core's diagnostic codes come from `core/include/msf/diagnostics.inc`, which `python3 -B tools/gen_diagnostics.py` generates from `schemas/diagnostics.toml`; regenerate it after editing the registry, and a test fails until you do.
 
 ## Build record
 
