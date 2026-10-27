@@ -85,6 +85,11 @@ def _input_paths(args):
     return paths
 
 
+def _reads_source(args):
+    return any(getattr(args, field, None) and Path(getattr(args, field)).suffix.lstrip(".").lower() in SOURCE_FORMATS
+               for field in ("asset", "source_asset", "target_asset"))
+
+
 def _error(code, ref, message, remediation="Correct the input and rerun the command."):
     return Diagnostic(code, "error", str(ref), message, remediation)
 
@@ -244,7 +249,8 @@ def main(argv=None):
                     samples = samples["samples"]
                 result = evaluate_mapping(result.value, samples)
         payload = canonical_json(result.value) if result.ok else canonical_json(result.report)
-        if args.output:
+        # A failed source read lists no fetched layers, so its report is not written where a layer might be.
+        if args.output and (result.ok or not _reads_source(args)):
             _preflight([args.output], args.fetched)
             atomic_write(args.output, payload)
         elif result.ok:

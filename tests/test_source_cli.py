@@ -89,6 +89,13 @@ class SourceOutputAliases(unittest.TestCase):
         os.link(self.sub, link)
         self.refused(link)
 
+    def test_a_failed_source_read_writes_no_output(self):
+        # The read fails after fetching layers/sub.usda, so the snapshot that would list it never exists.
+        self.sub.write_text('#usda 1.0\n(\n    subLayers = [@/etc/hosts.usda@]\n)\n')
+        code, _, report = run('inspect', self.asset, '--in-process', '--resolver-root', self.root, '--output', self.sub)
+        self.assertEqual((code, [d['code'] for d in report['diagnostics']]), (1, ['E_SOURCE_REFERENCE']))
+        self.assertEqual(self.sub.read_text(), '#usda 1.0\n(\n    subLayers = [@/etc/hosts.usda@]\n)\n')
+
     def test_output_beside_the_layers_is_written(self):
         code, _, report = run('inspect', self.asset, '--in-process', '--resolver-root', self.root, '--output', self.root / 'out.json')
         self.assertEqual(code, 0, report)
