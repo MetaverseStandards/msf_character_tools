@@ -25,7 +25,7 @@ Every built package contains `msf_tools/_build_info.json`:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "commit": "<40 lowercase hex digits>"
 }
 ```

@@ -6,7 +6,7 @@ backend-path = ["tools"]
 
 [project]
 name = "msf-tools"
-version = "0.3.0"
+version = "0.4.0"
 description = "Validated signal mappings and immutable glTF reference evaluation"
 readme = "README.md"
 requires-python = ">=3.11"

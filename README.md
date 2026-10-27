@@ -1,6 +1,6 @@
 # MSF Tools
 
-Python 3.11+ standard library reference for validated signal mappings and immutable glTF inspection. The package also supplies independent binary64 position evaluation for relative morph targets and linear blend skinning over every influence set.
+Validated signal mappings and immutable glTF inspection for Python 3.11+, with a C++ core. The package also supplies independent binary64 position evaluation for relative morph targets and linear blend skinning over every influence set, and reads USD (through usd-core) and FBX (through ufbx, compiled in) by converting them to glTF.
 
 ## Run
 
@@ -13,7 +13,13 @@ python3 -B -m msf_tools evaluate examples/authoring wink examples/samples.json -
 python3 -B -m msf_tools geometry tests/public/fixtures/combined.gltf --animation 0 --time 0.5
 ```
 
-For installation in your chosen virtual environment:
+The commands above run from a checkout once the C++ core is built in place (see [building](docs/building.md)):
+
+```sh
+cmake -S . -B build/core -G Ninja -DPython_EXECUTABLE=python3 -DMSF_CORE_IN_PLACE=ON && cmake --build build/core
+```
+
+For installation in your chosen virtual environment, which compiles the core (a C++17 compiler, CMake 3.26+ and Ninja or Make):
 
 ```sh
 python3 -m venv .venv
@@ -23,7 +29,7 @@ python3 -m venv .venv
 
 For a walkthrough that takes a real glTF, USD and FBX asset each through inspection, a sidecar binding, a mapping and posed geometry, see [examples/README.md](examples/README.md).
 
-There are no runtime dependencies. Setuptools is the installation build backend. The repository root supports `python -m msf_tools` without installation; consumers should import an installed package or explicitly select a local tools path.
+There are no runtime dependencies; the optional `usd` extra installs usd-core. The build backend is scikit-build-core, through `tools/build_backend.py`. The repository root supports `python -m msf_tools` without installation once the core is built in place; consumers should import an installed package or explicitly select a local tools path.
 
 ## Six public APIs
 
@@ -46,4 +52,4 @@ The original [combined fixture](tests/public/fixtures/README.md) includes jaw/he
 
 ## Development and licenses
 
-Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Original code is MIT; original documentation, data and fixtures are CC-BY-SA-4.0. The pybind11 native pilot was removed in 0.3.0; the C++ core will replace it. [Building](docs/building.md) covers the build record and tools.
+Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Original code is MIT; original documentation, data and fixtures are CC-BY-SA-4.0. Since 0.4.0 the implementation is a C++ core, `msf_tools._core`, behind the same Python API. [Building](docs/building.md) covers the build record and tools.
