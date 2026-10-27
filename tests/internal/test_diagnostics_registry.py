@@ -4,6 +4,8 @@
 Run this file directly to list registered codes that no test mentions.
 """
 import ast
+import importlib.util
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -12,12 +14,17 @@ import unittest
 from unittest.mock import patch
 
 import msf_tools as m
+from msf_tools import _native
 from msf_tools import snapshot as snapshots
 from internal.adapters import fake_adapter as fake
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / 'schemas/diagnostics.toml'
 SOURCES = sorted((ROOT / 'msf_tools').rglob('*.py'))
+CORE_SOURCES = sorted(p for p in (ROOT / 'core').rglob('*.[ch]pp') if 'third_party' not in p.parts)
+_spec = importlib.util.spec_from_file_location('gen_diagnostics', ROOT / 'tools/gen_diagnostics.py')
+gen_diagnostics = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(gen_diagnostics)
 CODE = re.compile(r'[EWI]_[A-Z][A-Z0-9_]*')
 SEVERITY = {'E': 'error', 'W': 'warning', 'I': 'info'}
 KEYS = {'severity', 'meaning', 'since', 'strict', 'reserved', 'removed'}
@@ -52,6 +59,15 @@ def scan(paths):
     return literals, templates
 
 
+def scan_core(paths):
+    """Where each code the C++ core names (Code::E_...) appears."""
+    literals = {}
+    for path in paths:
+        for code in re.findall(r'Code::([EWI]_[A-Z][A-Z0-9_]*)', path.read_text(encoding='utf-8')):
+            literals.setdefault(code, set()).add(path)
+    return literals
+
+
 def unknown_builders(templates):
     """Run-time code templates that are new, or built somewhere other than their one known file."""
     return sorted(f'{template} in {path.name}' for template, paths in templates.items() for path in paths
@@ -63,6 +79,8 @@ class DiagnosticsRegistry(unittest.TestCase):
     def setUpClass(cls):
         cls.codes = registry()
         cls.literals, cls.templates = scan(SOURCES)
+        for code, paths in scan_core(CORE_SOURCES).items():
+            cls.literals.setdefault(code, set()).update(paths)
         cls.strict = {code: entry['strict'] for code, entry in cls.codes.items() if 'strict' in entry}
 
     def test_entries_are_well_formed(self):
@@ -116,6 +134,18 @@ class DiagnosticsRegistry(unittest.TestCase):
             path = Path(tmp) / 'snapshot.py'
             path.write_text('code = "E_" + d.code.removeprefix("W_")\n', encoding='utf-8')
             self.assertEqual(unknown_builders(scan([path])[1]), [])
+
+    def test_the_generated_cpp_header_matches_the_registry(self):
+        expected = gen_diagnostics.render(self.codes)
+        self.assertEqual(gen_diagnostics.HEADER.read_text(encoding='utf-8'), expected,
+                         'core/include/msf/diagnostics.inc is stale; run python3 -B tools/gen_diagnostics.py')
+        self.assertNotIn('E_ANIMATION_TARGET', expected, 'removed codes stay out of the C++ enum')
+
+    @unittest.skipIf(_native.core is None and os.environ.get('MSF_REQUIRE_CORE') != '1', 'C++ core not built')
+    def test_the_core_carries_every_current_code_with_its_severity_and_strict_code(self):
+        expected = [(code, entry['severity'], entry.get('strict')) for code, entry in sorted(self.codes.items())
+                    if 'removed' not in entry]
+        self.assertEqual(_native.core._codes(), expected)
 
     def test_the_registry_has_no_orphans(self):
         reachable = set(self.literals) | set(self.strict.values()) | {c for _, codes in BUILT.values() for c in codes}

@@ -17,6 +17,8 @@
 
 namespace nb = nanobind;
 
+void bind_json(nb::module_& m);
+
 namespace {
 
 constexpr long long kExactInteger = 1LL << 53;
@@ -359,4 +361,5 @@ NB_MODULE(_core, m) {
         .def("__msf_state__", [](const CompiledProgram& c) { return c.document; });
     m.def("compile", &compile, nb::arg("spec").none());
     m.def("piecewise_clamp", &msf::piecewise_clamp);
+    bind_json(m);
 }

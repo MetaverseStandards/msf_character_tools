@@ -2,7 +2,7 @@
 # msf_tools._core, the C++ core behind the Python API. scikit-build-core drives
 # this for wheels; scripts/ci_local.sh builds it in place for the test suites.
 cmake_minimum_required(VERSION 3.24)
-project(msf_tools_core LANGUAGES CXX)
+project(msf_tools_core LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,14 +16,22 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
                 OUTPUT_VARIABLE nanobind_ROOT OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 find_package(nanobind CONFIG REQUIRED)
 
-add_library(msfcore STATIC core/src/program.cpp)
-target_include_directories(msfcore PUBLIC core/include)
-set_target_properties(msfcore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Vendored; see NOTICE.md.
+add_library(ryu STATIC core/third_party/ryu/ryu/d2s.c)
+target_include_directories(ryu PUBLIC core/third_party/ryu)
+add_library(fast_float INTERFACE)
+target_include_directories(fast_float INTERFACE core/third_party/fast_float/include)
 
-nanobind_add_module(_core NOMINSIZE core/python/module.cpp)
+add_library(msfcore STATIC core/src/diagnostics.cpp core/src/json.cpp core/src/program.cpp)
+target_include_directories(msfcore PUBLIC core/include)
+target_link_libraries(msfcore PRIVATE ryu fast_float)
+set_target_properties(msfcore ryu PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+nanobind_add_module(_core NOMINSIZE core/python/module.cpp core/python/json_module.cpp)
 target_link_libraries(_core PRIVATE msfcore)
 
 # Output bytes must match the Python reference: no fused multiply-add, never fast-math.
+target_compile_options(ryu PRIVATE $<$<NOT:$<C_COMPILER_ID:MSVC>>:-ffp-contract=off -fno-fast-math>)
 foreach(target msfcore _core)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /fp:precise)
