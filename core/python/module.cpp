@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <optional>
+#include <stdexcept>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -14,7 +16,10 @@
 #include <vector>
 
 #include "msf/diagnostics.hpp"
+#include "msf/mapping.hpp"
 #include "msf/program.hpp"
+#include "bridge.hpp"
+#include "document.hpp"
 
 namespace nb = nanobind;
 
@@ -133,21 +138,122 @@ struct Frames {
     }
 };
 
-struct CompiledProgram {
-    msf::Program program;
-    nb::dict source_slots;  // source channel ID -> slot; slots below sources.size() are source channels
-    std::vector<msf::Domain> source_domains;
-    std::vector<std::size_t> required, output_slots;
+// A snapshot's channels (a Mapping or None) as compile_mapping reads them.
+class PyChannels : public msf::mapping::Channels {
+public:
+    explicit PyChannels(nb::handle channels) : channels_(channels) {}
+
+    bool has(const std::string& sid) const override {
+        if (channels_.is_none()) return false;
+        int found = PySequence_Contains(channels_.ptr(), bridge::decode(sid).ptr());
+        if (found < 0) throw nb::python_error();
+        return found == 1;
+    }
+
+    bool differs(const std::string& sid, const msf::json::Value& signal) const override {
+        nb::object actual = nb::steal(PyObject_GetItem(channels_.ptr(), bridge::decode(sid).ptr()));
+        if (!actual.is_valid()) throw nb::python_error();
+        for (const char* key : {"value_type", "units", "domain", "calibration"}) {
+            nb::object value = nb::steal(PyObject_GetItem(actual.ptr(), nb::str(key).ptr()));
+            if (!value.is_valid()) throw nb::python_error();
+            nb::object expected = bridge::frozen(*msf::json::find(signal, key));
+            int differ = PyObject_RichCompareBool(value.ptr(), expected.ptr(), Py_NE);
+            if (differ < 0) throw nb::python_error();
+            if (differ) return true;
+        }
+        return false;
+    }
+
+    // The str keys, in iteration order.
+    std::vector<std::string> ids() const {
+        std::vector<std::string> out;
+        if (channels_.is_none()) return out;
+        nb::object it = nb::steal(PyObject_GetIter(channels_.ptr()));
+        if (!it.is_valid()) throw nb::python_error();
+        while (PyObject* key = PyIter_Next(it.ptr())) {
+            nb::object owned = nb::steal(key);
+            if (PyUnicode_CheckExact(key)) out.push_back(bridge::wtf8_of(owned));
+        }
+        if (PyErr_Occurred()) throw nb::python_error();
+        return out;
+    }
+
+private:
+    nb::handle channels_;
+};
+
+nb::tuple diagnostics_of(const std::vector<msf::Diagnostic>& diagnostics) {
+    nb::list out;
+    for (const msf::Diagnostic& d : diagnostics)
+        out.append(nb::make_tuple(msf::info(d.code).name, msf::severity_name(d.severity()), bridge::decode(d.ref),
+                                  bridge::decode(d.message), bridge::decode(d.remediation)));
+    return nb::tuple(out);
+}
+
+nb::tuple strings_of(const std::vector<std::string>& items) {
+    nb::list out;
+    for (const std::string& item : items) out.append(bridge::decode(item));
+    return nb::tuple(out);
+}
+
+// A compiled mapping: the pack it came from, its rules in execution order and,
+// when every domain bound is exact in binary64, the fast program.
+struct CompiledRules {
+    nb::object pack;  // the Document handle, which owns the values below
+    std::string mapping_id;
+    msf::mapping::Compiled compiled;
+    std::vector<std::string> source_channels;
+    std::optional<msf::mapping::Fast> fast;
+    nb::dict source_slots;
     nb::tuple output_names;
-    nb::bytes document;
+    nb::object instructions, required, outputs;  // the record's views
     nb::object key_timestamp = nb::steal(PyUnicode_InternFromString("timestamp"));
     nb::object key_values = nb::steal(PyUnicode_InternFromString("values"));
     nb::object key_validity = nb::steal(PyUnicode_InternFromString("validity"));
+
+    const Document& document() const { return nb::cast<const Document&>(pack); }
+
+    nb::tuple views() const { return nb::make_tuple(instructions, required, outputs); }
+
+    // Views are deeply immutable, so being the objects built here binds them.
+    bool check_views(nb::handle i, nb::handle r, nb::handle o) const {
+        return i.ptr() == instructions.ptr() && r.ptr() == required.ptr() && o.ptr() == outputs.ptr();
+    }
+
+    bool compiled_from(nb::handle pack_handle, nb::handle id) const {
+        return pack_handle.ptr() == pack.ptr() && PyUnicode_CheckExact(id.ptr()) && bridge::wtf8_of(id) == mapping_id;
+    }
+
+    nb::bytes state() const {
+        msf::json::Value state;
+        state.kind = msf::json::Value::Kind::array;
+        for (const msf::json::Value* rule : compiled.instructions) state.items.push_back(*rule);
+        for (const auto* list : {&compiled.required, &compiled.outputs}) {
+            msf::json::Value names;
+            names.kind = msf::json::Value::Kind::array;
+            for (const std::string& sid : *list) names.items.push_back(msf::json::Value::make_string(sid));
+            state.items.push_back(std::move(names));
+        }
+        std::string out = msf::json::write_exact(state);
+        return nb::bytes(out.data(), out.size());
+    }
+
+    Frames frames(std::size_t count) const {
+        Frames result;
+        result.count = count;
+        result.names = output_names;
+        result.key_timestamp = key_timestamp;
+        result.key_values = key_values;
+        result.key_validity = key_validity;
+        return result;
+    }
 
     // Frames when every sample takes the fast path, else None. Only exact str
     // keys and exact containers are accepted, so no Python code runs while the
     // borrowed references below are in use.
     nb::object evaluate(nb::handle samples) const {
+        if (!fast) return nb::none();
+        const msf::Program& program = fast->program;
         nb::object items;
         if (PyTuple_CheckExact(samples.ptr()))
             items = nb::borrow(samples);
@@ -156,9 +262,8 @@ struct CompiledProgram {
         else
             return nb::none();
         std::size_t n = static_cast<std::size_t>(PyTuple_GET_SIZE(items.ptr()));
-        std::size_t k = output_slots.size(), sources = source_domains.size();
-        Frames result;
-        result.count = n;
+        std::size_t k = fast->output_slots.size(), sources = fast->source_domains.size();
+        Frames result = frames(n);
         result.timestamps.resize(n);
         result.values.resize(n * k);
         std::vector<double> slots(program.slots);
@@ -183,176 +288,143 @@ struct CompiledProgram {
                 if (!slot_obj) return nb::none();
                 std::size_t slot = PyLong_AsSize_t(slot_obj);
                 double d;
-                if (PyDict_GetItem(valid, key) != Py_True || !exact_number(value, d) || !source_domains[slot].contains(d))
+                if (PyDict_GetItem(valid, key) != Py_True || !exact_number(value, d) || !fast->source_domains[slot].contains(d))
                     return nb::none();
                 slots[slot] = d;
                 present[slot] = 1;
             }
-            for (std::size_t slot : required)
+            for (std::size_t slot : fast->required)
                 if (!present[slot]) return nb::none();
             if (!program.run(slots.data())) return nb::none();
             result.timestamps[i] = t;
-            for (std::size_t j = 0; j < k; ++j) result.values[i * k + j] = slots[output_slots[j]];
+            for (std::size_t j = 0; j < k; ++j) result.values[i * k + j] = slots[fast->output_slots[j]];
         }
-        result.names = output_names;
-        result.key_timestamp = key_timestamp;
-        result.key_values = key_values;
-        result.key_validity = key_validity;
         return nb::cast(std::move(result));
+    }
+
+    // evaluate_mapping's reference semantics for any samples: (diagnostics,
+    // Frames or None).
+    nb::tuple evaluate_exact(nb::handle samples) const {
+        nb::object items = nb::steal(PySequence_Tuple(samples.ptr()));
+        if (!items.is_valid()) throw nb::python_error();
+        msf::mapping::Evaluator evaluator(document().value, compiled, source_channels);
+        Py_ssize_t n = PyTuple_GET_SIZE(items.ptr());
+        for (Py_ssize_t i = 0; i < n; ++i) {
+            PyObject* frame = PyTuple_GET_ITEM(items.ptr(), i);
+            msf::json::Value value;
+            bridge::from_any(frame, value);
+            std::vector<msf::mapping::Key> order = union_order(frame);
+            try {
+                evaluator.frame(value, order, static_cast<std::size_t>(i));
+            } catch (const std::out_of_range& missing) {
+                PyErr_SetObject(PyExc_KeyError, bridge::decode(missing.what()).ptr());
+                throw nb::python_error();
+            }
+        }
+        nb::object handle = nb::none();
+        if (evaluator.diagnostics.empty()) {
+            Frames result = frames(evaluator.timestamps.size());
+            result.timestamps = std::move(evaluator.timestamps);
+            result.values = std::move(evaluator.values);
+            handle = nb::cast(std::move(result));
+        }
+        return nb::make_tuple(diagnostics_of(evaluator.diagnostics), handle);
+    }
+
+    // set(frame["values"]) | set(frame["validity"]) in Python's iteration
+    // order, which hashing decides; empty when the frame has no such Mappings.
+    std::vector<msf::mapping::Key> union_order(PyObject* frame) const {
+        std::vector<msf::mapping::Key> out;
+        if (!PyMapping_Check(frame) || PyUnicode_Check(frame) || PyList_Check(frame) || PyTuple_Check(frame)) return out;
+        nb::object values = nb::steal(PyObject_GetItem(frame, key_values.ptr()));
+        nb::object validity = values.is_valid() ? nb::steal(PyObject_GetItem(frame, key_validity.ptr())) : nb::object();
+        if (!values.is_valid() || !validity.is_valid()) {
+            PyErr_Clear();
+            return out;
+        }
+        nb::object a = nb::steal(PySet_New(values.ptr()));
+        nb::object b = a.is_valid() ? nb::steal(PySet_New(validity.ptr())) : nb::object();
+        if (!a.is_valid() || !b.is_valid()) {
+            PyErr_Clear();
+            return out;
+        }
+        nb::object both = nb::steal(PyNumber_Or(a.ptr(), b.ptr()));
+        if (!both.is_valid()) throw nb::python_error();
+        nb::object it = nb::steal(PyObject_GetIter(both.ptr()));
+        while (PyObject* key = PyIter_Next(it.ptr())) {
+            nb::object owned = nb::steal(key);
+            msf::mapping::Key k;
+            k.is_str = PyUnicode_CheckExact(key);
+            if (k.is_str) {
+                k.text = bridge::wtf8_of(owned);
+            } else {
+                nb::object shown = nb::steal(PyObject_Str(key));
+                if (!shown.is_valid()) throw nb::python_error();
+                k.text = bridge::wtf8_of(shown);
+            }
+            out.push_back(std::move(k));
+        }
+        if (PyErr_Occurred()) throw nb::python_error();
+        return out;
     }
 };
 
-// A spec that does not describe a valid program: always a bug in mapping.py,
-// reported as E_INTERNAL rather than crashing or leaking a C++ exception.
-[[noreturn]] void bad_spec(const std::string& what) {
-    msf::fail(msf::Code::E_INTERNAL, "_core.compile", "Malformed core program spec: " + what + ".",
-              "Report this diagnostic with a minimal reproducible input.");
-}
-
-void require(bool ok, const char* what) {
-    if (!ok) bad_spec(what);
-}
-
-// Readers for the spec's Python values. Each accepts exactly one shape.
-PyObject* item(PyObject* dict, const char* key) {
-    PyObject* value = PyDict_GetItemString(dict, key);  // borrowed; the spec dict keeps it alive
-    if (!value) bad_spec(std::string("missing ") + key);
-    return value;
-}
-
-std::vector<PyObject*> sequence(PyObject* o, const char* what) {
-    if (!PyList_Check(o) && !PyTuple_Check(o)) bad_spec(std::string(what) + " must be a list or tuple");
-    Py_ssize_t n = PySequence_Fast_GET_SIZE(o);
-    PyObject** items = PySequence_Fast_ITEMS(o);
-    return std::vector<PyObject*>(items, items + n);
-}
-
-std::vector<PyObject*> tuple_of(PyObject* o, std::size_t size, const char* what) {
-    if (!PyTuple_Check(o) || static_cast<std::size_t>(PyTuple_GET_SIZE(o)) != size)
-        bad_spec(std::string(what) + " must be a tuple of " + std::to_string(size));
-    return sequence(o, what);
-}
-
-std::size_t index(PyObject* o, std::size_t limit, const char* what) {
-    if (!PyLong_CheckExact(o)) bad_spec(std::string(what) + " must be an int");
-    std::size_t v = PyLong_AsSize_t(o);
-    if (v == static_cast<std::size_t>(-1) && PyErr_Occurred()) {
-        PyErr_Clear();
-        bad_spec(std::string(what) + " is out of range");
+// compile_mapping after its type and record checks: (diagnostics, losses,
+// CompiledRules or None); losses as (category, effect, reason, refs, units, bound).
+nb::tuple compile_mapping(nb::handle pack, nb::handle mapping_id, bool allow_approximation, nb::handle source, nb::handle target) {
+    const Document& document = nb::cast<const Document&>(pack);
+    PyChannels source_channels(source), target_channels(target);
+    std::string id = bridge::wtf8_of(mapping_id);
+    msf::mapping::Compiled compiled = msf::mapping::compile(document.value, id, allow_approximation, source_channels, target_channels);
+    nb::list losses;
+    for (const msf::mapping::Loss& loss : compiled.losses) {
+        const msf::json::Value& row = *loss.row;
+        nb::list refs;
+        for (const msf::json::Value& r : msf::json::find(row, "refs")->items) refs.append(bridge::decode(r.text));
+        const msf::json::Value* units = msf::json::find(row, "units");
+        const msf::json::Value* bound = msf::json::find(row, "bound");
+        losses.append(nb::make_tuple(bridge::decode(msf::json::find(row, "category")->text), bridge::decode(msf::json::find(row, "effect")->text),
+                                     bridge::decode(msf::json::find(row, "reason")->text), nb::tuple(refs),
+                                     units ? bridge::decode(units->text) : nb::object(nb::none()),
+                                     bound ? bridge::to_python(*bound) : nb::object(nb::none())));
     }
-    if (v >= limit) bad_spec(std::string(what) + " is out of range");
-    return v;
+    nb::tuple diagnostics = diagnostics_of(compiled.diagnostics);
+    if (!compiled.ok()) return nb::make_tuple(diagnostics, nb::tuple(losses), nb::none());
+    CompiledRules rules;
+    rules.pack = nb::borrow(pack);
+    rules.mapping_id = id;
+    rules.source_channels = source_channels.ids();
+    rules.fast = msf::mapping::fast_program(document.value, compiled, rules.source_channels);
+    if (rules.fast)
+        for (std::size_t i = 0; i < rules.fast->sources.size(); ++i) rules.source_slots[bridge::decode(rules.fast->sources[i])] = nb::int_(i);
+    nb::list instructions;
+    for (const msf::json::Value* rule : compiled.instructions) instructions.append(bridge::frozen(*rule));
+    rules.instructions = nb::tuple(instructions);
+    rules.required = strings_of(compiled.required);
+    rules.outputs = strings_of(compiled.outputs);
+    rules.output_names = nb::borrow<nb::tuple>(rules.outputs);
+    rules.compiled = std::move(compiled);
+    return nb::make_tuple(diagnostics, nb::tuple(losses), nb::cast(std::move(rules)));
 }
-
-double finite(PyObject* o, const char* what) {
-    if (!PyFloat_CheckExact(o)) bad_spec(std::string(what) + " must be a float");
-    double v = PyFloat_AS_DOUBLE(o);
-    if (!std::isfinite(v)) bad_spec(std::string(what) + " must be finite");
-    return v;
-}
-
-bool flag(PyObject* o, const char* what) {
-    if (o != Py_True && o != Py_False) bad_spec(std::string(what) + " must be a bool");
-    return o == Py_True;
-}
-
-std::vector<double> doubles(PyObject* o, const char* what) {
-    std::vector<double> out;
-    for (PyObject* x : sequence(o, what)) out.push_back(finite(x, what));
-    return out;
-}
-
-msf::Domain domain_of(PyObject* o) {
-    auto t = tuple_of(o, 4, "domain");
-    msf::Domain d;
-    d.has_min = flag(t[0], "domain has_min");
-    d.min = finite(t[1], "domain min");
-    d.has_max = flag(t[2], "domain has_max");
-    d.max = finite(t[3], "domain max");
-    return d;
-}
-
-CompiledProgram compile_spec(PyObject* spec) {
-    if (!PyDict_CheckExact(spec)) bad_spec("spec must be a dict");
-    CompiledProgram c;
-    PyObject* document = item(spec, "document");
-    if (!PyBytes_CheckExact(document)) bad_spec("document must be bytes");
-    c.document = nb::borrow<nb::bytes>(document);
-    auto sources = sequence(item(spec, "sources"), "sources");
-    auto instructions = sequence(item(spec, "instructions"), "instructions");
-    // Slots are the sources, then one per instruction output.
-    std::size_t slots = c.program.slots = index(item(spec, "slots"), sources.size() + instructions.size() + 1, "slots");
-    require(sources.size() <= slots, "more sources than slots");
-    for (std::size_t i = 0; i < sources.size(); ++i) {
-        auto s = tuple_of(sources[i], 2, "source");
-        require(PyUnicode_CheckExact(s[0]), "source IDs must be str");
-        require(!PyDict_Contains(c.source_slots.ptr(), s[0]), "duplicate source ID");
-        c.source_slots[nb::handle(s[0])] = nb::int_(i);
-        c.source_domains.push_back(domain_of(s[1]));
-    }
-    for (PyObject* r : sequence(item(spec, "required"), "required")) c.required.push_back(index(r, sources.size(), "required slot"));
-    // Every slot an instruction reads holds this frame's value: a required source or an earlier output.
-    std::vector<char> defined(slots);
-    for (std::size_t s : c.required) defined[s] = 1;
-    for (PyObject* h : instructions) {
-        auto t = tuple_of(h, 9, "instruction");
-        msf::Instruction ins;
-        require(PyUnicode_CheckExact(t[0]), "operator must be str");
-        std::string op = PyUnicode_AsUTF8(t[0]) ? PyUnicode_AsUTF8(t[0]) : "";
-        PyErr_Clear();
-        require(op == "identity" || op == "affine" || op == "weighted_sum" || op == "piecewise_linear", "unknown operator");
-        ins.op = op == "identity" ? msf::Op::identity : op == "affine" ? msf::Op::affine
-                 : op == "weighted_sum" ? msf::Op::weighted_sum : msf::Op::piecewise_linear;
-        for (PyObject* s : sequence(t[1], "inputs")) ins.inputs.push_back(index(s, slots, "input slot"));
-        ins.output = index(t[2], slots, "output slot");
-        ins.output_domain = domain_of(t[3]);
-        ins.scale = finite(t[4], "scale");
-        ins.offset = finite(t[5], "offset");
-        ins.weights = doubles(t[6], "weights");
-        ins.xs = doubles(t[7], "knot x");
-        ins.ys = doubles(t[8], "knot y");
-        require(!ins.inputs.empty() && (ins.op == msf::Op::weighted_sum || ins.inputs.size() == 1), "operator arity");
-        require(ins.op != msf::Op::weighted_sum || ins.weights.size() == ins.inputs.size(), "one weight per input");
-        require(ins.op != msf::Op::piecewise_linear ||
-                    (ins.xs.size() >= 2 && ins.xs.size() == ins.ys.size() &&
-                     std::adjacent_find(ins.xs.begin(), ins.xs.end(), std::greater_equal<double>()) == ins.xs.end()),
-                "piecewise knots");
-        require(ins.output >= sources.size() && !defined[ins.output], "output slot");
-        for (std::size_t s : ins.inputs) require(defined[s], "input slot");
-        defined[ins.output] = 1;
-        c.program.instructions.push_back(std::move(ins));
-    }
-    nb::list names;
-    nb::dict seen;
-    for (PyObject* h : sequence(item(spec, "outputs"), "outputs")) {
-        auto t = tuple_of(h, 2, "output");
-        require(PyUnicode_CheckExact(t[0]) && !PyDict_Contains(seen.ptr(), t[0]), "output IDs must be distinct str");
-        seen[nb::handle(t[0])] = nb::none();
-        names.append(nb::handle(t[0]));
-        c.output_slots.push_back(index(t[1], slots, "output slot"));
-        require(defined[c.output_slots.back()], "output slot");
-    }
-    c.output_names = nb::tuple(names);
-    return c;
-}
-
-CompiledProgram compile(nb::handle spec) { return compile_spec(spec.ptr()); }
 
 }  // namespace
 
 NB_MODULE(_core, m) {
-    m.doc() = "The msf-tools C++ core: compiled mapping programs and frame evaluation.";
+    m.doc() = "The msf-tools C++ core.";
     nb::class_<Frames>(m, "Frames")
         .def("view", &Frames::view)
         .def("check_view", &Frames::check_view)
         .def("__msf_state__", &Frames::state)
         .def("__len__", [](const Frames& f) { return f.count; });
-    nb::class_<CompiledProgram>(m, "Program")
-        .def("evaluate", &CompiledProgram::evaluate)
-        .def("document", [](const CompiledProgram& c) { return c.document; })
-        .def("__msf_state__", [](const CompiledProgram& c) { return c.document; });
-    m.def("compile", &compile, nb::arg("spec").none());
-    m.def("piecewise_clamp", &msf::piecewise_clamp);
+    nb::class_<CompiledRules>(m, "CompiledRules")
+        .def("views", &CompiledRules::views)
+        .def("check_views", &CompiledRules::check_views)
+        .def("compiled_from", &CompiledRules::compiled_from)
+        .def("evaluate", &CompiledRules::evaluate)
+        .def("evaluate_exact", &CompiledRules::evaluate_exact)
+        .def("__msf_state__", &CompiledRules::state);
+    m.def("compile_mapping", &compile_mapping, nb::arg("pack"), nb::arg("mapping_id").none(), nb::arg("allow_approximation"),
+          nb::arg("source").none(), nb::arg("target").none());
     bind_json(m);
     bind_math3d(m);
     bind_authoring(m);

@@ -24,6 +24,9 @@ ROOT = Path(__file__).resolve().parents[2]
 PYTHON = Path(os.environ.get('MSF_ORACLE_PYTHON', MSF / '_tools/oracle-venv/bin/python'))
 REQUIRED = os.environ.get('MSF_REQUIRE_ORACLE') == '1'
 AVAILABLE = PYTHON.exists()
+# Set iteration order follows str hashes; with a fixed PYTHONHASHSEED, which the
+# oracle inherits, both sides iterate sets alike.
+SAME_HASHING = os.environ.get('PYTHONHASHSEED', 'random') != 'random'
 
 ENCODER = r'''
 import math, struct
@@ -89,7 +92,7 @@ _process = None
 
 def _start():
     global _process
-    env = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'MSF_TOOLS'))}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'MSF_TOOLS')) or k == 'PYTHONHASHSEED'}
     _process = subprocess.Popen([str(PYTHON), '-I', '-c', SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 cwd='/', env=env)
     atexit.register(_process.kill)
@@ -112,12 +115,12 @@ def _oracle(cases):
     return pickle.loads(_process.stdout.read(struct.unpack('>Q', header)[0]))
 
 
-def differ(cases):
-    """[(case, ours, oracle)] for every case whose outcomes differ."""
+def differ(cases, normalize=lambda outcome: outcome):
+    """[(case, ours, oracle)] for every case whose outcomes differ after `normalize`."""
     cases = list(cases)
     theirs = _oracle(cases)
     ours = [outcome(e, n) for e, n in cases]
-    return [(c, a, b) for c, a, b in zip(cases, ours, theirs) if a != b]
+    return [(c, a, b) for c, a, b in zip(cases, ours, theirs) if normalize(a) != normalize(b)]
 
 
 def skip_reason():
