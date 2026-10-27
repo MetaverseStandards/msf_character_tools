@@ -6,6 +6,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -106,17 +107,22 @@ double fraction(nb::handle value) { return m3::fraction(read_number(value.ptr(),
 void bind_math3d(nb::module_& m) {
     m.attr("IDENTITY") = tuple_of(m3::kIdentity);
     m.attr("UNIT_QUATERNION_TOLERANCE") = m3::kUnitQuaternionTolerance;
-    m.def("_number", [](nb::handle value, const std::string& ref) { return read_number(value.ptr(), ref); });
+    m.def("_number", [](nb::handle value, const std::string& ref) { return read_number(value.ptr(), ref); },
+          nb::arg("value").none(), nb::arg("ref"));
     m.def("_finite", [](double value, const std::string& ref) { return m3::finite(value, ref); });
     m.def("_vector", [](nb::handle values, Py_ssize_t count, const std::string& ref) {
         return tuple_of(read_vector(values.ptr(), count, ref));
-    });
+    }, nb::arg("values").none(), nb::arg("count"), nb::arg("ref"));
     m.def("_matrix", [](nb::handle rows, const std::string& ref) { return tuple_of(read_matrix(rows.ptr(), ref)); },
           nb::arg("rows").none(), nb::arg("ref") = "/transforms");
-    m.def("_add", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::add(operand(a), operand(b), ref); });
-    m.def("_sub", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::sub(operand(a), operand(b), ref); });
-    m.def("_product", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::product(operand(a), operand(b), ref); });
-    m.def("_divide", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::divide(operand(a), operand(b), ref); });
+    m.def("_add", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::add(operand(a), operand(b), ref); },
+          nb::arg("a").none(), nb::arg("b").none(), nb::arg("ref"));
+    m.def("_sub", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::sub(operand(a), operand(b), ref); },
+          nb::arg("a").none(), nb::arg("b").none(), nb::arg("ref"));
+    m.def("_product", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::product(operand(a), operand(b), ref); },
+          nb::arg("a").none(), nb::arg("b").none(), nb::arg("ref"));
+    m.def("_divide", [](nb::handle a, nb::handle b, const std::string& ref) { return m3::divide(operand(a), operand(b), ref); },
+          nb::arg("a").none(), nb::arg("b").none(), nb::arg("ref"));
     // Takes any iterable, generators included: each item is added as it is
     // produced, so a refusal inside the generator comes first, as in Python.
     m.def("_sum", [](nb::handle values, const std::string& ref) {
@@ -129,7 +135,7 @@ void bind_math3d(nb::module_& m) {
         }
         if (PyErr_Occurred()) throw nb::python_error();
         return result;
-    });
+    }, nb::arg("values").none(), nb::arg("ref"));
     m.def("_fraction", &fraction, nb::arg("value").none());
     m.def("matrix", [](nb::handle values) {
         m3::Vec v = read_vector(values.ptr(), 16, "/transforms");
@@ -210,6 +216,14 @@ void bind_math3d(nb::module_& m) {
           nb::arg("duration").none(), nb::arg("quaternion").none() = false);
     // Test hooks for the exact algorithms.
     m.def("_hypot", [](std::vector<double> values) { return m3::hypot(values.data(), values.size()); });
+    // math.hypot over each run of n native-endian doubles.
+    m.def("_hypot_batch", [](nb::bytes data, std::size_t n) {
+        std::size_t count = data.size() / (n * sizeof(double));
+        std::vector<double> in(count * n), out(count);
+        std::memcpy(in.data(), data.c_str(), in.size() * sizeof(double));
+        for (std::size_t i = 0; i < count; ++i) out[i] = m3::hypot(in.data() + i * n, n);
+        return nb::bytes(reinterpret_cast<const char*>(out.data()), out.size() * sizeof(double));
+    });
     m.def("_fsum", [](std::vector<double> values) -> nb::object {
         m3::FsumOutcome r = m3::fsum(values.data(), values.size());
         if (r.status == m3::FsumOutcome::Status::overflow) {

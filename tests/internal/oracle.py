@@ -86,13 +86,22 @@ outcome = _local['outcome']
 _process = None
 
 
-def _oracle(cases):
+def _start():
     global _process
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'MSF_TOOLS'))}
+    _process = subprocess.Popen([str(PYTHON), '-I', '-c', SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                cwd='/', env=env)
+    atexit.register(_process.kill)
+
+
+# Started on import, so the oracle boots while other tests run.
+if AVAILABLE:
+    _start()
+
+
+def _oracle(cases):
     if _process is None:
-        env = {k: v for k, v in os.environ.items() if not k.startswith(('PYTHON', 'MSF_TOOLS'))}
-        _process = subprocess.Popen([str(PYTHON), '-I', '-c', SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    cwd='/', env=env)
-        atexit.register(_process.kill)
+        _start()
     data = pickle.dumps(list(cases), protocol=4)
     _process.stdin.write(struct.pack('>Q', len(data)) + data)
     _process.stdin.flush()

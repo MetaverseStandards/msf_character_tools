@@ -63,6 +63,8 @@ for version in 3.11 3.12; do
   fi
 done
 export MSF_REQUIRE_CORE=1
+# Differential tests against the 0.3.0 oracle venv fail instead of skipping without it.
+export MSF_REQUIRE_ORACLE="${MSF_REQUIRE_ORACLE-1}"
 
 # unittest prints "Ran N tests" and OK/FAILED last; without them the run died part way.
 verdict_of() {
@@ -137,9 +139,14 @@ fi
 
 # Gate tier (--gate): the G1 checks too slow for the fast suite.
 if [ $gate -eq 1 ] && [ -x "$py312" ]; then
-  start=$(python3 -c 'import time; print(time.time())')
-  output=$(MSF_GATE=1 suites "$py312" '' 'test_core_json.py')
-  tier "Gate tier (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens; $(seconds "$start") s)" $? "$output"
+  for version in 3.11 3.12; do
+    var="MSF_PY${version/./}"
+    py="${!var:-$MSF/_tools/venv$version/bin/python}"
+    [ -x "$py" ] || continue
+    start=$(python3 -c 'import time; print(time.time())')
+    output=$(MSF_GATE=1 suites "$py" '' 'test_core_[jm]*.py')
+    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-0d90172} goldens, 10^6 hypot vectors per arity, 10^5 math3d cases vs the oracle; $(seconds "$start") s)" $? "$output"
+  done
 else
   lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")
 fi
