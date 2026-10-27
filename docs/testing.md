@@ -39,6 +39,8 @@ Fixture generation is deterministic. Regenerating fixtures must leave checked-in
 
 `tests/test_source_strict.py` reads each synthetic USD fixture in `tests/fixtures/source` (written by `python -B tests/make_source_fixtures.py`) as USDA, as USDC exported by usd-core and as a stored USDZ. All three must give the same glTF document and the declared losses or refusal listed for the case. The answers come from usd-core opening the fixture itself: triangles from its face counts, holes and orientation; world-space points at every authored time code, through `ComputeLocalToWorldTransform` or, for skinned meshes, `BakeSkinning` in linear-blend mode; and normalized skin weights. Positions must agree within 1e-5 of the bounding-box diagonal and weights within 1e-6. The tests skip when usd-core is not installed.
 
+`tests/test_source_openusd.py` is an optional tier on OpenUSD's own UsdSkel test scenes and tutorial assets (TOST-1.0, never committed here). It runs when `MSF_OPENUSD_ASSETS` names a local checkout holding `pxr/usd/usdSkel/testenv` and `extras/usd/tutorials` with OpenUSD's `LICENSE.txt`, and skips otherwise. `scripts/ci_local.sh` runs it separately from the fast suite when `$MSF/_viz/assets/openusd` exists. Each asset must inspect, or be refused with its listed code, and its meshes must match usd-core's world-space points as in the strict tier.
+
 `python -B scripts/demo_usd.py` runs the skinned, animated rig fixture through an isolated reader as USDA, USDC and USDZ, binds its blend shape, and prints the pose at 0, 0.5 and 1 seconds.
 
 ## Limits of acceptance

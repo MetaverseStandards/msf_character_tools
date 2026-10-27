@@ -34,6 +34,23 @@ for version in 3.11 3.12; do
   lines+=("- Python $exact: unittest ${ran:-?} tests, ${verdict:-no result} in ${took} s; $check")
 done
 
+# Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
+openusd="${MSF_OPENUSD_ASSETS:-$MSF/_viz/assets/openusd}"
+py312="${MSF_PY312:-$MSF/_tools/venv3.12/bin/python}"
+if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
+  output=$(MSF_OPENUSD_ASSETS="$openusd" "$py312" -B -m unittest discover -s tests -p test_source_openusd.py 2>&1)
+  ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
+  if printf '%s\n' "$output" | grep -qE '^OK'; then
+    lines+=("- OpenUSD assets tier: ${ran:-?} tests OK")
+  else
+    lines+=("- OpenUSD assets tier: FAILED")
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
+    failed=1
+  fi
+else
+  lines+=("- OpenUSD assets tier: SKIPPED (no assets at $openusd)")
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   lines+=("- Native pilot: SKIPPED (cmake not found)")
 elif ! command -v c++ >/dev/null 2>&1; then

@@ -87,10 +87,10 @@ def msf_world_points(snapshot, path, seconds):
 class Oracle:
     """usd-core's view of one fixture, opened from disk, converted to metres and +Y up."""
 
-    def __init__(self, name):
+    def __init__(self, path):
         from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
         self.Gf, self.Usd, self.UsdGeom, self.UsdSkel = Gf, Usd, UsdGeom, UsdSkel
-        source = Usd.Stage.Open(str(SOURCE / f'{name}.usda'))
+        source = Usd.Stage.Open(str(path))
         copy = Sdf.Layer.CreateAnonymous('.usda')
         copy.TransferContent(source.Flatten())
         self.stage = Usd.Stage.Open(copy)
@@ -98,14 +98,18 @@ class Oracle:
         self.z_up = UsdGeom.GetStageUpAxis(self.stage) == UsdGeom.Tokens.z
         self.meshes = [p for p in self.stage.Traverse(Usd.TraverseInstanceProxies()) if p.IsA(UsdGeom.Mesh)]
 
-    def bake(self, codes):
+    def bake(self, codes=None):
+        """Bake skinning at the authored time codes between the first and last of `codes` (all of them if None)."""
         for prim in self.stage.Traverse():
             if prim.IsA(self.UsdSkel.Root):
                 for mesh in self.meshes:
+                    if mesh.IsInstanceProxy():
+                        continue
                     method = mesh.GetAttribute('primvars:skel:skinningMethod')
                     if method:
                         method.Set('classicLinear')  # the oracle compares linear blend skinning only
-                self.UsdSkel.BakeSkinning(self.UsdSkel.Root(prim), self.Gf.Interval(min(codes), max(codes)))
+                interval = self.Gf.Interval.GetFullInterval() if codes is None else self.Gf.Interval(min(codes), max(codes))
+                self.UsdSkel.BakeSkinning(self.UsdSkel.Root(prim), interval)
 
     def convert(self, p):
         x, y, z = (self.scale * v for v in p)
@@ -191,7 +195,7 @@ class StrictTier(unittest.TestCase):
         if isinstance(expected, str):
             return
         self.assertEqual(len(documents), 1, 'USDA, USDC and USDZ give different documents')
-        oracle = Oracle(name)
+        oracle = Oracle(SOURCE / f'{name}.usda')
         paths = snapshot.source['node_paths']
         for prim in oracle.meshes:
             node = snapshot.document['nodes'][paths.index(str(prim.GetPath()))]
