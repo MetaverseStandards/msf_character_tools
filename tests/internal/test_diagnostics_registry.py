@@ -22,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / 'schemas/diagnostics.toml'
 SOURCES = sorted((ROOT / 'msf_tools').rglob('*.py'))
 CORE_SOURCES = sorted(p for p in (ROOT / 'core').rglob('*.[ch]pp') if 'third_party' not in p.parts)
+# The core files that hold the source adapters' share (influence rows, the FBX adapter).
+SOURCE_CORE = ('source_helpers.cpp', 'fbx.cpp')
 _spec = importlib.util.spec_from_file_location('gen_diagnostics', ROOT / 'tools/gen_diagnostics.py')
 gen_diagnostics = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gen_diagnostics)
@@ -156,6 +158,8 @@ class DiagnosticsRegistry(unittest.TestCase):
     def test_exactly_the_source_adapter_warnings_have_strict_codes(self):
         losses = {code for code, paths in self.literals.items()
                   if code.startswith('W_') and any(p.parent.name == 'sources' for p in paths)}
+        losses |= {code for code, paths in scan_core(CORE_SOURCES).items()
+                   if code.startswith('W_') and any(p.name in SOURCE_CORE for p in paths)}
         self.assertEqual(set(self.strict), losses)
 
     def test_strict_losses_refuse_with_the_registered_codes(self):
