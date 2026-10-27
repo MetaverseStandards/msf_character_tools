@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import json
 from collections.abc import Mapping
 
-from .authoring import keys, in_domain
+from .checks import keys, in_domain
 from .common import freeze, thaw, digest, canonical_json, number
 from .pack import Pack
 from .snapshot import AssetSnapshot, _identity, _source_summary

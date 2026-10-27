@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import bisect
 
 from .common import freeze, thaw, number, integer
-from .authoring import keys
+from .checks import keys
 from .snapshot import (AssetSnapshot, _decode_accessor, index, vector, SUPPORTED_REQUIRED_EXTENSIONS,
                        MAX_TOTAL_ACCESSOR_COMPONENTS, _identity, _source_summary)
 from .math3d import (IDENTITY, matrix, multiply, inverse, trs, slerp, normalize,

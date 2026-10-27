@@ -16,7 +16,7 @@ import stat
 import struct
 from urllib.parse import unquote, urlsplit
 
-from .authoring import keys, string, domain
+from .checks import keys, string, domain
 from .common import freeze, thaw, digest, canonical_json, parse_json, integer, number, SPECIAL_FILE_ERRNOS
 from .report import public, fail, Report, Result, Diagnostic, Fault
 from .records import OwnedRecord, _admit
