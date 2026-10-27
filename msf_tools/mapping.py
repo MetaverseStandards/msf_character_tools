@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import bisect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
 from collections.abc import Mapping
 
 from .authoring import keys, in_domain
@@ -11,6 +12,7 @@ from .common import freeze, thaw, digest, canonical_json, number
 from .pack import Pack
 from .snapshot import AssetSnapshot, _identity, _source_summary
 from .report import public, fail, Fault, Result, Report, Loss
+from . import _native
 from .records import OwnedRecord, _admit
 from .math3d import _add, _divide, _product, _sub, _sum
 
@@ -42,8 +44,11 @@ class CompiledMapping(OwnedRecord):
     required_inputs: tuple[str, ...]
     output_ids: tuple[str, ...]
     losses: tuple[Loss, ...]
+    _core: object = field(default=None, init=False, repr=False, compare=False)
 
     def _check_consistency(self):
+        if self._core is not None and _program_document(self) != self._core.document():
+            fail("E_RECORD_INTEGRITY", "/instructions", "Compiled views disagree with their core program.")
         mapping = next((m for m in self.pack.document["mappings"] if m["id"] == self.mapping_id), None)
         if mapping is None:
             fail("E_RECORD_INTEGRITY", "/mapping_id", "Compiled mapping has no authoring source.")
@@ -231,8 +236,58 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
     if not outputs:
         check(fail, "E_MAPPING_OUTPUT", mapping_id, "Mapping has no target-bound outputs.")
     report = Report(tuple(diagnostics), tuple(losses))
+    if not report.ok:
+        return Result(None, report)
     compiled = CompiledMapping(pack, source_snapshot, target_snapshot, mapping_id, tuple(ordered), required, outputs, tuple(losses))
-    return Result(_admit(compiled) if report.ok else None, report)
+    if _native.core is not None:
+        compiled = _with_program(compiled, signals)
+    return Result(_admit(compiled), report)
+
+
+def _program_document(compiled):
+    return canonical_json({"instructions": compiled.instructions, "required_inputs": compiled.required_inputs,
+                           "output_ids": compiled.output_ids})
+
+
+class _Inexact(Exception):
+    """A domain bound binary64 cannot hold exactly; the mapping stays on the reference path."""
+
+
+def _domain(bounds):
+    low, high = float(bounds.get("min", 0.0)), float(bounds.get("max", 0.0))
+    if low != bounds.get("min", 0.0) or high != bounds.get("max", 0.0):
+        raise _Inexact
+    return ("min" in bounds, low, "max" in bounds, high)
+
+
+def _with_program(compiled, signals):
+    """Rebuild the record's views from a core program compiled from their canonical bytes."""
+    document = _program_document(compiled)
+    views = json.loads(document)
+    sources = [sid for sid in compiled.source_snapshot.channels or {} if sid in signals]
+    slots = {sid: i for i, sid in enumerate(sources)}
+    instructions = []
+    try:
+        source_domains = [(sid, _domain(signals[sid]["domain"])) for sid in sources]
+        for rule in views["instructions"]:
+            op, output = rule["operator"], rule["outputs"][0]
+            out = slots.setdefault(output, len(slots))
+            knots = op.get("knots", ())
+            instructions.append((op["id"], [slots[s] for s in rule["inputs"]], out, _domain(signals[output]["domain"]),
+                                 float(op.get("scale", 0.0)), float(op.get("offset", 0.0)),
+                                 [float(w) for w in op.get("weights", ())],
+                                 [float(k[0]) for k in knots], [float(k[1]) for k in knots]))
+    except _Inexact:
+        return compiled
+    handle = _native.core.compile({
+        "document": document, "sources": source_domains, "slots": len(slots), "instructions": instructions,
+        "required": [slots[s] for s in views["required_inputs"]],
+        "outputs": [(sid, slots[sid]) for sid in views["output_ids"]]})
+    views = freeze(json.loads(handle.document()))
+    rebuilt = CompiledMapping(compiled.pack, compiled.source_snapshot, compiled.target_snapshot, compiled.mapping_id,
+                              views["instructions"], views["required_inputs"], views["output_ids"], compiled.losses)
+    object.__setattr__(rebuilt, "_core", handle)
+    return rebuilt
 
 
 def _piecewise_linear(knots, x, ref):
@@ -251,7 +306,13 @@ def _piecewise_linear(knots, x, ref):
 
 @dataclass(frozen=True)
 class EvaluatedValues(OwnedRecord):
+    _handle_views = ("samples",)
     samples: tuple
+    _core: object = field(default=None, init=False, repr=False, compare=False)
+
+    def _check_consistency(self):
+        if self._core is not None and not self._core.check_view(self.samples):
+            fail("E_RECORD_INTEGRITY", "/samples", "Sample views disagree with their core frames.")
 
     def to_dict(self):
         self._check_integrity()
@@ -263,6 +324,13 @@ def evaluate_mapping(compiled_mapping, samples):
     if not isinstance(compiled_mapping, CompiledMapping) or not isinstance(samples, (tuple, list)):
         fail("E_SAMPLE_TYPE", "/", "Expected CompiledMapping and sample frame array.")
     compiled_mapping._check_integrity()
+    if compiled_mapping._core is not None:
+        # None means some sample needs the reference path, which owns every diagnostic.
+        handle = compiled_mapping._core.evaluate(samples)
+        if handle is not None:
+            record = EvaluatedValues(handle.view())
+            object.__setattr__(record, "_core", handle)
+            return Result(_admit(record), Report((), compiled_mapping.losses))
     diagnostics, frames = [], []
     # The compiled mapping's check above already verified its pack; Pack.signals would verify it again.
     signals = {s["id"]: s for s in compiled_mapping.pack.document["signals"]}
