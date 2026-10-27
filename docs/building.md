@@ -4,9 +4,9 @@ Original documentation: CC-BY-SA-4.0.
 
 ## Package and C++ core
 
-`pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_tools._core` (C++17, nanobind), and installs it with every tracked `msf_tools/*.py` module and the build record. Wheels are therefore per Python version and platform. On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set; the wheel tag follows it. Building needs a C++17 compiler, CMake 3.24 or newer and Ninja or Make; the build front end fetches scikit-build-core and nanobind.
+`pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_tools._core` (C++17, nanobind), and installs it with every tracked `msf_tools/*.py` module and the build record. Each platform gets two wheels: a `cp311` wheel, and a `cp312-abi3` wheel built against CPython's stable ABI for 3.12 and later, the oldest version nanobind's stable-ABI build supports. In-place builds follow the same rule (`_core.abi3.so` for 3.12, `_core.cpython-311-darwin.so` for 3.11), so the suites test the extension that ships; under the limited API the bindings use the checked C API calls in place of CPython's access macros (`core/python/limited_api.hpp`). On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set; the wheel tag follows it. Building needs a C++17 compiler, CMake 3.26 or newer and Ninja or Make; the build front end fetches scikit-build-core 1.1.1 and nanobind 3.1.0, pinned exactly so release builds are reproducible.
 
-The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Authoring, packs, mappings and `math3d` exist only in the core, so msf-tools needs the extension; `MSF_TOOLS_PURE=1` skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths and the remaining Python reference paths.
+The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Everything but the CLI, TOML loading, sidecars and bindings, the USD adapter and the isolated reader process is in the core, so msf-tools does not import without the extension. Two paths exist twice. `parse_json` and `canonical_json` use the core and fall back to Python's `json` for what the core declines, such as malformed JSON, whose exact errors Python reports. `evaluate_mapping` uses a fast path and falls back to the core's exact path for samples the fast path declines. `MSF_TOOLS_PURE=1` sends every input down the fallbacks, which otherwise see only rare inputs; `scripts/ci_local.sh` runs the public suite that way.
 
 For work in a checkout, build the extension in place next to the modules. CMake finds nanobind through the chosen interpreter, so install it there first (`python3.12 -m pip install nanobind`). The interpreters that `scripts/ci_local.sh` uses (`MSF_PY311`, `MSF_PY312`) need it too.
 
@@ -25,7 +25,7 @@ Every built package contains `msf_tools/_build_info.json`:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "commit": "<40 lowercase hex digits>"
 }
 ```
@@ -43,6 +43,10 @@ Every built package contains `msf_tools/_build_info.json`:
 A checked-in file cannot work, because a commit cannot contain its own hash.
 
 `tests/internal/test_build_info.py` covers these rules with Git and scikit-build-core faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist, checks the record, and checks that the wheel holds exactly the tracked modules and the extension.
+
+## Release builds
+
+`scripts/build_release.sh OUTDIR [COMMIT]` builds a release from a clean clone of the commit: the sdist, then the `cp311` and `cp312-abi3` wheels from the unpacked sdist, outside any Git checkout, with `SOURCE_DATE_EPOCH` set to the commit's time. It writes `SHA256SUMS`; building the same commit again, in another directory, gives the same bytes. `scripts/check_release.sh OUTDIR [COMMIT]` then checks each wheel's contents, build record and licence files, that the extension links only system libraries and targets macOS 11.0, and that each wheel installs with the `usd` extra into a fresh venv on its interpreter and passes the unchanged public suite there (with `MSF_PY313`, the abi3 wheel on CPython 3.13 as well). It also checks the sdist's contents and licence metadata.
 
 ## Tools
 

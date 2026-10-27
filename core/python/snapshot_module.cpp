@@ -2,6 +2,7 @@
 // glTF snapshots across the boundary: inspection with the caller's resolver,
 // the immutable Snapshot handle AssetSnapshot records own, and geometry.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 
 #include <memory>
@@ -89,7 +90,102 @@ gltf::Time time_of(nb::handle o) {
     return {index_value(o), seconds};
 }
 
-gltf::Overrides overrides_of(nb::handle o) {
+// A Python error kept until evaluate_geometry reaches the point where 0.3.0 raised it.
+struct SavedError {
+    PyObject *type = nullptr, *value = nullptr, *trace = nullptr;
+    SavedError() = default;
+    SavedError(const SavedError&) = delete;
+    SavedError& operator=(const SavedError&) = delete;
+    ~SavedError() {
+        Py_XDECREF(type);
+        Py_XDECREF(value);
+        Py_XDECREF(trace);
+    }
+    void fetch() { PyErr_Fetch(&type, &value, &trace); }
+    [[noreturn]] void raise() {
+        PyErr_Restore(type, value, trace);
+        type = value = trace = nullptr;
+        throw nb::python_error();
+    }
+};
+
+// Python's `key, value = item`: an exact tuple or list of two, or an iterable
+// that yields exactly two values. False with the error set otherwise.
+bool unpack_pair(PyObject* item, nb::object& key, nb::object& value) {
+    if (PyTuple_CheckExact(item) || PyList_CheckExact(item)) {
+        Py_ssize_t n = PyTuple_CheckExact(item) ? PyTuple_GET_SIZE(item) : PyList_GET_SIZE(item);
+        if (n != 2) {
+            if (n > 2) PyErr_SetString(PyExc_ValueError, "too many values to unpack (expected 2)");
+            else PyErr_Format(PyExc_ValueError, "not enough values to unpack (expected 2, got %zd)", n);
+            return false;
+        }
+        auto at = [&](Py_ssize_t i) { return PyTuple_CheckExact(item) ? PyTuple_GET_ITEM(item, i) : PyList_GET_ITEM(item, i); };
+        key = nb::borrow(at(0));
+        value = nb::borrow(at(1));
+        return true;
+    }
+    nb::object it = nb::steal(PyObject_GetIter(item));
+    if (!it.is_valid()) {
+        if (PyErr_ExceptionMatches(PyExc_TypeError)) {
+            PyErr_Clear();
+            nb::object type_name = nb::steal(PyObject_GetAttrString(reinterpret_cast<PyObject*>(Py_TYPE(item)), "__name__"));
+            if (!type_name.is_valid()) return false;
+            PyErr_Format(PyExc_TypeError, "cannot unpack non-iterable %U object", type_name.ptr());
+        }
+        return false;
+    }
+    nb::object parts[2];
+    for (int k = 0; k < 2; ++k) {
+        parts[k] = nb::steal(PyIter_Next(it.ptr()));
+        if (!parts[k].is_valid()) {
+            if (!PyErr_Occurred()) PyErr_Format(PyExc_ValueError, "not enough values to unpack (expected 2, got %d)", k);
+            return false;
+        }
+    }
+    nb::object extra = nb::steal(PyIter_Next(it.ptr()));
+    if (extra.is_valid()) {
+        PyErr_SetString(PyExc_ValueError, "too many values to unpack (expected 2)");
+        return false;
+    }
+    if (PyErr_Occurred()) return false;
+    key = std::move(parts[0]);
+    value = std::move(parts[1]);
+    return true;
+}
+
+// An override value as 0.3.0's checks read it: a Mapping through its keys and
+// item lookups (keys() and item[field]), anything else as a JSON-like value.
+// False with the error set when the caller's code raised.
+bool override_value(PyObject* o, Value& v, PyObject* mapping) {
+    try {
+        int is_mapping = PyDict_CheckExact(o) ? 0 : PyObject_IsInstance(o, mapping);
+        if (is_mapping < 0) return false;
+        if (!is_mapping) {
+            bridge::from_any(o, v, 0);
+            return true;
+        }
+        v = Value();
+        v.kind = Kind::object;
+        nb::object it = nb::steal(PyObject_GetIter(o));
+        if (!it.is_valid()) return false;
+        while (PyObject* raw = PyIter_Next(it.ptr())) {
+            nb::object key = nb::steal(raw);
+            nb::object field = nb::steal(PyObject_GetItem(o, key.ptr()));
+            if (!field.is_valid()) return false;
+            auto& member = v.members.emplace_back();
+            member.first = PyUnicode_CheckExact(key.ptr()) ? bridge::wtf8_of(key) : std::string("\xFF");
+            bridge::from_any(field.ptr(), member.second, 1);
+        }
+        return !PyErr_Occurred();
+    } catch (nb::python_error& e) {
+        e.restore();
+        return false;
+    }
+}
+
+// 0.3.0's `for ni, item in supplied.items()`, read ahead of evaluate_geometry;
+// an error the caller's code raises is saved in `error` for later.
+gltf::Overrides overrides_of(nb::handle o, SavedError& error) {
     gltf::Overrides out;
     if (o.is_none()) return out;
     out.present = true;
@@ -98,12 +194,30 @@ gltf::Overrides overrides_of(nb::handle o) {
     if (is_mapping < 0) throw nb::python_error();
     if (!is_mapping) return out;
     out.mapping = true;
-    nb::object items = nb::steal(PyMapping_Items(o.ptr()));
-    if (!items.is_valid()) throw nb::python_error();
-    for (nb::handle pair : items) {
-        Value value;
-        bridge::from_any(PyTuple_GET_ITEM(pair.ptr(), 1), value, 0);
-        out.items.emplace_back(index_value(PyTuple_GET_ITEM(pair.ptr(), 0)), std::move(value));
+    nb::object items = nb::steal(PyObject_CallMethod(o.ptr(), "items", nullptr));
+    nb::object it = items.is_valid() ? nb::steal(PyObject_GetIter(items.ptr())) : nb::object();
+    if (!it.is_valid()) {
+        error.fetch();
+        out.broken_tail = true;
+        return out;
+    }
+    while (true) {
+        nb::object item = nb::steal(PyIter_Next(it.ptr()));
+        nb::object key, value;
+        if (!item.is_valid() && !PyErr_Occurred()) break;
+        if (!item.is_valid() || !unpack_pair(item.ptr(), key, value)) {
+            error.fetch();
+            out.broken_tail = true;
+            break;
+        }
+        Value v;
+        bool read = override_value(value.ptr(), v, mapping);
+        out.items.emplace_back(index_value(key), std::move(v));
+        if (!read) {
+            error.fetch();
+            out.broken_value = out.items.size() - 1;
+            break;
+        }
     }
     return out;
 }
@@ -240,8 +354,14 @@ struct Snapshot {
         gltf::Time t = time_of(timestamp);
         std::optional<Value> animation;
         if (!animation_id.is_none()) animation = index_value(animation_id);
-        gltf::Overrides morph = overrides_of(morph_weights), transforms = overrides_of(node_transforms);
-        gltf::Geometry geometry = gltf::evaluate_geometry(*asset, t, animation ? &*animation : nullptr, morph, transforms, budget);
+        SavedError morph_error, transforms_error;
+        gltf::Overrides morph = overrides_of(morph_weights, morph_error), transforms = overrides_of(node_transforms, transforms_error);
+        gltf::Geometry geometry;
+        try {
+            geometry = gltf::evaluate_geometry(*asset, t, animation ? &*animation : nullptr, morph, transforms, budget);
+        } catch (const gltf::OverridesBroken& broken) {
+            (broken.label == "morph_weights" ? morph_error : transforms_error).raise();
+        }
         if (!geometry.diagnostics.empty()) return nb::make_tuple(diagnostics_of(geometry.diagnostics), nb::none());
         return nb::make_tuple(nb::tuple(), nb::cast(Positions{instances_view(geometry)}));
     }
@@ -355,7 +475,6 @@ void bind_snapshot(nb::module_& m) {
         .def_ro("format", &Snapshot::format)
         .def_ro("sha256", &Snapshot::sha256)
         .def_ro("original", &Snapshot::original)
-        .def_prop_ro("generated", [](const Snapshot& s) { return s.asset->generated; })
         .def("document", &Snapshot::document)
         .def("resources", &Snapshot::resources)
         .def("chunks", &Snapshot::chunks)

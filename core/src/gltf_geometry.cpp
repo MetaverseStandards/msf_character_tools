@@ -238,16 +238,19 @@ Geometry evaluate_geometry(const Asset& asset, const Time& ts, const Value* anim
                                           std::pair<std::string, const Overrides*>{"node_transforms", &node_transforms}}) {
         if (!supplied->present) continue;
         if (!supplied->mapping) fail(Code::E_GEOMETRY_TYPE, "/" + label, "Overrides must map integer node indices to values.");
-        for (const auto& [ni, value] : supplied->items) {
+        for (std::size_t i = 0; i < supplied->items.size(); ++i) {
+            const auto& [ni, value] = supplied->items[i];
             std::size_t n = index(&ni, size_of(nodes), "/" + label);
             const Value& node = nodes->items[n];
             NodeOverride item_override;
             if (label == "morph_weights") {
                 if (!has(node, "mesh")) fail(Code::E_MORPH, "/morph_weights", "Morph override needs a mesh node.");
+                if (supplied->broken_value == i) throw OverridesBroken{label};
                 std::size_t count = morph_count(meshes->items[static_cast<std::size_t>(big(item(node, "mesh")).to_int64())]);
                 vector(&value, count, "/morph_weights");
                 item_override.emplace_back("weights", numbers(value));
             } else {
+                if (supplied->broken_value == i) throw OverridesBroken{label};
                 authoring::keys(value, {}, {"matrix", "translation", "rotation", "scale"}, "/node_transforms");
                 bool matrix = has(value, "matrix");
                 bool node_trs = has(node, "translation") || has(node, "rotation") || has(node, "scale");
@@ -268,6 +271,7 @@ Geometry evaluate_geometry(const Asset& asset, const Time& ts, const Value* anim
             NodeOverride& target = overrides[n];
             for (auto& [key, v] : item_override) set(target, key, std::move(v));
         }
+        if (supplied->broken_tail) throw OverridesBroken{label};
     }
     std::map<std::size_t, m3::Mat> world = worlds(doc, overrides);
     Geometry out;

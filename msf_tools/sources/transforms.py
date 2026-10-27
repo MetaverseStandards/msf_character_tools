@@ -7,7 +7,7 @@ passed straight through. Implemented in the C++ core (core/src/source_helpers.cp
 """
 from .. import _native
 
-_core = _native.required()
+_core = _native.built
 
 
 def is_affine(matrix):

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""The strict checks that modules not yet in the C++ core share; the core has its
-own copies (core/src/authoring.cpp) with the same codes, refs and messages."""
+"""Strict checks for the sidecar, which stays in Python; the core has its own
+copies (core/src/authoring.cpp) with the same codes, refs and messages."""
 from collections.abc import Mapping
 
 from .common import number
@@ -38,10 +38,3 @@ def domain(obj, ref):
             fail("E_TYPE", f"{ref}/{k}", "Domain bounds must be finite numbers.")
     if "min" in obj and "max" in obj and obj["min"] > obj["max"]:
         fail("E_DOMAIN", ref, "Domain minimum exceeds maximum.")
-
-
-def in_domain(value, bounds, ref):
-    if not number(value):
-        fail("E_TYPE", ref, "Expected a finite scalar, excluding boolean.")
-    if ("min" in bounds and value < bounds["min"]) or ("max" in bounds and value > bounds["max"]):
-        fail("E_DOMAIN", ref, "Value is outside its declared domain.", "Supply a valid sample; no clamping or neutral substitution is performed.")

@@ -20,18 +20,15 @@ from .common import freeze, thaw, digest, canonical_json, integer, SPECIAL_FILE_
 from .report import public, fail, Report, Result, Diagnostic
 from .records import OwnedRecord, _admit
 from .sources import paths as source_paths
-from .sources import (SOURCE_FORMATS, ReaderMismatch, SourceLimits, SourceParseError,
+from .sources import (SOURCE_FORMATS, SourceLimits, SourceParseError,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
-_core = _native.required()
+_core = _native.built
 
 SUPPORTED_REQUIRED_EXTENSIONS = frozenset()  # Inventory is broader than evaluation.
 MAX_ASSET_BYTES = 64 * 1024 * 1024
-MAX_RESOURCE_BYTES = 64 * 1024 * 1024
-MAX_TOTAL_RESOURCE_BYTES = 256 * 1024 * 1024
 MAX_ACCESSOR_COMPONENTS = 1_000_000
 MAX_TOTAL_ACCESSOR_COMPONENTS = 4_000_000
-MAX_STRUCTURAL_OBJECTS = 100_000
 
 
 @dataclass(frozen=True)
@@ -391,8 +388,6 @@ def _load_adapter(fmt):
     except ImportError as exc:
         if exc.name == module:
             _missing_adapter(fmt)
-        if isinstance(exc, ReaderMismatch):
-            fail("E_FORMAT_DEPENDENCY", "/", str(exc), exc.remediation)
         fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
              f"pip install 'msf-tools[{extra}]'")
 

@@ -429,6 +429,17 @@ def random_asset(rng, damage=None):
 SIGNAL = {'id': 'sig', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'basis'}
 
 BATTERY = r'''
+from collections.abc import Mapping as _Mapping
+from types import MappingProxyType as _Proxy
+
+# A Mapping whose items() returns `items` as given, not (key, value) tuples.
+class _Odd(_Mapping):
+    def __init__(self, items, data=None): self._items, self._data = items, dict(data or {})
+    def __getitem__(self, key): return self._data[key]
+    def __iter__(self): return iter(self._data)
+    def __len__(self): return len(self._data)
+    def items(self): return self._items
+
 def gltf_battery(raw, fmt, blobs, signal, deep=True):
     resolver = (lambda uri: blobs[uri]) if blobs is not None else None
     result = m.inspect_asset(raw, fmt, resolver)
@@ -457,6 +468,12 @@ def gltf_battery(raw, fmt, blobs, signal, deep=True):
         for override in ({'translation': [1, 2, 3]}, {'rotation': [0, 0, 0.6, 0.8]}, {'scale': [2, 2, 2]},
                          {'matrix': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]}, {'rotation': [0, 0, 0, 2]}):
             out.append(attempt(lambda: m.evaluate_geometry(s, node_transforms={ni: override})))
+    translation = _Odd([['translation', (1, 2, 3)]], {'translation': (1, 2, 3)})
+    for ni in range(min(len(nodes), 2)):
+        for pairs in ([[ni, (0.5,)]], [(ni,)], [ni], [[ni, translation]], [[ni, {'translation': (1, 2, 3)}], 'x']):
+            out.append(attempt(lambda: m.evaluate_geometry(s, morph_weights=_Odd(pairs))))
+            out.append(attempt(lambda: m.evaluate_geometry(s, node_transforms=_Odd(pairs))))
+    out.append(attempt(lambda: m.canonical_json(_Proxy(_Odd([['scene', [1, 2]]], {'scene': [1, 2]})))))
     out.append(attempt(lambda: m.evaluate_geometry(s, attributes=('POSITION', 'NORMAL'))))
     out.append(attempt(lambda: m.export_geometry_golden(s, timestamp=0.5)))
     bindings = []
@@ -489,6 +506,7 @@ def gltf_battery(raw, fmt, blobs, signal, deep=True):
 # into E_INPUT or E_INTERNAL.
 EDGES = r"""
 import json as _json
+from collections.abc import Mapping
 
 def exact(fn, *args, **kwargs):
     try:
@@ -503,6 +521,41 @@ class Falsy:
     def __init__(self, blobs): self.blobs = blobs
     def __bool__(self): return False
     def __call__(self, uri): return self.blobs[uri]
+
+# A Mapping whose items() returns `items` as given, not (key, value) tuples.
+class OddItems(Mapping):
+    def __init__(self, items, data=None): self._items, self._data = items, dict(data or {})
+    def __getitem__(self, key): return self._data[key]
+    def __iter__(self): return iter(self._data)
+    def __len__(self): return len(self._data)
+    def items(self): return self._items() if callable(self._items) else self._items
+
+def _pairs_then_raise():
+    yield (5, (0.1, 0.2, 0.3))
+    raise RuntimeError('items() failed part way')
+
+# (keyword, value) overrides whose Mappings hand evaluate_geometry odd items.
+def odd_overrides():
+    weights = (0.1, 0.2, 0.3)
+    translation = OddItems([['translation', (1, 2, 3)]], {'translation': (1, 2, 3)})
+    out = [('morph_weights', OddItems(v)) for v in ([['a', 1]], [[5, weights]], [[5, list(weights)]], [(5,)], [(5, weights, 0)],
+                                                     [5], ['ab'], [iter([5, weights])], [[1, weights]], [[5, weights], (6,)],
+                                                     5, None, _pairs_then_raise, [[0, weights], 5], [])]
+    out += [('node_transforms', OddItems(v)) for v in ([['a', 1]], [[3, translation]], [[3, OddItems([], {'translation': (1, 2)})]],
+                                                        [[3, OddItems([], {'bogus': 1})]], [[3, {'translation': (1, 2, 3)}], 7],
+                                                        [[99, translation]], [[3, OddItems([], {'translation': None})]])]
+    return out
+
+def edge_odd_mappings(raw):
+    s = m.inspect_asset(raw, 'gltf').value
+    from types import MappingProxyType
+    out = [exact(m.evaluate_geometry, s, **{keyword: value}) for keyword, value in odd_overrides()]
+    out += [exact(m.evaluate_geometry, s, morph_weights=OddItems([[5, (0.1, 0.2, 0.3)]]), node_transforms=OddItems(5))]
+    out += [exact(m.evaluate_geometry, s, morph_weights=OddItems([[2, (0.1,)]]), node_transforms=OddItems(5))]
+    for items in ([['a', 1]], [('a', 1, 2)], [('a',)], [('a', 1)], [[1, 2]], [], 'ab'):
+        out.append(exact(m.canonical_json, MappingProxyType(OddItems(items, {'a': 1}))))
+        out.append(exact(m.canonical_json, {'outer': MappingProxyType(OddItems(items, {'a': 1}))}))
+    return out
 
 def edge_timestamps(raw):
     s = m.inspect_asset(raw, 'gltf').value

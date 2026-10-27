@@ -5,7 +5,6 @@ Run this file directly to list registered codes that no test mentions.
 """
 import ast
 import importlib.util
-import os
 from pathlib import Path
 import re
 import tempfile
@@ -142,11 +141,10 @@ class DiagnosticsRegistry(unittest.TestCase):
                          'core/include/msf/diagnostics.inc is stale; run python3 -B tools/gen_diagnostics.py')
         self.assertNotIn('E_ANIMATION_TARGET', expected, 'removed codes stay out of the C++ enum')
 
-    @unittest.skipIf(_native.core is None and os.environ.get('MSF_REQUIRE_CORE') != '1', 'C++ core not built')
     def test_the_core_carries_every_current_code_with_its_severity_and_strict_code(self):
         expected = [(code, entry['severity'], entry.get('strict')) for code, entry in sorted(self.codes.items())
                     if 'removed' not in entry]
-        self.assertEqual(_native.core._codes(), expected)
+        self.assertEqual(_native.built._codes(), expected)
 
     def test_the_registry_has_no_orphans(self):
         reachable = set(self.literals) | set(self.strict.values()) | {c for _, codes in BUILT.values() for c in codes}

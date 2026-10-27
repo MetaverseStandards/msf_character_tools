@@ -2,6 +2,7 @@
 // JSON across the boundary: Python objects to json::Value and back, and the
 // translation of msf::Fault into msf_tools.report.Fault.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/string.h>
 
 #include <array>
@@ -145,6 +146,8 @@ bool from_python(PyObject* o, Value& v, int depth) {
         v.members.resize(static_cast<std::size_t>(n));
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject* pair = PyList_GET_ITEM(items.ptr(), i);
+            // A mappingproxy over a custom Mapping returns whatever its items() gives.
+            if (!PyTuple_CheckExact(pair) || PyTuple_GET_SIZE(pair) != 2) return false;
             PyObject* key = PyTuple_GET_ITEM(pair, 0);
             auto& member = v.members[static_cast<std::size_t>(i)];
             if (!PyUnicode_CheckExact(key) || !utf8_of(key, member.first)) return false;
@@ -261,10 +264,5 @@ void bind_json(nb::module_& m) {
         float f;
         if (!msf::json::to_float32(value, f)) return nb::none();
         return nb::float_(static_cast<double>(f));
-    });
-    m.def("_parse_status", [](nb::bytes data) {
-        msf::json::ParseOutcome parsed = msf::json::parse(std::string_view(data.c_str(), data.size()));
-        static const char* names[] = {"ok", "syntax", "constant", "duplicate_key", "too_deep"};
-        return std::string(names[static_cast<int>(parsed.status)]);
     });
 }

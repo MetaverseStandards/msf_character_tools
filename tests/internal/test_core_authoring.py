@@ -298,7 +298,6 @@ class AgainstTheOracle(unittest.TestCase):
             self.assertSame([(PACK, {'doc': d}) for d in documents(300, 17, [seed])])
 
 
-@unittest.skipIf(core is None, 'C++ core not built')
 class InProcess(unittest.TestCase):
     def test_sha256_matches_hashlib(self):
         rng = random.Random(1)

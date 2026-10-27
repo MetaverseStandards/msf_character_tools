@@ -40,7 +40,7 @@ class AgainstTheOracle(unittest.TestCase):
         external = [gltf_cases.random_asset(rng, damage=False) for _ in range(40)]
         external = [(raw, blobs) for raw, fmt, blobs in external if blobs and fmt.lower() != 'glb'][:3]
         self.assertTrue(external)
-        cases = [(f'edge_{name}(raw)', {'raw': combined}) for name in ('timestamps', 'overrides', 'extensions', 'documents')]
+        cases = [(f'edge_{name}(raw)', {'raw': combined}) for name in ('timestamps', 'overrides', 'odd_mappings', 'extensions', 'documents')]
         cases += [('edge_resolvers(raw, blobs)', {'raw': raw, 'blobs': blobs}) for raw, blobs in external]
         self.assertSame(cases)
 

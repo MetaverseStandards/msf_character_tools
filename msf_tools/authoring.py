@@ -14,7 +14,7 @@ from .common import thaw, SPECIAL_FILE_ERRNOS
 from .report import public, Diagnostic, Report, Result, fail
 from .records import OwnedRecord, _admit
 
-_core = _native.required()
+_core = _native.built
 _TOKEN = object()
 
 

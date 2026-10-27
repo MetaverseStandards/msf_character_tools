@@ -2,6 +2,7 @@
 // Source conversion helpers across the boundary: the path grammar, matrix
 // decomposition, influence rows, the GLB writer and the FBX adapter.
 #include <nanobind/nanobind.h>
+#include "limited_api.hpp"
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/string.h>

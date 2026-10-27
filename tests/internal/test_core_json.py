@@ -8,6 +8,7 @@ equal bytes, identical typed values (floats by bit pattern), or the same
 diagnostic or exception. MSF_GATE=1 widens the float and fuzz counts.
 """
 from array import array
+from collections.abc import Mapping
 from decimal import Decimal
 import json
 import math
@@ -26,9 +27,8 @@ from msf_tools.report import Fault
 from internal import workspace
 
 ROOT = Path(__file__).resolve().parents[2]
-REQUIRED = os.environ.get('MSF_REQUIRE_CORE') == '1'
 GATE = os.environ.get('MSF_GATE') == '1'
-core = _native.core
+core = _native.built
 
 
 def outcome(fn, *args):
@@ -118,7 +118,6 @@ def hard_floats():
     return [x for v in values if math.isfinite(v) for x in (v, -v)]
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Floats(unittest.TestCase):
     def check(self, values):
         actual = core._repr_floats(array('d', values).tobytes()).decode().split('\n')
@@ -154,7 +153,6 @@ class Floats(unittest.TestCase):
                 self.assertTrue(expected is None and actual is None or same(actual, expected), (x, actual, expected))
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Numbers(unittest.TestCase):
     def test_exact_integers_from_lexemes_like_decimal(self):
         rng = random.Random(4)
@@ -204,7 +202,6 @@ def goldens(root=ROOT, commit=None):
         yield name, data
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Documents(unittest.TestCase):
     def assertSameOutcome(self, fn, *args):
         actual, expected = outcome(fn, *args), reference(fn, *args)
@@ -243,6 +240,13 @@ class Documents(unittest.TestCase):
                   {'k': [1, {'z': 0.1, 'y': [None]}]}, [math.inf], {'n': math.nan}, {1: 'int key'}, {True: 1},
                   {'s': {1, 2}}, [Decimal('1')], 10**5000, [[[]]] * 3]
         for i, value in enumerate(values + [random_value(rng, 0) for _ in range(300)]):
+            with self.subTest(i=i):
+                self.assertSameOutcome(canonical_json, value)
+
+    def test_mapping_proxies_over_odd_items_are_written_like_the_reference(self):
+        rng = random.Random(6)
+        for i in range(300):
+            value = oddly(random_value(rng, 0), rng)
             with self.subTest(i=i):
                 self.assertSameOutcome(canonical_json, value)
 
@@ -302,7 +306,6 @@ class Documents(unittest.TestCase):
                 parsed_alike(self, data)
 
 
-@unittest.skipIf(core is None and not REQUIRED, 'C++ core not built')
 class Unicode(unittest.TestCase):
     def test_fuzzed_strings_are_written_like_the_reference(self):
         rng = random.Random(7)
@@ -346,6 +349,42 @@ def random_value(rng, depth):
     if kind in (6, 7):
         return [random_value(rng, depth + 1) for _ in range(rng.randrange(4))]
     return {random_text(rng): random_value(rng, depth + 1) for _ in range(rng.randrange(4))}
+
+
+class OddItems(Mapping):
+    """A Mapping whose items() returns `items` as given, not (key, value) tuples."""
+    def __init__(self, items, data):
+        self._items, self._data = items, data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def items(self):
+        return self._items
+
+
+def oddly(value, rng):
+    """`value` with some dicts behind a mappingproxy whose items() are lists, short or long tuples, or right."""
+    if isinstance(value, list):
+        return [oddly(v, rng) for v in value]
+    if not isinstance(value, dict):
+        return value
+    value = {k: oddly(v, rng) for k, v in value.items()}
+    shape = rng.randrange(5)
+    if shape == 0:
+        return value
+    pairs = [[k, v] for k, v in value.items()] if shape == 1 else [(k, v) for k, v in value.items()]
+    if shape == 3 and pairs:
+        pairs[-1] = pairs[-1][:1]
+    if shape == 4:
+        pairs.append(('extra', 1, 2))
+    return MappingProxyType(OddItems(pairs, value))
 
 
 def canonical_or_compact(rng):

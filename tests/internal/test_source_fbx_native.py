@@ -6,7 +6,7 @@ import unittest
 from msf_tools import _native
 from support.fbx_ascii import Scene
 
-_core = _native.required()
+_core = _native.built
 HAVE_UFBX = True
 
 MINIMAL = b'''; FBX 7.4.0 project file

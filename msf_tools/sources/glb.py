@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from .. import _native
 
-_core = _native.required()
+_core = _native.built
 
 
 @dataclass(frozen=True)

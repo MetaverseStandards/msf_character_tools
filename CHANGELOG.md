@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-27)
+
+msf-tools now runs on a C++ core, `msf_tools._core`, with the same public API, results and bytes as 0.3.0 apart from the two nesting differences below. Wheels: CPython 3.11 (`cp311`) and one `cp312-abi3` wheel for CPython 3.12 and later.
 
 ### Changed
 - Authoring validation and fragment merging, packs (canonical bytes, SHA-256, survey CSV, coverage), profile snapshots, mapping compilation and evaluation, and `math3d` run in the C++ core, `msf_tools._core`, and their Python implementations are gone. Results, reports and bytes match 0.3.0 exactly; the internal tests check this against 0.3.0 itself. msf-tools now needs the extension, and `MSF_TOOLS_PURE=1` only skips the core's fast paths (JSON, and mapping evaluation) in favour of its exact paths.
@@ -8,6 +10,12 @@
 - ufbx 0.23.1 and the `msf-ufbx` shim are compiled into the core, so FBX needs nothing extra. The cffi package `msf-tools-ufbx` (`native/ufbx`) is removed, and the `fbx` extra is empty and kept so existing install commands work.
 - `canonical_json` and the JSON parser refuse containers nested more than 200 deep with `RecursionError("JSON nesting exceeds 200 levels.")`, where 0.3.0 failed with `RecursionError` at a depth that depended on the interpreter and the call stack (about 500 to 1000). This is the one intended difference from 0.3.0 in the C++ core's JSON handling, and both the core and the pure-Python path behave this way. Documents are still limited to 128 levels by validation.
 - glTF inspection shows the 200-level cap. A glTF JSON document nested more than 200 levels deep, up to about 10,000, now fails with `E_RESOURCE_LIMIT` at ref `inspect_asset` and "Input exceeds supported nesting depth.", where 0.3.0 gave `E_RESOURCE_LIMIT` at the path of the first container past 128 levels (such as `/extras/0/0/...`) and "JSON nesting exceeds 128 levels.". The code is the same; the ref and message differ. A malformed document nested that deep, such as a truncated one, also gets this `E_RESOURCE_LIMIT`, where 0.3.0 reported its JSON syntax error as `E_INPUT`. Past about 10,000 levels both give the `inspect_asset` diagnostic.
+- Wheels for CPython 3.12 and later are one stable-ABI (`abi3`) build; CPython 3.11 has its own. Building needs CMake 3.26 or newer, and the build requirements are pinned exactly (scikit-build-core 1.1.1, nanobind 3.1.0).
+- The package licence expression adds CC-BY-SA-4.0 for the documentation, schemas and README the distributions carry; NOTICE.md credits the two committed sample meshes (CC0-1.0), and `docs/source-lock.json` pins Ryu and fast_float as it pins ufbx.
+- `scripts/ci_local.sh` and the tests take their outside inputs (interpreters, the 0.3.0 oracle, RCEF, asset corpora) from environment variables and skip tiers whose inputs are absent; `MSF` names an optional local workspace that supplies them all.
+
+### Removed
+- The remaining pure-Python fallbacks: msf-tools does not import without its extension, and `MSF_REQUIRE_CORE` is gone. `MSF_TOOLS_PURE=1` stays, to run every input through the paths the core's fast paths leave to inputs they decline (Python's `json` for `parse_json` and `canonical_json`, and the core's exact mapping evaluation); see `docs/building.md`.
 
 ## 0.3.0
 

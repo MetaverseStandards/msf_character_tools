@@ -6,7 +6,7 @@ Implemented in the C++ core (core/src/source_helpers.cpp).
 from .. import _native
 from ..report import Diagnostic
 
-_core = _native.required()
+_core = _native.built
 
 
 def count(n, one, many):
