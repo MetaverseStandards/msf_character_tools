@@ -1,5 +1,5 @@
 {
-  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints.",
+  "$comment": "Original schema CC-BY-SA-4.0. Runtime adds finite binary64, unique IDs, structural references, domain/coefficient/graph constraints, and piecewise_linear knot order and spans.",
   "$defs": {
     "evidence": {
       "additionalProperties": false,
@@ -84,7 +84,8 @@
           "enum": [
             "verified_current",
             "proposed",
-            "unresolved"
+            "unresolved",
+            "calibrated_software"
           ]
         },
         "url": {
@@ -226,7 +227,8 @@
                   "id": {
                     "enum": [
                       "identity",
-                      "affine"
+                      "affine",
+                      "piecewise_linear"
                     ]
                   }
                 }
@@ -291,7 +293,8 @@
           "enum": [
             "verified_current",
             "proposed",
-            "unresolved"
+            "unresolved",
+            "calibrated_software"
           ]
         },
         "id": {
@@ -424,6 +427,36 @@
                 "weights"
               ],
               "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "const": "piecewise_linear"
+                },
+                "knots": {
+                  "items": {
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "type": "array"
+                  },
+                  "minItems": 2,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "knots"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -526,7 +559,8 @@
           "enum": [
             "verified_current",
             "proposed",
-            "unresolved"
+            "unresolved",
+            "calibrated_software"
           ]
         },
         "id": {
@@ -610,6 +644,102 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "items": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "verified_current",
+                    "proposed",
+                    "unresolved"
+                  ]
+                }
+              }
+            }
+          },
+          "mappings": {
+            "items": {
+              "properties": {
+                "rules": {
+                  "items": {
+                    "properties": {
+                      "evidence_status": {
+                        "enum": [
+                          "verified_current",
+                          "proposed",
+                          "unresolved"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "signals": {
+            "items": {
+              "properties": {
+                "evidence_status": {
+                  "enum": [
+                    "verified_current",
+                    "proposed",
+                    "unresolved"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operator_version": {
+            "const": "1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mappings": {
+            "items": {
+              "properties": {
+                "rules": {
+                  "items": {
+                    "properties": {
+                      "operator": {
+                        "properties": {
+                          "id": {
+                            "enum": [
+                              "identity",
+                              "affine",
+                              "weighted_sum"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "data_version": {
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$",
@@ -656,7 +786,10 @@
       "type": "array"
     },
     "operator_version": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
     },
     "profiles": {
       "items": {
@@ -665,7 +798,10 @@
       "type": "array"
     },
     "schema_version": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
     },
     "signals": {
       "items": {
@@ -685,6 +821,6 @@
     "mappings",
     "evidence"
   ],
-  "title": "MSF pack version 1.0",
+  "title": "MSF pack versions 1.0 and 1.1",
   "type": "object"
 }

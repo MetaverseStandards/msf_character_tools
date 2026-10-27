@@ -171,7 +171,7 @@ meaning = "A domain's minimum exceeds its maximum, or a value lies outside its d
 [E_DOMAIN_COMPATIBILITY]
 severity = "error"
 since = "0.1.0"
-meaning = "An identity rule joins signals with different declared domains."
+meaning = "An identity rule joins signals with different domains, or piecewise_linear knots do not span the input domain."
 
 [E_DUPLICATE]
 severity = "error"
@@ -354,6 +354,11 @@ severity = "error"
 since = "0.1.0"
 meaning = "A weighted joint index exceeds the skin's joint palette."
 
+[E_KNOTS]
+severity = "error"
+since = "0.3.0"
+meaning = "piecewise_linear knots have non-increasing x, non-monotone y, or spans that overflow binary64."
+
 [E_LOSS_REQUIRED]
 severity = "error"
 since = "0.1.1"
@@ -422,8 +427,7 @@ meaning = "Operator coefficients are missing, extra or of the wrong type."
 [E_OPERATOR_VERSION]
 severity = "error"
 since = "0.3.0"
-reserved = true
-meaning = "The document uses an operator its operator_version does not include."
+meaning = "A rule uses an operator that the document's operator_version does not include."
 
 [E_OUTPUT_EXTRA]
 severity = "error"

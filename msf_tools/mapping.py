@@ -2,6 +2,7 @@
 """Typed virtual profiles, dependency compilation and sample evaluation."""
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass
 from collections.abc import Mapping
 
@@ -11,7 +12,7 @@ from .pack import Pack
 from .snapshot import AssetSnapshot, _identity, _source_summary
 from .report import public, fail, Fault, Result, Report, Loss
 from .records import OwnedRecord, _admit
-from .math3d import _add, _product, _sum
+from .math3d import _add, _divide, _product, _sub, _sum
 
 _LOSS_EFFECTS = {"approximated", "dropped", "unknown"}
 
@@ -194,6 +195,10 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
             check(fail, "E_CALIBRATION", rid, "Identity requires the same explicit calibration basis.")
         if r["operator"]["id"] == "identity" and inputs[0]["domain"] != out["domain"]:
             check(fail, "E_DOMAIN_COMPATIBILITY", rid, "Identity requires equal declared domains.")
+        if r["operator"]["id"] == "piecewise_linear":
+            knots, bounds = r["operator"]["knots"], inputs[0]["domain"]
+            if bounds.get("min") != knots[0][0] or bounds.get("max") != knots[-1][0]:
+                check(fail, "E_DOMAIN_COMPATIBILITY", rid, "Piecewise-linear knots must start and end at the input domain bounds.")
         if r["operator"]["id"] == "identity":
             for field in ("neutral", "side", "coupling"):
                 if (field in inputs[0]) != (field in out) or field in inputs[0] and inputs[0][field] != out[field]:
@@ -228,6 +233,20 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
     report = Report(tuple(diagnostics), tuple(losses))
     compiled = CompiledMapping(pack, source_snapshot, target_snapshot, mapping_id, tuple(ordered), required, outputs, tuple(losses))
     return Result(_admit(compiled) if report.ok else None, report)
+
+
+def _piecewise_linear(knots, x, ref):
+    """Interpolate within the knot segment holding x; compilation put x inside the knots."""
+    xs = [float(k[0]) for k in knots]
+    i = bisect.bisect_right(xs, x) - 1
+    if xs[i] == x:
+        return float(knots[i][1])
+    (xa, ya), (xb, yb) = ((float(a), float(b)) for a, b in knots[i:i + 2])
+    t = _divide(_sub(x, xa, ref), _sub(xb, xa, ref), ref)
+    value = _add(ya, _product(t, _sub(yb, ya, ref), ref), ref)
+    # Rounding could step past the segment's far end; keeping the value inside
+    # [ya, yb] keeps the operator monotone across knots.
+    return min(max(value, min(ya, yb)), max(ya, yb))
 
 
 @dataclass(frozen=True)
@@ -285,8 +304,10 @@ def evaluate_mapping(compiled_mapping, samples):
                         value = args[0]
                     elif op["id"] == "affine":
                         value = _add(_product(float(op["scale"]), args[0], math_ref), float(op["offset"]), math_ref)
-                    else:
+                    elif op["id"] == "weighted_sum":
                         value = _sum((_product(float(w), x, math_ref) for w, x in zip(op["weights"], args)), math_ref)
+                    else:
+                        value = _piecewise_linear(op["knots"], args[0], math_ref)
                     in_domain(value, signals[output]["domain"], ref + "/rules/" + rule["id"])
                     values[output] = float(value)
                 except Fault as exc:
