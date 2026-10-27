@@ -108,6 +108,12 @@ inline std::size_t index(const Value* value, std::size_t length, const std::stri
         fail(Code::E_REFERENCE, ref, "Index is not an integer in the referenced array.");
     return static_cast<std::size_t>(big(*value).to_int64());
 }
+// list[index(value, len(list), ref)], with the index checked before `list`
+// is touched: the list may be absent.
+inline const Value& element(const Value* list, const Value* value, const std::string& ref) {
+    std::size_t i = index(value, size_of(list), ref);
+    return list->items[i];
+}
 // snapshot.positive_int
 inline void positive_int(const Value* value, const std::string& ref, bool zero = false) {
     if (!is_int(value) || big(*value) < BigInt(zero ? 0 : 1))

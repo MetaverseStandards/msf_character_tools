@@ -563,6 +563,16 @@ def edge_documents(raw):
              b'{"asset":{"version":"2.0"},"extras":1e400}', b'{"asset":{"version":"2.0"},"scene":1.5}', b'[]', b'"x"', b'',
              b'{"asset":{"version":"2.0"},"extras":' + b'1' * 400 + b'}', b'{"asset":{"version":"2.0"}}  \n',
              b'{"asset":{"version":"2.0"},"extras":"\xed\xa0\x80"}']
+    # References into lists the document leaves out.
+    head = b'{"asset":{"version":"2.0"},'
+    texts += [head + b'"accessors":[{"componentType":5126,"count":1,"type":"SCALAR","bufferView":0}]}',
+              head + b'"accessors":[{"componentType":5126,"count":1,"type":"SCALAR","sparse":{"count":1,'
+                     b'"indices":{"bufferView":0,"componentType":5125},"values":{"bufferView":0}}}]}',
+              head + b'"bufferViews":[{"buffer":0,"byteLength":4}]}',
+              head + b'"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}',
+              head + b'"animations":[{"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}],'
+                     b'"samplers":[{"input":0,"output":1}]}]}',
+              head + b'"skins":[{"joints":[0]}]}']
     for text in texts:
         out.append(exact(m.inspect_asset, text, 'gltf'))
         out.append(exact(m.inspect_asset, text, 'GLTF2'))

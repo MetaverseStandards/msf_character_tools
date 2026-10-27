@@ -368,7 +368,7 @@ void semantic_type(const std::string& name, const Value& a, const Value* count, 
 }
 
 const Value& accessor_at(const Value* accessors, const Value* id, const std::string& ref) {
-    return accessors->items[index(id, size_of(accessors), ref)];
+    return element(accessors, id, ref);
 }
 
 void validate_meshes(const Value& doc) {
@@ -446,7 +446,7 @@ std::size_t morph_count(const Value& mesh) {
 std::size_t animation_layout(const Value& doc, const Value& sampler, const Value& target, const std::string& ref) {
     const Value* nodes = get(doc, "nodes");
     const Value* accessors = get(doc, "accessors");
-    const Value& node = nodes->items[index(get(target, "node"), size_of(nodes), ref)];
+    const Value& node = element(nodes, get(target, "node"), ref);
     const std::string& path = item(target, "path").text;
     const Value& times = accessor_at(accessors, get(sampler, "input"), ref);
     const Value& a = accessor_at(accessors, get(sampler, "output"), ref);
@@ -584,7 +584,7 @@ void validate_document(const Value& doc, Caps caps) {
     for (std::size_t i = 0; i < size_of(views); ++i) {
         const Value& v = views->items[i];
         std::string ref = "/bufferViews/" + std::to_string(i);
-        const Value& b = buffers->items[index(get(v, "buffer"), size_of(buffers), ref)];
+        const Value& b = element(buffers, get(v, "buffer"), ref);
         positive_int(get(v, "byteLength"), ref);
         positive_int(get(v, "byteOffset") ? get(v, "byteOffset") : &kZero, ref, true);
         if (int_or(v, "byteOffset", 0) + big(item(v, "byteLength")) > big(item(b, "byteLength")))
@@ -628,7 +628,7 @@ void validate_document(const Value& doc, Caps caps) {
         }
         BigInt offset = int_or(a, "byteOffset", 0);
         if (const Value* view_id = get(a, "bufferView")) {
-            const Value& v = views->items[index(view_id, size_of(views), ref)];
+            const Value& v = element(views, view_id, ref);
             BigInt stride = int_or(v, "byteStride", l.element_size);
             BigInt start = int_or(v, "byteOffset", 0) + offset;
             if (offset.mod(l.size) || start.mod(l.size) || (type->text.compare(0, 3, "MAT") == 0 && start.mod(4)))
@@ -651,7 +651,7 @@ void validate_document(const Value& doc, Caps caps) {
                     authoring::keys(part, {"bufferView", "componentType"}, {"byteOffset", "extensions", "extras"}, ref);
                 else
                     authoring::keys(part, {"bufferView"}, {"byteOffset", "extensions", "extras"}, ref);
-                const Value& v = views->items[index(get(part, "bufferView"), size_of(views), ref)];
+                const Value& v = element(views, get(part, "bufferView"), ref);
                 positive_int(get(part, "byteOffset") ? get(part, "byteOffset") : &kZero, ref, true);
                 if (has(v, "byteStride") || has(v, "target")) fail(Code::E_SPARSE_STRIDE, ref, "Sparse bufferView cannot declare stride or target.");
                 long long item_size = l.element_size, align = l.size;
@@ -824,7 +824,7 @@ void validate_document(const Value& doc, Caps caps) {
                 continue;
             }
             if (const Value* node_id = get(target, "node")) {
-                const Value& node = nodes->items[index(node_id, size_of(nodes), ref)];
+                const Value& node = element(nodes, node_id, ref);
                 std::pair<std::string, std::string> pair{node_id->text, p};
                 if (driven.count(pair)) fail(Code::E_MULTIPLE_WRITERS, ref, "Animation has competing property channels.");
                 driven.insert(pair);

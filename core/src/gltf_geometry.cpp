@@ -165,7 +165,7 @@ std::map<std::size_t, m3::Mat> worlds(const Value& doc, const std::map<std::size
 Rows geometry_accessor(const Asset& asset, const Value& aid, const char* shape, std::initializer_list<long long> components,
                        const BigInt* count, int normalized, const std::string& ref) {
     const Value* accessors = get(asset.doc, "accessors");
-    const Value& a = accessors->items[index(&aid, size_of(accessors), ref)];
+    const Value& a = element(accessors, &aid, ref);
     long long ct = big(item(a, "componentType")).to_int64();
     bool ct_ok = std::find(components.begin(), components.end(), ct) != components.end();
     if (item(a, "type").text != shape || !ct_ok || (count && big(item(a, "count")) != *count) ||

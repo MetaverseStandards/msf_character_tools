@@ -35,7 +35,7 @@ double read_component(const char* at, char code) {
 void read_elements(const Asset& asset, const Value* view_id, const BigInt& offset, const BigInt& count, const Layout& l, bool mat,
                    bool normalized, const std::string& ref, bool sparse, std::vector<double>& out) {
     const Value* views = get(asset.doc, "bufferViews");
-    const Value& view = views->items[index(view_id, size_of(views), ref)];
+    const Value& view = element(views, view_id, ref);
     const Resource& resource = asset.resources[static_cast<std::size_t>(big(item(view, "buffer")).to_int64())];
     if (!resource.has_data)
         fail(Code::E_RESOURCE_UNAVAILABLE, ref, "Accessor needs an unresolved external buffer.", "Supply an explicit bounded LocalResolver.");
@@ -73,7 +73,7 @@ bool is_mat(const Value& accessor) { return item(accessor, "type").text.compare(
 
 Rows decode_accessor(const Asset& asset, const Value& id, const std::string& ref, bool raw) {
     const Value* accessors = get(asset.doc, "accessors");
-    const Value& a = accessors->items[index(&id, size_of(accessors), ref)];
+    const Value& a = element(accessors, &id, ref);
     Layout l = layout(a);
     BigInt count = big(item(a, "count"));
     if (count * BigInt(static_cast<long long>(l.offsets.size())) > BigInt(asset.caps.accessor))
