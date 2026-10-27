@@ -15,9 +15,11 @@ class PackageMetadata(unittest.TestCase):
         self.assertEqual(project['version'], m.__version__)
         self.assertIn(f'## {m.__version__}', (ROOT / 'CHANGELOG.md').read_text())
         # The wheel's extension links nanobind (BSD-3-Clause), vendors Ryu (BSL-1.0), fast_float and ufbx (MIT) and derives
-        # hypot and fsum from CPython (PSF-2.0); see NOTICE.md.
-        self.assertEqual(project['license'], 'MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0')
+        # hypot and fsum from CPython (PSF-2.0); docs/, schemas/ (in the sdist) and the README (the long description,
+        # in both) are CC-BY-SA-4.0; see NOTICE.md.
+        self.assertEqual(project['license'], 'MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0 AND CC-BY-SA-4.0')
         self.assertIn('LICENSES/ufbx-MIT.txt', project['license-files'])
+        self.assertIn('LICENSES/CC-BY-SA-4.0.txt', project['license-files'])
         for path in project['license-files']:
             self.assertTrue((ROOT / path).is_file(), path)
 

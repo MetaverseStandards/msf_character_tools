@@ -9,8 +9,10 @@ version = "0.3.0"
 description = "Validated signal mappings and immutable glTF reference evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0"
-license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt",
+# Code: MIT, plus BSD-3-Clause, BSL-1.0, PSF-2.0 and MIT in the extension. Documentation, schemas and the README
+# (the long description) are CC-BY-SA-4.0; see NOTICE.md.
+license = "MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0 AND CC-BY-SA-4.0"
+license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/CC-BY-SA-4.0.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt",
                  "LICENSES/BSL-1.0.txt", "LICENSES/PSF-2.0.txt", "LICENSES/ufbx-MIT.txt", "core/third_party/fast_float/LICENSE-MIT"]
 authors = [{name = "MSF Tools contributors"}]
 dependencies = []
