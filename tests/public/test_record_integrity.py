@@ -62,9 +62,8 @@ class IntegrityTests(unittest.TestCase):
         self.bound = self.good(m.inspect_asset(raw_asset(), 'gltf', sidecar=self.sidecar))
         self.frames = [{'timestamp': 0, 'values': {'input.wink': -.5}, 'validity': {'input.wink': True}}]
 
-    def test_authoring_replace_and_token_copy_cannot_compile_or_export(self):
-        for bad in [replace(self.validated), replace(self.validated, document={'id': 'broken'}),
-                    type(self.validated)(document(), self.validated._token)]:
+    def test_authoring_replace_cannot_compile_or_export(self):
+        for bad in [replace(self.validated), replace(self.validated, document={'id': 'broken'})]:
             with self.subTest(record=type(bad).__name__):
                 self.rejected(m.compile_pack(bad))
                 self.refuses_export(bad.to_dict)

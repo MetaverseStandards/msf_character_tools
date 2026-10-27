@@ -33,12 +33,23 @@ def public_names():
 
 
 def private_uses(path, public):
-    """Every use of msf_tools beyond its public names and the CLI entry point."""
+    """Every use of msf_tools beyond its public names and the CLI entry point, as (line, what).
+
+    Private attributes (`._name` on anything but self or cls) and strings naming
+    msf_tools submodules, as `importlib.import_module` and `mock.patch` take them,
+    count too.
+    """
     tree = ast.parse(path.read_text(encoding='utf-8'))
     package, cli, found, attributes = set(), set(), [], []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            attributes.append(node)
+        if isinstance(node, ast.Attribute):
+            private = node.attr.startswith('_') and not (node.attr.startswith('__') and node.attr.endswith('__'))
+            if private and not (isinstance(node.value, ast.Name) and node.value.id in ('self', 'cls')):
+                found.append((node.lineno, f'._{node.attr[1:]}'))
+            elif isinstance(node.value, ast.Name):
+                attributes.append(node)
+        elif isinstance(node, ast.Constant) and type(node.value) is str and node.value.startswith(('msf_tools.', 'msf_tools_ufbx')):
+            found.append((node.lineno, repr(node.value)))
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == 'msf_tools':
@@ -81,9 +92,22 @@ class PublicSuite(unittest.TestCase):
             path.write_text('import msf_tools as m\nfrom msf_tools import cli, Pack, snapshot\nfrom msf_tools.common import thaw\n'
                             'import msf_tools_ufbx\nfrom internal.adapters import fake_adapter\n'
                             'm.compile_pack, m.Pack, m.snapshot, cli.main, cli._error\n', encoding='utf-8')
-            self.assertEqual([what for _, what in private_uses(path, public_names())],
-                             ['from msf_tools import snapshot', 'from msf_tools.common import thaw', 'import msf_tools_ufbx',
-                              'from internal.adapters import fake_adapter', 'm.snapshot', 'cli._error'])
+            self.assertEqual(sorted(what for _, what in private_uses(path, public_names())),
+                             sorted(['from msf_tools import snapshot', 'from msf_tools.common import thaw', 'import msf_tools_ufbx',
+                                     'from internal.adapters import fake_adapter', 'm.snapshot', '._error']))
+
+    def test_reaching_in_by_name_or_private_attribute_is_found(self):
+        cases = {"importlib.import_module('msf_tools.common')\n": ["'msf_tools.common'"],
+                 "patch('msf_tools.snapshot._ADAPTER_MODULES', {})\n": ["'msf_tools.snapshot._ADAPTER_MODULES'"],
+                 'm.Pack._check_integrity\n': ['._check_integrity'],
+                 'record._token\n': ['._token'],
+                 'self._helper(); cls._built; record.__class__\n': []}
+        with tempfile.TemporaryDirectory() as tmp:
+            for source, expected in cases.items():
+                with self.subTest(source=source):
+                    path = Path(tmp) / 'test_x.py'
+                    path.write_text('import msf_tools as m\n' + source, encoding='utf-8')
+                    self.assertEqual([what for _, what in private_uses(path, public_names())], expected)
 
 if __name__ == '__main__':
     if sys.argv[1:] == ['--write']:
