@@ -44,6 +44,10 @@ A checked-in file cannot work, because a commit cannot contain its own hash.
 
 `tests/internal/test_build_info.py` covers these rules with Git and scikit-build-core faked. `scripts/ci_local.sh` builds a real wheel from a clean clone of `HEAD` through its sdist, checks the record, and checks that the wheel holds exactly the tracked modules and the extension.
 
+## Release builds
+
+`scripts/build_release.sh OUTDIR [COMMIT]` builds a release from a clean clone of the commit: the sdist, then the `cp311` and `cp312-abi3` wheels from the unpacked sdist, outside any Git checkout, with `SOURCE_DATE_EPOCH` set to the commit's time. It writes `SHA256SUMS`; building the same commit again, in another directory, gives the same bytes. `scripts/check_release.sh OUTDIR [COMMIT]` then checks each wheel's contents, build record and licence files, that the extension links only system libraries and targets macOS 11.0, and that each wheel installs with the `usd` extra into a fresh venv on its interpreter and passes the unchanged public suite there (with `MSF_PY313`, the abi3 wheel on CPython 3.13 as well). It also checks the sdist's contents and licence metadata.
+
 ## Tools
 
 CMake and Ninja come from `PATH`. In the maintainers' local workspace (`MSF`, see [testing](testing.md)) they are uv tools under `$MSF/_tools`:
