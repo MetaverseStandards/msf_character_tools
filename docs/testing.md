@@ -20,7 +20,7 @@ Final local gate:30 tests passed on Python3.12.15 and the installed Python3.11.1
 | Curves/hierarchy | STEP, endpoints, component LINEAR, shortest quaternion slerp; duration-scaled Hermite with raw quaternion tangents; shear/singular reparent rejection |
 | CLI preservation | Annotate/check output aliases, hardlinks/symlinks refused before any replacement; source bytes unchanged |
 
-Shared combined analytical tolerance: max component absolute error <1e-6 m. Independent host fixture integration uses its declared1e-5 m position tolerance. Native agreement uses `abs1e-9 + rel1e-8` where documented by native tests. Skin weight sum tolerance1e-6 is a project acceptance choice; weights are not normalized. Quaternion authored unit tolerance1e-5 and affine bottom-row tolerance1e-7 for binary32 IBM are project checks, not universal equivalence promises.
+Shared combined analytical tolerance: max component absolute error <1e-6 m. Independent host fixture integration uses its declared1e-5 m position tolerance. Native agreement uses `abs1e-9 + rel1e-8` where documented by native tests. Skin weight sum tolerance1e-6 is a project acceptance choice; weights are not normalized. Quaternion authored unit-length tolerance 0.00769 (the glTF-Validator's) and affine bottom-row tolerance1e-7 for binary32 IBM are project checks, not universal equivalence promises.
 
 ## Reproduction
 

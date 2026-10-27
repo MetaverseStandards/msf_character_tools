@@ -137,12 +137,18 @@ def normalize(q):
     return tuple(_divide(x, length, '/rotation') for x in q)
 
 
+# The Khronos glTF-Validator's unit-length limit for quaternions (unitLengthThresholdVec4).
+UNIT_QUATERNION_TOLERANCE = 0.00769
+
+
 def authored_quaternion(q, ref='/rotation'):
-    """Check the existing glTF authored squared-length tolerance of 1e-5."""
+    """Check an authored quaternion is unit length within the glTF-Validator's limit.
+
+    The value is returned as authored; trs() and slerp normalize it before use.
+    """
     q = _vector(q, 4, ref)
     length = math.hypot(*q)
-    # Large nonunit inputs are invalid before any potentially overflowing square.
-    if not math.isfinite(length) or length > 2 or abs(_sub(_dot(q, q, ref), 1.0, ref)) > 1e-5:
+    if not math.isfinite(length) or abs(length - 1.0) > UNIT_QUATERNION_TOLERANCE:
         fail('E_QUATERNION', ref, 'Authored quaternion must be unit length.')
     return q
 

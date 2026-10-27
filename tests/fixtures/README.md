@@ -8,4 +8,6 @@ Clip `CombinedReference` index0 spans0..2 seconds. Node5 morph weights animate; 
 
 `native-agreement.gltf` is a one-vertex skinned, morphed and animated asset with two instances of one mesh. `native/tests/test_agreement.py` and `test_core_semantics.py` both read it.
 
-Regenerate using `python -B tests/make_fixtures.py`. Fixtures are intentionally small analytical examples, not artist acceptance assets. The source topology/opaque data remains untouched by inspection and sidecar annotation.
+`simple-skin.gltf` is the Khronos **SimpleSkin** sample (glTF-Embedded) by Marco Hutter, **CC0-1.0**, copied unchanged from KhronosGroup/glTF-Sample-Assets commit 8f492390ddc7a2ae221a1369ef560589cf8c70fb. Its rotation keys are up to 2.3e-4 off unit length, which glTF-Validator accepts. It is not generated.
+
+Regenerate the other fixtures using `python -B tests/make_fixtures.py`. Fixtures are intentionally small analytical examples, not artist acceptance assets. The source topology/opaque data remains untouched by inspection and sidecar annotation.
