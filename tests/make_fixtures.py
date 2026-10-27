@@ -129,6 +129,32 @@ def combined():
     (ROOT/"eight-influence.gltf").write_bytes(json_bytes(eight))
 
 
+EIGHT_WEIGHTS = (.25, .125, .125, .125, .125, .125, .0625, .0625)
+
+
+def eight_weighted():
+    """Two points, each bound to eight joints with nonzero weights split across JOINTS_0/1 and WEIGHTS_0/1."""
+    b = Builder()
+    pos = b.add([(1,0,0),(0,1,0)], extrema=True)
+    joints = [b.add([(0,1,2,3),(7,6,5,4)],"VEC4",5123), b.add([(4,5,6,7),(3,2,1,0)],"VEC4",5123)]
+    weights = [b.add([EIGHT_WEIGHTS[:4]]*2,"VEC4"), b.add([EIGHT_WEIGHTS[4:]]*2,"VEC4")]
+    bind = b.add([[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]]*8,"MAT4")
+    # Joint j sits at (j, 2j, -j)/8; the last joint is also turned a quarter turn about Z.
+    nodes = ([{"name":"mesh","mesh":0,"skin":0}, {"name":"root","children":list(range(2,10))}]
+             + [{"name":f"joint {j}","translation":[j/8,2*j/8,-j/8]} for j in range(8)])
+    nodes[9]["rotation"] = quaternion(2, math.pi/2)
+    doc = {"asset":{"version":"2.0","generator":"MSF original analytical fixture"},
+           "extras":{"license":"CC-BY-SA-4.0","authorship":"MSF Tools contributors"},
+           "buffers":[{"byteLength":len(b.data),"uri":"data:application/octet-stream;base64,"+base64.b64encode(b.data).decode()}],
+           "bufferViews":b.views,"accessors":b.accessors,"nodes":nodes,
+           "skins":[{"joints":list(range(2,10)),"inverseBindMatrices":bind,"skeleton":1}],
+           "meshes":[{"primitives":[{"mode":0,"attributes":{"POSITION":pos,"JOINTS_0":joints[0],"WEIGHTS_0":weights[0],
+                                                             "JOINTS_1":joints[1],"WEIGHTS_1":weights[1]}}]}],
+           "scenes":[{"nodes":[0,1]}],"scene":0}
+    ROOT.mkdir(parents=True,exist_ok=True)
+    (ROOT/"eight-weighted.gltf").write_bytes(json_bytes(doc))
+
+
 def native_agreement():
     """One-vertex skinned/morphed asset shared by the Python and native agreement tests."""
     binary = bytearray()
@@ -184,4 +210,5 @@ def native_agreement():
 
 if __name__ == "__main__":
     combined()
+    eight_weighted()
     native_agreement()

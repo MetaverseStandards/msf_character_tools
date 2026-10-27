@@ -289,6 +289,22 @@ class FbxSkin(unittest.TestCase):
         self.assertEqual([s['joints'] for s in thaw(snapshot.document['skins'])], [[1, 2]])
         close(self, msf_world_points(snapshot, '/Body', 0.0), ufbx_skinned_world(data))
 
+    def test_more_than_four_influences_match_ufbx_skinning(self):
+        scene = Scene()
+        bones, parent = [], 0
+        for k in range(6):
+            parent = scene.model(f'B{k}', parent, kind='LimbNode', translation=(0, 1 if k else 0, 0), rotation=(0, 0, 10 * k))
+            bones.append(parent)
+        body = scene.model('Body', kind='Mesh')
+        geometry = scene.mesh(body, 'Body', [(1, 0, 0), (0, 3, 0), (2, 5, 1)], [[0, 1, 2]])
+        weights = [0.3, 0.2, 0.15, 0.15, 0.1, 0.1]
+        # The bones' bind matrices are identity here, so each cluster's Transform and TransformLink are too.
+        scene.skin(geometry, [(bone, [0, 1, 2], [w] * 3, IDENTITY, IDENTITY) for bone, w in zip(bones, weights)])
+        data = scene.text()
+        snapshot = good(m.inspect_asset(data, 'fbx'))
+        self.assertEqual(codes(snapshot), [('I_INFLUENCES_N', '/Body')])
+        close(self, msf_world_points(snapshot, '/Body', 0.0), ufbx_skinned_world(data))
+
     def test_skin_losses_are_declared(self):
         scene, _ = skinned_scene('DualQuaternion', ([0, 1], [1.0, 1.0], [1], [1.0]))
         snapshot = good(m.inspect_asset(scene.text(), 'fbx'))

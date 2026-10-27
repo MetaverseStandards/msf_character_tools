@@ -56,12 +56,6 @@ class OpenUsdAssets(unittest.TestCase):
         animated = bool(snapshot.document.get('animations'))
         first = snapshot.document['animations'][0] if animated else None
         start = m.decode_accessor(snapshot, first['samplers'][0]['input']).value[0][0] * rate if animated else 0.0
-        if checks:
-            probe = m.evaluate_geometry(snapshot, **({'timestamp': start / rate, 'animation_id': 0} if animated else {}))
-            if not probe.ok:
-                # Geometry refuses more than four influences until N-influence skinning lands.
-                self.assertEqual([d.code for d in probe.report.diagnostics], ['E_INFLUENCE_LIMIT'])
-                return
         for prim, code in checks:
             seconds = 0.0 if code == earliest else code.GetValue() / rate
             if code == earliest and animated:

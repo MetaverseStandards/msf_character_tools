@@ -1,0 +1,227 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 2,
+      "max": [
+        1,
+        1,
+        0
+      ],
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "count": 2,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 2,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 8,
+      "type": "MAT4"
+    }
+  ],
+  "asset": {
+    "generator": "MSF original analytical fixture",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 24,
+      "byteOffset": 0
+    },
+    {
+      "buffer": 0,
+      "byteLength": 16,
+      "byteOffset": 24
+    },
+    {
+      "buffer": 0,
+      "byteLength": 16,
+      "byteOffset": 40
+    },
+    {
+      "buffer": 0,
+      "byteLength": 32,
+      "byteOffset": 56
+    },
+    {
+      "buffer": 0,
+      "byteLength": 32,
+      "byteOffset": 88
+    },
+    {
+      "buffer": 0,
+      "byteLength": 512,
+      "byteOffset": 120
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 632,
+      "uri": "data:application/octet-stream;base64,AACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAwAHAAYABQAEAAQABQAGAAcAAwACAAEAAAAAAIA+AAAAPgAAAD4AAAA+AACAPgAAAD4AAAA+AAAAPgAAAD4AAAA+AACAPQAAgD0AAAA+AAAAPgAAgD0AAIA9AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8="
+    }
+  ],
+  "extras": {
+    "authorship": "MSF Tools contributors",
+    "license": "CC-BY-SA-4.0"
+  },
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "JOINTS_0": 1,
+            "JOINTS_1": 2,
+            "POSITION": 0,
+            "WEIGHTS_0": 3,
+            "WEIGHTS_1": 4
+          },
+          "mode": 0
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "mesh",
+      "skin": 0
+    },
+    {
+      "children": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "name": "root"
+    },
+    {
+      "name": "joint 0",
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "joint 1",
+      "translation": [
+        0.125,
+        0.25,
+        -0.125
+      ]
+    },
+    {
+      "name": "joint 2",
+      "translation": [
+        0.25,
+        0.5,
+        -0.25
+      ]
+    },
+    {
+      "name": "joint 3",
+      "translation": [
+        0.375,
+        0.75,
+        -0.375
+      ]
+    },
+    {
+      "name": "joint 4",
+      "translation": [
+        0.5,
+        1.0,
+        -0.5
+      ]
+    },
+    {
+      "name": "joint 5",
+      "translation": [
+        0.625,
+        1.25,
+        -0.625
+      ]
+    },
+    {
+      "name": "joint 6",
+      "translation": [
+        0.75,
+        1.5,
+        -0.75
+      ]
+    },
+    {
+      "name": "joint 7",
+      "rotation": [
+        0,
+        0,
+        0.7071067811865475,
+        0.7071067811865476
+      ],
+      "translation": [
+        0.875,
+        1.75,
+        -0.875
+      ]
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "skins": [
+    {
+      "inverseBindMatrices": 5,
+      "joints": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "skeleton": 1
+    }
+  ]
+}

@@ -145,7 +145,7 @@ class CoreSemantics(unittest.TestCase):
 
     def test_all_influence_sets_share_duplicate_and_sum_checks(self):
         b,d=skinned();p=d['meshes'][0]['primitives'][0];p['attributes']['JOINTS_1']=b.add([(0,0,0,0)],'VEC4',5123);p['attributes']['WEIGHTS_1']=b.add([(0,0,0,0)],'VEC4');refresh(b,d)
-        s=self.good(self.inspect(d));r=m.evaluate_geometry(s);self.assertFalse(r.ok);self.assertIn('E_INFLUENCE_LIMIT',[x.code for x in r.report.diagnostics])
+        s=self.good(self.inspect(d));self.assertEqual(self.positions(s),self.positions(self.good(self.inspect(skinned()[1]))))
         p['attributes']['WEIGHTS_1']=b.add([(.5,0,0,0)],'VEC4');self.bad(refresh(b,d),'E_SKIN_WEIGHTS')
 
     def test_position_bounds_mandatory_exact_rounding_and_enclosure_rejection(self):
@@ -248,7 +248,7 @@ class FixtureGeneration(unittest.TestCase):
     def test_generator_reproduces_checked_in_fixtures(self):
         import make_fixtures
         with tempfile.TemporaryDirectory() as td, patch.object(make_fixtures,'ROOT',Path(td)):
-            make_fixtures.combined();make_fixtures.native_agreement()
+            make_fixtures.combined();make_fixtures.eight_weighted();make_fixtures.native_agreement()
             for path in sorted(Path(td).iterdir()):
                 with self.subTest(fixture=path.name):
                     self.assertEqual(path.read_bytes(),(ROOT/'tests/fixtures'/path.name).read_bytes())

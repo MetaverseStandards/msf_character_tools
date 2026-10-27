@@ -153,21 +153,25 @@ def _accessor(snapshot, aid, shape, components, count=None, normalized=None, ref
 
 def _evaluation_components(document):
     accessors = document.get("accessors", ())
-    per_mesh = []
+    per_mesh, per_skinned_mesh = [], []
     for mesh in document.get("meshes", ()):
-        components = 0
+        components = influences = 0
         for primitive in mesh["primitives"]:
             position = primitive["attributes"].get("POSITION")
             # Bad references are diagnosed per primitive during evaluation.
             if integer(position) and 0 <= position < len(accessors):
+                count = accessors[position]["count"]
                 targets = sum("POSITION" in target for target in primitive.get("targets", ()))
-                components += 3 * accessors[position]["count"] * (1 + targets)
+                components += 3 * count * (1 + targets)
+                # Each influence set adds four joint and four weight components per vertex.
+                influences += 8 * count * sum(k.startswith("JOINTS_") for k in primitive["attributes"])
         per_mesh.append(components)
+        per_skinned_mesh.append(components + influences)
     instances = [node for node in document.get("nodes", ()) if "mesh" in node]
     skins = document.get("skins", ())
     # Inverse bind matrices are built once per skin, however many instances share it.
     used_skins = {node["skin"] for node in instances if "skin" in node}
-    return (sum(per_mesh[node["mesh"]] for node in instances)
+    return (sum((per_skinned_mesh if "skin" in node else per_mesh)[node["mesh"]] for node in instances)
             + sum(16 * len(skins[i]["joints"]) for i in used_skins if integer(i) and 0 <= i < len(skins)))
 
 
@@ -223,8 +227,6 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                 attrs = primitive["attributes"]
                 if "POSITION" not in attrs:
                     fail("E_GEOMETRY_CAPABILITY", ref, "Primitive has no supported POSITION accessor.")
-                if any(k.startswith("JOINTS_") and k != "JOINTS_0" or k.startswith("WEIGHTS_") and k != "WEIGHTS_0" for k in attrs):
-                    fail("E_INFLUENCE_LIMIT", ref, "Requested geometry has more than four influences.")
                 if any(k in primitive.get("extensions", {}) for k in ("KHR_draco_mesh_compression",)):
                     fail("E_GEOMETRY_CAPABILITY", ref, "Compressed geometry requires an unsupported decoder.")
                 if any("EXT_meshopt_compression" in v.get("extensions", {}) for v in snapshot.document.get("bufferViews", ())):
@@ -247,11 +249,18 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                 if "skin" in node:
                     if "JOINTS_0" not in attrs or "WEIGHTS_0" not in attrs:
                         fail("E_SKIN", ref, "Skinned primitive needs JOINTS_0 and WEIGHTS_0.")
+                    sets = sum(k.startswith("JOINTS_") for k in attrs)
+                    if any(f"JOINTS_{s}" not in attrs or f"WEIGHTS_{s}" not in attrs for s in range(sets)):
+                        fail("E_SKIN", ref, "Influence sets must be paired and numbered from 0.")
                     skin = snapshot.document["skins"][node["skin"]]
-                    joints = _accessor(snapshot, attrs["JOINTS_0"], "VEC4", {5121,5123}, count, False, ref)
-                    weight_accessor = snapshot.document["accessors"][attrs["WEIGHTS_0"]]
-                    normalized = weight_accessor["componentType"] != 5126
-                    skinweights = _accessor(snapshot, attrs["WEIGHTS_0"], "VEC4", {5121,5123,5126}, count, normalized, ref)
+                    joints, skinweights = [()] * count, [()] * count
+                    # Each vertex's influences are the sets concatenated in order, so one set evaluates exactly as before.
+                    for s in range(sets):
+                        set_joints = _accessor(snapshot, attrs[f"JOINTS_{s}"], "VEC4", {5121,5123}, count, False, ref)
+                        normalized = snapshot.document["accessors"][attrs[f"WEIGHTS_{s}"]]["componentType"] != 5126
+                        set_weights = _accessor(snapshot, attrs[f"WEIGHTS_{s}"], "VEC4", {5121,5123,5126}, count, normalized, ref)
+                        joints = [a + tuple(b) for a, b in zip(joints, set_joints)] if sets > 1 else set_joints
+                        skinweights = [a + tuple(b) for a, b in zip(skinweights, set_weights)] if sets > 1 else set_weights
                     if node["skin"] not in skin_matrices:
                         ibms = tuple(matrix(x) for x in _decode_accessor(snapshot, skin["inverseBindMatrices"])) if "inverseBindMatrices" in skin else tuple(IDENTITY for _ in skin["joints"])
                         skin_matrices[node["skin"]] = ibms, all(ibm[3] == IDENTITY[3] for ibm in ibms)
@@ -264,7 +273,7 @@ def evaluate_geometry(snapshot, *, timestamp=0.0, animation_id=None, morph_weigh
                         if any(j >= len(skin["joints"]) for j in js):
                             fail("E_JOINT_BOUNDS", ref, "Joint index exceeds skin palette; unknown weighted joints are never deleted.")
                         if any(w < 0 for w in ws) or abs(_sub(_sum(ws, ref), 1.0, ref)) > 1e-6:
-                            fail("E_SKIN_WEIGHTS", ref, "Four skin weights must be nonnegative and sum to one; no implicit normalization.")
+                            fail("E_SKIN_WEIGHTS", ref, ("Four" if sets == 1 else "All") + " skin weights must be nonnegative and sum to one; no implicit normalization.")
                     palettes, skinned = {}, []
                     for p, js, ws in zip(positions, joints, skinweights):
                         contributions = []

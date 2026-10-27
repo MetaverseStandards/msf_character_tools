@@ -21,7 +21,7 @@ CASES = {
     'rig': ([], (0, 12, 24)),
     'rig_zup_cm': (['I_UNITS_CONVERTED', 'I_AXES_CONVERTED'], (0, 12, 24)),
     'dual_quaternion': (['W_SKINNING_METHOD'], (0, 12, 24)),
-    'eight_influences': (['I_INFLUENCES_N'], None),
+    'eight_influences': (['I_INFLUENCES_N'], (0,)),
     'constant_influences': ([], (0,)),
     'left_handed': (['I_WINDING_FLIPPED'], (0,)),
     'ngon_holes': (['W_SKIPPED'], (0,)),

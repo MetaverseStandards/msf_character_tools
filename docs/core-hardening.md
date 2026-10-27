@@ -5,8 +5,8 @@ The reference checks a selected glTF 2.0 core subset against specification commi
 `8e691206fa2e981fc3b8c8bc57e671595576c971`. It inventories unknown attributes and
 extensions and unresolved resources. Successful inspection is not full glTF
 conformance or production rig qualification. Geometry remains POSITION, relative
-morphs and four-influence LBS; later influence sets can be inspected but evaluation
-refuses them. Normals/tangents, compressed behavior and extension animation targets
+morphs and LBS over every influence set (four-influence LBS until N-influence
+skinning was approved in W6). Normals/tangents, compressed behavior and extension animation targets
 are not evaluated. Required unsupported extensions refuse evaluation.
 
 ## Compatibility
@@ -54,7 +54,8 @@ The native generated agreement fixture was invalid because its base and morph
 POSITION accessors lacked bounds. Both now have literal exact bounds without
 changing binary geometry or analytical expectations. The eight-influence fixture
 now uses zero weights for its later set; copying positive weights would duplicate
-joints and exceed the global sum. It still tests explicit four-influence refusal.
+joints and exceed the global sum. Since N-influence skinning it evaluates exactly like
+`combined.gltf`; `eight-weighted.gltf` covers eight nonzero influences.
 
 ## Pure Python numerical hardening
 
