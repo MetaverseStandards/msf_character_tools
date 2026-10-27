@@ -15,7 +15,14 @@ typedef struct {
     int ascii;
     uint32_t version;
     int axes_converted;
+    uint32_t blend_channels; /* in the whole scene; see msf_fbx_blend_channel_id */
 } msf_fbx_info;
+
+typedef struct {
+    const char *name;
+    size_t name_len;
+    double time_begin, time_end; /* seconds */
+} msf_fbx_stack;
 
 typedef struct {
     int32_t parent;          /* shim node index, or -1 at the top level */
@@ -55,4 +62,11 @@ int msf_fbx_blend_sizes(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t sizes
 int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *deformer, uint32_t *key_counts,
                        uint32_t *indices, double *offsets, double *target_weights, uint32_t keyframes, uint32_t total,
                        double *weight, const char **names, size_t *name_lengths);
+int msf_fbx_stack_get(const msf_fbx *h, uint32_t s, msf_fbx_stack *out);
+/* Scene-wide index of blend channel c of mesh m, used to read msf_fbx_evaluate's channel weights. */
+int msf_fbx_blend_channel_id(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *id);
+/* Evaluate animation stack s at `time` seconds. Writes every node's node-to-parent matrix (and node-to-world when
+   to_world is not NULL), 16 doubles each in node order, and every blend channel's weight. */
+int msf_fbx_evaluate(const msf_fbx *h, uint32_t s, double time, double *to_parent, double *to_world, uint32_t nodes,
+                     double *channel_weights, uint32_t channels, char *err, size_t n);
 #endif

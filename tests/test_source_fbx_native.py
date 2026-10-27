@@ -164,6 +164,29 @@ class UfbxShim(unittest.TestCase):
         self.assertEqual(tuple(sizes), (1, 1))
         self.assertEqual(lib.msf_fbx_blend_sizes(handle, 0, 2, sizes), 0)
 
+    def test_animation_stacks_evaluate_node_matrices_and_blend_weights(self):
+        from msf_tools_ufbx import ffi, lib
+        scene = Scene()
+        body = scene.model('Body', kind='Mesh')
+        geometry = scene.mesh(body, 'Body', [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [[0, 1, 2]])
+        smile, = scene.blend(geometry, 'Face', [('smile', 0, [(100, [2], [(0, 1, 0)])])])
+        scene.animation('Take 001', 0.0, 1.0, [(body, 'Lcl Translation', {'X': [(0.0, 0.0), (1.0, 10.0)], 'Y': [(0.0, 0.0), (1.0, 0.0)],
+                                                                          'Z': [(0.0, 0.0), (1.0, 0.0)]}),
+                                               (smile, 'DeformPercent', {'DeformPercent': [(0.0, 0.0), (1.0, 100.0)]})])
+        handle = self.scene(scene.text())
+        stack = ffi.new('msf_fbx_stack *')
+        self.assertEqual(lib.msf_fbx_stack_get(handle, 0, stack), 1)
+        self.assertEqual((ffi.unpack(stack.name, stack.name_len).decode(), stack.time_begin, stack.time_end), ('Take 001', 0.0, 1.0))
+        self.assertEqual(lib.msf_fbx_stack_get(handle, 1, stack), 0)
+        to_parent, to_world, weights = ffi.new('double[16]'), ffi.new('double[16]'), ffi.new('double[1]')
+        channel = ffi.new('uint32_t *')
+        self.assertEqual(lib.msf_fbx_blend_channel_id(handle, 0, 0, channel), 1)
+        err = ffi.new('char[256]')
+        self.assertEqual(lib.msf_fbx_evaluate(handle, 0, 0.5, to_parent, to_world, 1, weights, 1, err, 256), 1, ffi.string(err))
+        self.assertAlmostEqual(to_parent[12], 5.0, places=6)
+        self.assertAlmostEqual(weights[channel[0]], 0.5, places=6)
+        self.assertEqual(lib.msf_fbx_evaluate(handle, 0, 0.5, to_parent, to_world, 2, weights, 1, err, 256), 0)
+
 
 class VendoredUfbx(unittest.TestCase):
     def test_vendored_files_match_the_source_lock(self):

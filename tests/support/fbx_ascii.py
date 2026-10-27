@@ -103,6 +103,28 @@ class Scene:
                 self._add(shape, channel)
         return ids
 
+    def animation(self, name, start, stop, curves):
+        """One stack and layer. curves: (object id, property, {component: [(seconds, value), ...]}), where property is
+        "Lcl Translation"/"Lcl Rotation"/"Lcl Scaling" (components X, Y, Z) or "DeformPercent" on a blend channel."""
+        span = (f'\t\t\tP: "LocalStart", "KTime", "Time", "",{round(start * KTIME_PER_SECOND)}\n'
+                f'\t\t\tP: "LocalStop", "KTime", "Time", "",{round(stop * KTIME_PER_SECOND)}\n')
+        stack = self._add(f'\tAnimationStack: @ID@, "AnimStack::{name}", "" {{\n\t\tProperties70:  {{\n{span}\t\t}}\n\t}}\n')
+        layer = self._add('\tAnimationLayer: @ID@, "AnimLayer::BaseLayer", "" {\n\t}\n', stack)
+        short = {"Lcl Translation": "T", "Lcl Rotation": "R", "Lcl Scaling": "S", "DeformPercent": "DeformPercent"}
+        for target, prop, components in curves:
+            defaults = "".join(f'\t\t\tP: "d|{c}", "Number", "", "A",{_numbers([float(keys[0][1])])}\n' for c, keys in components.items())
+            node = self._add(f'\tAnimationCurveNode: @ID@, "AnimCurveNode::{short[prop]}", "" {{\n\t\tProperties70:  {{\n'
+                             f'{defaults}\t\t}}\n\t}}\n', layer)
+            self.connect(node, target, prop)
+            for component, keys in components.items():
+                text = (f'\tAnimationCurve: @ID@, "AnimCurve::", "" {{\n\t\tDefault: {_numbers([float(keys[0][1])])}\n\t\tKeyVer: 4008\n'
+                        + _array("KeyTime", [round(t * KTIME_PER_SECOND) for t, _ in keys], "\t\t")
+                        + _array("KeyValueFloat", [float(v) for _, v in keys], "\t\t")
+                        + _array("KeyAttrFlags", [4], "\t\t") + _array("KeyAttrDataFloat", [0.0, 0.0, 0.0, 0.0], "\t\t")
+                        + _array("KeyAttrRefCount", [len(keys)], "\t\t") + "\t}\n")
+                self._add(text, node, f"d|{component}")
+        return stack
+
     def text(self):
         s = self.settings
         props = "".join(f'\t\tP: "{k}", "int", "Integer", "",{v}\n' for k, v in (

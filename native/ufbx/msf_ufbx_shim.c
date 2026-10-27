@@ -6,6 +6,7 @@
 
 struct msf_fbx {
     ufbx_scene *scene;
+    msf_fbx_limits limits;
     uint32_t *shim_of_element; /* element_id -> shim node index, UINT32_MAX for the root and non-nodes */
 };
 
@@ -67,6 +68,7 @@ int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, 
         return 0;
     }
     h->scene = scene;
+    if (limits) h->limits = *limits;
     h->shim_of_element = (uint32_t *)malloc(sizeof(uint32_t) * (scene->elements.count + 1));
     if (!h->shim_of_element) {
         msf_fbx_close(h);
@@ -192,6 +194,7 @@ int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out) {
     out->meshes = (uint32_t)s->meshes.count;
     out->anim_stacks = (uint32_t)s->anim_stacks.count;
     out->helper_nodes = helpers;
+    out->blend_channels = (uint32_t)s->blend_channels.count;
     out->unit_meters = s->settings.original_unit_meters;
     out->fps = s->settings.frames_per_second;
     out->ascii = s->metadata.ascii ? 1 : 0;
@@ -305,4 +308,58 @@ int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *defor
     names[1] = channel->name.data;
     name_lengths[1] = channel->name.length;
     return written == total;
+}
+
+int msf_fbx_stack_get(const msf_fbx *h, uint32_t s, msf_fbx_stack *out) {
+    if (!h || !out || s >= h->scene->anim_stacks.count) return 0;
+    const ufbx_anim_stack *stack = h->scene->anim_stacks.data[s];
+    out->name = stack->name.data;
+    out->name_len = stack->name.length;
+    out->time_begin = stack->time_begin;
+    out->time_end = stack->time_end;
+    return 1;
+}
+
+int msf_fbx_blend_channel_id(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *id) {
+    const ufbx_blend_channel *channel = channel_at(h, m, c, NULL, NULL);
+    if (!channel || !id) return 0;
+    *id = channel->typed_id;
+    return 1;
+}
+
+int msf_fbx_evaluate(const msf_fbx *h, uint32_t s, double time, double *to_parent, double *to_world, uint32_t nodes,
+                     double *channel_weights, uint32_t channels, char *err, size_t n) {
+    if (!h || !to_parent || (channels && !channel_weights) || s >= h->scene->anim_stacks.count) {
+        set_error(err, n, "msf_fbx_evaluate: bad argument");
+        return 0;
+    }
+    if (nodes != h->scene->nodes.count - 1 || channels != h->scene->blend_channels.count) {
+        set_error(err, n, "msf_fbx_evaluate: counts do not match the scene");
+        return 0;
+    }
+    ufbx_evaluate_opts opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.temp_allocator.memory_limit = h->limits.memory_limit;
+    opts.temp_allocator.allocation_limit = h->limits.allocation_limit;
+    opts.result_allocator.memory_limit = h->limits.memory_limit;
+    opts.result_allocator.allocation_limit = h->limits.allocation_limit;
+    ufbx_error error;
+    ufbx_scene *state = ufbx_evaluate_scene(h->scene, h->scene->anim_stacks.data[s]->anim, time, &opts, &error);
+    if (!state) {
+        char text[1024];
+        ufbx_format_error(text, sizeof(text), &error);
+        set_error(err, n, text);
+        return 0;
+    }
+    uint32_t written = 0;
+    for (size_t k = 0; k < state->nodes.count; k++) {
+        const ufbx_node *node = state->nodes.data[k];
+        if (node->is_root) continue;
+        matrix16(&node->node_to_parent, to_parent + 16 * written);
+        if (to_world) matrix16(&node->node_to_world, to_world + 16 * written);
+        written++;
+    }
+    for (uint32_t c = 0; c < channels; c++) channel_weights[c] = state->blend_channels.data[c]->weight;
+    ufbx_free_scene(state);
+    return written == nodes;
 }
