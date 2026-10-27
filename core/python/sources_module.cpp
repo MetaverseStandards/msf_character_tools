@@ -7,12 +7,17 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <cstdint>
+#include <cstring>
+
 #include "bridge.hpp"
+#include "msf/json.hpp"
 #include "msf/paths.hpp"
 #include "msf/pyerror.hpp"
 #include "msf/sources.hpp"
@@ -64,6 +69,49 @@ sources::Influences influences_of(nb::handle pairs) {
     return out;
 }
 
+double float_of(nb::handle x) {
+    nb::object f = nb::steal(PyNumber_Float(x.ptr()));
+    if (!f.is_valid()) throw nb::python_error();
+    return PyFloat_AS_DOUBLE(f.ptr());
+}
+
+// An exact Python int that fits, else -1: the writer refuses both the same way.
+long long int_of(nb::handle x) {
+    if (!PyLong_CheckExact(x.ptr())) return -1;
+    int overflow = 0;
+    long long v = PyLong_AsLongLongAndOverflow(x.ptr(), &overflow);
+    if (overflow) return overflow > 0 ? std::numeric_limits<long long>::max() : -1;
+    return v;
+}
+
+std::optional<long long> optional_int(nb::handle x) {
+    if (x.is_none()) return std::nullopt;
+    return int_of(x);
+}
+
+std::vector<double> floats_of(nb::handle values) {
+    std::vector<double> out;
+    for (nb::handle x : values) out.push_back(float_of(x));
+    return out;
+}
+
+std::vector<std::vector<double>> rows_of(nb::handle rows) {
+    std::vector<std::vector<double>> out;
+    for (nb::handle row : rows) out.push_back(floats_of(row));
+    return out;
+}
+
+std::vector<long long> ints_of(nb::handle values) {
+    std::vector<long long> out;
+    for (nb::handle x : values) out.push_back(int_of(x));
+    return out;
+}
+
+std::optional<std::string> optional_text(nb::handle x) {
+    if (x.is_none()) return std::nullopt;
+    return text_of(x);
+}
+
 }  // namespace
 
 void bind_sources(nb::module_& m) {
@@ -75,6 +123,8 @@ void bind_sources(nb::module_& m) {
         } catch (const paths::Error& e) {
             nb::object args = nb::make_tuple(nb::str(e.kind.c_str()), bridge::decode(e.text));
             PyErr_SetObject(path_error, args.ptr());
+        } catch (const sources::WriteError& e) {
+            PyErr_SetString(PyExc_ValueError, e.message.c_str());
         } catch (const sources::Singular&) {
             PyErr_SetString(PyExc_ValueError, "Transform is singular.");
         } catch (const msf::PyError& e) {
@@ -91,6 +141,66 @@ void bind_sources(nb::module_& m) {
     m.def("_decompose", [](nb::handle m) {
         sources::Trs trs = sources::decompose(matrix_of(m));
         return nb::make_tuple(floats(trs.translation.data(), 3), floats(trs.rotation.data(), 4), floats(trs.scale.data(), 3));
+    });
+    m.def("_write_glb", [](nb::handle nodes, nb::handle meshes, nb::handle skins, nb::handle animations, nb::handle generator) {
+        std::vector<sources::Mesh> mesh_list;
+        for (nb::handle mesh : meshes) {
+            sources::Mesh m;
+            m.points = rows_of(mesh.attr("points"));
+            m.triangles = ints_of(mesh.attr("triangles"));
+            for (nb::handle t : mesh.attr("targets")) m.targets.push_back(rows_of(t));
+            nb::object influences = mesh.attr("influences");
+            if (!influences.is_none()) {
+                m.skinned = true;
+                for (nb::handle pairs : influences) {
+                    sources::Influences row;
+                    for (nb::handle pair : pairs) row.emplace_back(int_of(pair[0]), float_of(pair[1]));
+                    m.influences.push_back(std::move(row));
+                }
+            }
+            m.weights = floats_of(mesh.attr("weights"));
+            mesh_list.push_back(std::move(m));
+        }
+        std::vector<sources::Skin> skin_list;
+        for (nb::handle skin : skins)
+            skin_list.push_back({ints_of(skin.attr("joints")), rows_of(skin.attr("inverse_bind_matrices")), optional_int(skin.attr("skeleton"))});
+        std::vector<sources::Node> node_list;
+        for (nb::handle node : nodes) {
+            sources::Node n;
+            n.name = optional_text(node.attr("name"));
+            n.children = ints_of(node.attr("children"));
+            n.translation = floats_of(node.attr("translation"));
+            n.rotation = floats_of(node.attr("rotation"));
+            n.scale = floats_of(node.attr("scale"));
+            n.mesh = optional_int(node.attr("mesh"));
+            n.skin = optional_int(node.attr("skin"));
+            nb::object weights = node.attr("weights");
+            if (!weights.is_none()) n.weights = floats_of(weights);
+            node_list.push_back(std::move(n));
+        }
+        std::vector<sources::Animation> animation_list;
+        for (nb::handle anim : animations) {
+            sources::Animation a;
+            for (nb::handle channel : anim.attr("channels")) {
+                sources::Channel c;
+                nb::object node = channel.attr("node");
+                c.node = int_of(node);
+                c.node_ok = PyLong_CheckExact(node.ptr());
+                c.path = text_of(channel.attr("path"));
+                c.times = floats_of(channel.attr("times"));
+                c.values = rows_of(channel.attr("values"));
+                c.interpolation = text_of(channel.attr("interpolation"));
+                a.channels.push_back(std::move(c));
+            }
+            a.name = optional_text(anim.attr("name"));
+            animation_list.push_back(std::move(a));
+        }
+        std::string glb = sources::write_glb(node_list, mesh_list, skin_list, animation_list, text_of(generator));
+        std::uint32_t length;
+        std::memcpy(&length, glb.data() + 12, 4);
+        std::string chunk = glb.substr(20, length);
+        if (msf::json::has_surrogate(chunk)) bridge::utf8_bytes(chunk);
+        return nb::bytes(glb.data(), glb.size());
     });
     m.def("_merge", [](nb::handle pairs, const std::string& path) {
         nb::list out;

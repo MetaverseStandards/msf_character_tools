@@ -38,6 +38,12 @@ class AgainstTheOracle(unittest.TestCase):
         self.assertSame([('skinning_battery(rows, root, mode)', dict(zip(('rows', 'root', 'mode'), case)))
                          for case in source_cases.influence_cases(rng, 20000 if GATE else 300)])
 
+    def test_glb_writer(self):
+        rng = random.Random(61)
+        cases = [('glb_battery(spec)', {'spec': source_cases.scene_spec(rng)}) for _ in range(20000 if GATE else 200)]
+        cases.sort(key=lambda case: oracle.outcome(*case)[0] != 'value')
+        self.assertSame(cases)
+
     def test_path_order(self):
         rng = random.Random(53)
         candidates = ['/' + '/'.join(source_cases.text(rng) for _ in range(rng.randint(1, 3))) for _ in range(2000 if GATE else 200)]

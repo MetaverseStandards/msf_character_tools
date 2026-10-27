@@ -28,7 +28,7 @@ target_include_directories(ryu PUBLIC core/third_party/ryu)
 add_library(fast_float INTERFACE)
 target_include_directories(fast_float INTERFACE core/third_party/fast_float/include)
 
-add_library(msfcore STATIC core/src/authoring.cpp core/src/bigint.cpp core/src/diagnostics.cpp core/src/gltf_binary.cpp core/src/gltf_document.cpp core/src/gltf_geometry.cpp
+add_library(msfcore STATIC core/src/authoring.cpp core/src/bigint.cpp core/src/diagnostics.cpp core/src/glb_writer.cpp core/src/gltf_binary.cpp core/src/gltf_document.cpp core/src/gltf_geometry.cpp
             core/src/json.cpp core/src/math3d.cpp core/src/mapping.cpp core/src/pack.cpp core/src/paths.cpp core/src/program.cpp
             core/src/sha256.cpp core/src/source_helpers.cpp)
 target_include_directories(msfcore PUBLIC core/include)

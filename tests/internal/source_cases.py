@@ -74,6 +74,108 @@ def influence_cases(rng, count):
     return out
 
 
+DAMAGE = [0.0]  # the share of damaged numbers and shapes in the scene being built
+
+
+def number(rng, scale=1.0):
+    r = rng.random()
+    if r < DAMAGE[0]:
+        return rng.choice([float('inf'), float('nan'), 1e39, -1e39])
+    if r < 0.05:
+        return rng.choice([0.0, -0.0, 1e-46, 1, 2**60, 3.4028235e38 * scale])
+    return rng.uniform(-scale, scale)
+
+
+def rows(rng, count, width):
+    out = []
+    for _ in range(count):
+        n = width if rng.random() >= DAMAGE[0] else width + rng.choice([-1, 1])
+        out.append([number(rng) for _ in range(n)])
+    return out
+
+
+def hit(rng, p):
+    """A structural defect, only in damaged scenes."""
+    return DAMAGE[0] > 0 and rng.random() < p
+
+
+def scene_spec(rng):
+    DAMAGE[0] = rng.choice([0.0, 0.0, 0.0, 0.001, 0.01])
+    meshes = []
+    for _ in range(rng.randint(1, 3)):
+        points = rng.randint(0 if hit(rng, 0.02) else 1, 30)
+        triangles = []
+        if rng.random() < 0.7:
+            triangles = [rng.randrange(points or 1) for _ in range(3 * rng.randint(1, 10))]
+            if hit(rng, 0.03):
+                triangles[0] = rng.choice([points, -1, 1.0, True, 2**70])
+            if hit(rng, 0.02):
+                triangles.append(0)
+        targets = []
+        for _ in range(rng.randint(0, 3)):
+            density = rng.choice([0.0, 0.2, 0.5, 0.9, 1.0])
+            targets.append([[number(rng, 0.1) for _ in range(3)] if rng.random() < density else [0.0, -0.0, 0.0] for _ in range(points)])
+            if hit(rng, 0.02):
+                targets[-1] = targets[-1][:-1]
+        influences = None
+        if rng.random() < 0.5:
+            influences = []
+            for _ in range(points + (1 if hit(rng, 0.02) else 0)):
+                pairs = [(rng.randrange(6), rng.choice([0.0, 0.25, 0.5, 1.0, rng.random(), 1e-9])) for _ in range(rng.randint(1, 9))]
+                pairs.append((rng.randrange(6), 0.5))
+                if hit(rng, 0.01):
+                    pairs = [(0, 0.0)]
+                if hit(rng, 0.01):
+                    pairs[0] = rng.choice([(-1, 1.0), (70000, 1.0), (0, float('inf')), (0, -1.0), (True, 1.0), (1.5, 1.0), (0, 1e308), (1, 1e308)])
+                influences.append(pairs)
+        weights = [rng.random() for _ in targets] if rng.random() < 0.5 else []
+        if hit(rng, 0.02):
+            weights.append(0.5)
+        meshes.append({'points': rows(rng, points, 3), 'triangles': triangles, 'targets': targets, 'influences': influences, 'weights': weights})
+    nodes = []
+    count = rng.randint(1, 6)
+    for i in range(count):
+        node = {'name': rng.choice([None, f'n{i}', 'é漢', ''] + ['bad\ud800'] * hit(rng, 0.2)),
+                'children': sorted(rng.sample(range(i + 1, count), rng.randint(0, min(2, count - i - 1)))) if i + 1 < count else []}
+        for field, default in (('translation', [0.0, 0.0, 0.0]), ('rotation', [0.0, 0.0, 0.0, 1.0]), ('scale', [1.0, 1.0, 1.0])):
+            node[field] = default if rng.random() < 0.5 else [number(rng) for _ in default]
+            if hit(rng, 0.05):
+                node[field] = [-0.0 if x == 0 else x for x in default]
+        if rng.random() < 0.6:
+            node['mesh'] = rng.randrange(len(meshes))
+        if 'mesh' in node and rng.random() < 0.3:
+            node['skin'] = 0
+        if 'mesh' in node and rng.random() < 0.3:
+            node['weights'] = [rng.random() for _ in meshes[node['mesh']]['targets']]
+        nodes.append(node)
+    skins = []
+    if rng.random() < 0.5:
+        joints = list(range(min(count, 4)))
+        matrices = rows(rng, len(joints) + (1 if hit(rng, 0.03) else 0), 16)
+        skins.append({'joints': joints, 'inverse_bind_matrices': matrices, 'skeleton': rng.choice([None, 0])})
+    animations = []
+    for a in range(rng.randint(0, 2)):
+        channels = []
+        shared = sorted(rng.sample(range(1, 50), rng.randint(1, 5)))
+        for _ in range(rng.randint(1, 4)):
+            node = rng.randrange(count) if rng.random() > 0.03 else rng.choice([count, -1, 1.0])
+            target = nodes[node] if type(node) is int and 0 <= node < count else {}
+            morphs = 'mesh' in target and meshes[target['mesh']]['targets']
+            path = rng.choice(['translation', 'rotation', 'scale'] + ['weights'] * (2 if morphs or hit(rng, 0.3) else 0)
+                              + (['matrix'] if hit(rng, 0.03) else []))
+            times = [t / 10 for t in shared] if rng.random() < 0.5 else sorted(rng.sample(range(0, 50), rng.randint(1, 5)))
+            if hit(rng, 0.03):
+                times = list(reversed(times)) if len(times) > 1 else [-1.0]
+            if hit(rng, 0.02):
+                times = [0.1, 0.1 + 1e-10]
+            width = {'translation': 3, 'rotation': 4, 'scale': 3}.get(path, len(meshes[target['mesh']]['targets']) if 'mesh' in target else 1)
+            values = rows(rng, len(times) + (1 if hit(rng, 0.02) else 0), width)
+            channels.append({'node': node, 'path': path, 'times': times, 'values': values,
+                             'interpolation': rng.choice(['LINEAR', 'STEP', 'LINEAR'] + (['CUBICSPLINE'] if hit(rng, 0.05) else []))})
+        animations.append({'channels': channels, 'name': rng.choice([None, f'clip{a}'])})
+    return {'nodes': nodes, 'meshes': meshes, 'skins': skins, 'animations': animations}
+
+
 DEFINITIONS = r"""
 from msf_tools.sources import paths as _paths, skinning as _skinning, transforms as _transforms
 
@@ -117,6 +219,24 @@ def skinning_battery(rows, root, mode):
     good = [_skinning.merge(pairs, '/p') for pairs, m in zip(rows, merged) if m[0] == 'value']
     out.append(exact(_skinning.influence_rows, good, root, mode, '/p'))
     out.append(exact(_skinning.influence_rows, good, root, mode, '/p', 'the nearest ancestor joint'))
+    return out
+
+def glb_battery(spec):
+    from msf_tools.sources import glb as _glb
+    meshes = tuple(_glb.Mesh(points=tuple(map(tuple, m['points'])), triangles=tuple(m['triangles']),
+                             targets=tuple(tuple(map(tuple, t)) for t in m['targets']),
+                             influences=None if m['influences'] is None else tuple(tuple(p) for p in m['influences']),
+                             weights=tuple(m['weights'])) for m in spec['meshes'])
+    nodes = tuple(_glb.Node(**{k: tuple(v) if isinstance(v, list) else v for k, v in n.items()}) for n in spec['nodes'])
+    skins = tuple(_glb.Skin(joints=tuple(s['joints']), inverse_bind_matrices=tuple(map(tuple, s['inverse_bind_matrices'])),
+                            skeleton=s['skeleton']) for s in spec['skins'])
+    animations = tuple(_glb.Animation(channels=tuple(_glb.Channel(node=c['node'], path=c['path'], times=tuple(c['times']),
+                                                                  values=tuple(map(tuple, c['values'])), interpolation=c['interpolation'])
+                                                     for c in a['channels']), name=a['name']) for a in spec['animations'])
+    out = exact(_glb.write_glb, nodes, meshes, skins, animations, generator='fuzz 1')
+    if out[0] == 'value':
+        raw = _glb.write_glb(nodes, meshes, skins, animations, generator='fuzz 1')
+        out = (out, encode(m.inspect_asset(raw, 'glb')))
     return out
 
 def path_order(candidates):
