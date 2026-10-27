@@ -145,7 +145,7 @@ def validate_signal(s, ref, statuses=STATUSES):
         fail("E_TYPE", ref, "metadata must be an object.")
 
 
-def validate_rule(r, ref, statuses=STATUSES):
+def validate_rule(r, ref, statuses=STATUSES, operators=OPERATORS["1.1"]):
     keys(r, RULE_REQUIRED, {"mapping_quality", "coupling"}, ref)
     string(r["id"], ref)
     strings(r["inputs"], f"{ref}/inputs", nonempty=True)
@@ -163,8 +163,8 @@ def validate_rule(r, ref, statuses=STATUSES):
     if "coupling" in r:
         coupling(r["coupling"], f"{ref}/coupling")
     op = r["operator"]
-    keys(op, {"id"}, {"scale", "offset", "weights", "knots"}, f"{ref}/operator")
-    enum(op["id"], OPERATORS["1.1"], ref)
+    keys(op, {"id"}, {"scale", "offset", "weights"} | ({"knots"} if "piecewise_linear" in operators else set()), f"{ref}/operator")
+    enum(op["id"], operators, ref)
     if len(r["outputs"]) != 1 or op["id"] != "weighted_sum" and len(r["inputs"]) != 1:
         fail("E_ARITY", ref, "Unary operators need 1 input/output; weighted_sum needs N inputs and 1 output.")
     allowed = {"identity": {"id"}, "affine": {"id", "scale", "offset"},
@@ -216,9 +216,10 @@ def validate_authoring(document):
         check(string, document[k], f"/{k}")
     check(enum, document["schema_version"], SCHEMA_STATUSES.keys(), "/schema_version")
     check(enum, document["operator_version"], OPERATORS.keys(), "/operator_version")
-    # An unknown schema version already failed; check the rest as 1.0.
+    # An unknown schema or operator version already failed; check the rest as 1.0.
     statuses = SCHEMA_STATUSES.get(document["schema_version"] if type(document["schema_version"]) is str else None, STATUSES)
-    operators = OPERATORS.get(document["operator_version"] if type(document["operator_version"]) is str else None)
+    operator_version = document["operator_version"] if type(document["operator_version"]) is str else None
+    operators = OPERATORS.get(operator_version, OPERATORS["1.0"])
     if type(document["data_version"]) is not str or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?", document["data_version"]):
         diagnostics.append(Diagnostic("E_VERSION", "error", "/data_version", "Expected a semantic data version.", "Use an independently versioned data release."))
     inventories = {}
@@ -274,8 +275,12 @@ def validate_authoring(document):
                         continue
                     for j, r in enumerate(row["rules"]):
                         rr = f"{ref}/rules/{j}"
-                        if check(validate_rule, r, rr, statuses) and operators is not None and r["operator"]["id"] not in operators:
-                            check(fail, "E_OPERATOR_VERSION", rr, f"Operator {r['operator']['id']} needs a newer operator_version than {document['operator_version']}.")
+                        op = r.get("operator") if isinstance(r, Mapping) else None
+                        op_id = op.get("id") if isinstance(op, Mapping) else None
+                        if operator_version in OPERATORS and type(op_id) is str and op_id in OPERATORS["1.1"] - operators:
+                            check(fail, "E_OPERATOR_VERSION", rr, f"Operator {op_id} needs a newer operator_version than {operator_version}.")
+                        else:
+                            check(validate_rule, r, rr, statuses, operators)
                         if isinstance(r, Mapping) and type(r.get("id")) is str:
                             if r["id"] in rules:
                                 check(fail, "E_DUPLICATE_ID", rr, "Rule IDs must be unique across mappings.")

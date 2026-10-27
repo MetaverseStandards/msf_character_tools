@@ -127,6 +127,26 @@ class OperatorVersions(Checks):
         doc['mappings'][0]['rules'][0]['operator'] = {'id': 'affine', 'scale': 0.5, 'offset': 0.5}
         self.good(m.validate_authoring(doc))
 
+    def test_the_version_refusal_comes_before_any_knot_check(self):
+        for knots in ([[0]], [[1, 0], [0, 1]], 'knots', [[-1, 0], [1, 1]]):
+            with self.subTest(knots=knots):
+                self.assertEqual(errors(m.validate_authoring(document(knots, operators='1.0'))),
+                                 [('E_OPERATOR_VERSION', '/mappings/0/rules/0')])
+
+    def test_operators_1_0_keep_their_refusals(self):
+        doc = document(operators='1.0')
+        doc['mappings'][0]['rules'][0]['operator'] = {'id': 'affine', 'scale': 0.5, 'offset': 0.5, 'knots': [[-1, 0], [1, 1]]}
+        self.assertEqual(errors(m.validate_authoring(doc)), [('E_UNKNOWN_KEY', '/mappings/0/rules/0/operator')])
+        doc['operator_version'] = '1.1'
+        self.assertEqual(errors(m.validate_authoring(doc)), [('E_OPERATOR', '/mappings/0/rules/0')])
+        doc = document(operators='1.0')
+        doc['mappings'][0]['rules'][0]['operator'] = {'id': 'cubic'}
+        result = m.validate_authoring(doc)
+        self.assertEqual(errors(result), [('E_ENUM', '/mappings/0/rules/0')])
+        self.assertEqual(result.report.diagnostics[0].message, 'Expected one of affine, identity, weighted_sum')
+        doc = document(operators='9.9')
+        self.assertEqual(errors(m.validate_authoring(doc)), [('E_ENUM', '/operator_version'), ('E_UNKNOWN_KEY', '/mappings/0/rules/0/operator')])
+
     def test_unknown_versions_keep_failing_as_before(self):
         for key in ('operator_version', 'schema_version'):
             for value in ('2.0', '1.2', 1.1, None):
