@@ -34,6 +34,14 @@ class Generated:
 MAX_SOURCE_BYTES_CEILING = 4 * 1024 * 1024 * 1024
 
 
+class ReaderMismatch(ImportError):
+    """An optional reader is installed but does not match this msf-tools; `remediation` says how to fix it."""
+
+    def __init__(self, message, remediation):
+        super().__init__(message)
+        self.remediation = remediation
+
+
 @dataclass(frozen=True)
 class SourceLimits:
     """Limits for one source inspection; every field is a positive integer.

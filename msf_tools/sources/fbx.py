@@ -11,7 +11,17 @@ from __future__ import annotations
 from array import array
 import math
 
-from msf_tools_ufbx import UFBX_VERSION, ffi, lib
+from msf_tools_ufbx import ffi, lib
+
+from . import ReaderMismatch
+
+SHIM_ABI = 2
+# A stale build would still load, since cffi compiled it against its own declarations, and then fill fewer fields.
+if getattr(lib, "msf_fbx_shim_abi", None) is None or lib.msf_fbx_shim_abi() != SHIM_ABI:
+    raise ReaderMismatch(f"The installed msf-tools-ufbx does not match this msf-tools (it needs shim ABI {SHIM_ABI}).",
+                         "Reinstall msf-tools-ufbx from this checkout: pip install ./native/ufbx")
+_PACKED = lib.msf_fbx_ufbx_version()
+UFBX_VERSION = f"{_PACKED // 1000000}.{_PACKED // 1000 % 1000}.{_PACKED % 1000}"
 
 from ..report import Diagnostic, fail
 from . import Generated, SourceParseError

@@ -37,6 +37,37 @@ def open_scene(data, memory_limit=0, allocation_limit=0):
 
 @unittest.skipUnless(HAVE_UFBX, 'msf-tools-ufbx is not installed')
 class UfbxShim(unittest.TestCase):
+    def test_the_shim_reports_its_abi_and_the_compiled_ufbx_version(self):
+        from msf_tools_ufbx import lib
+        from msf_tools.sources import fbx
+        self.assertEqual(lib.msf_fbx_shim_abi(), fbx.SHIM_ABI)
+        self.assertEqual(lib.msf_fbx_ufbx_version(), 23001)
+        self.assertEqual(fbx.ADAPTER.reader(), 'ufbx 0.23.1')
+
+    def test_a_mismatched_shim_is_a_dependency_error(self):
+        import sys
+        from unittest import mock
+        import msf_tools as m
+        import msf_tools_ufbx
+
+        class Stale:
+            def msf_fbx_shim_abi(self):
+                return 1
+
+        saved = sys.modules.pop('msf_tools.sources.fbx', None)
+        try:
+            for stale in (Stale(), object()):
+                with self.subTest(stale=type(stale).__name__), mock.patch.object(msf_tools_ufbx, 'lib', stale):
+                    sys.modules.pop('msf_tools.sources.fbx', None)
+                    result = m.inspect_asset(MINIMAL, 'fbx')
+                    self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_FORMAT_DEPENDENCY', '/')])
+                    self.assertIn('msf-tools-ufbx', result.report.diagnostics[0].message)
+                    self.assertIn('native/ufbx', result.report.diagnostics[0].remediation)
+        finally:
+            sys.modules.pop('msf_tools.sources.fbx', None)
+            if saved is not None:
+                sys.modules['msf_tools.sources.fbx'] = saved
+
     def test_open_reports_scene_counts(self):
         from msf_tools_ufbx import ffi, lib
         handle, err = open_scene(MINIMAL)

@@ -146,6 +146,10 @@ static int usable_face(const ufbx_mesh *mesh, size_t f) {
     return !hole && mesh->faces.data[f].num_indices >= 3;
 }
 
+int msf_fbx_shim_abi(void) { return MSF_FBX_SHIM_ABI; }
+
+uint32_t msf_fbx_ufbx_version(void) { return ufbx_source_version; }
+
 int msf_fbx_mesh_sizes(const msf_fbx *h, uint32_t m, uint32_t sizes[7]) {
     const ufbx_mesh *mesh = mesh_at(h, m);
     if (!mesh || !sizes) return 0;

@@ -12,6 +12,32 @@ lines=()
 
 seconds() { python3 -c 'import sys, time; print(f"{time.time() - float(sys.argv[1]):.1f}")' "$1"; }
 
+# Reinstall the FBX shim from this checkout first: a stale build loads, then fills fewer fields or crashes.
+uv="${UV:-$MSF/_tools/boot/bin/uv}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$MSF/_tools/uv-cache}"
+for version in 3.11 3.12; do
+  var="MSF_PY${version/./}"
+  py="${!var:-$MSF/_tools/venv$version/bin/python}"
+  [ -x "$py" ] && "$py" -c 'import cffi' 2>/dev/null || continue
+  if [ -x "$uv" ]; then
+    install=("$uv" pip install --python "$py" --no-build-isolation --reinstall-package msf-tools-ufbx ./native/ufbx)
+  else
+    install=("$py" -m pip install --no-build-isolation --no-deps --force-reinstall ./native/ufbx)
+  fi
+  if "${install[@]}" >/dev/null 2>&1; then
+    lines+=("- msf-tools-ufbx for Python $version: reinstalled from native/ufbx")
+  else
+    lines+=("- msf-tools-ufbx for Python $version: REINSTALL FAILED")
+    failed=1
+  fi
+done
+
+# unittest prints "Ran N tests" and OK/FAILED last; without them the run died part way.
+verdict_of() {
+  if ! printf '%s\n' "$1" | grep -qE '^Ran '; then echo "CRASHED (no unittest summary, exit $2)"; return; fi
+  printf '%s\n' "$1" | grep -E '^(OK|FAILED)' | tail -1
+}
+
 for version in 3.11 3.12; do
   var="MSF_PY${version/./}"
   py="${!var:-$MSF/_tools/venv$version/bin/python}"
@@ -25,13 +51,13 @@ for version in 3.11 3.12; do
   status=$?
   took=$(seconds "$start")
   ran=$(printf '%s\n' "$output" | grep -E '^Ran ' | tail -1 | cut -d' ' -f2)
-  verdict=$(printf '%s\n' "$output" | grep -E '^(OK|FAILED)' | tail -1)
-  if [ $status -ne 0 ]; then
+  verdict=$(verdict_of "$output" $status)
+  if [ $status -ne 0 ] || [ "${verdict#CRASHED}" != "$verdict" ]; then
     failed=1
     printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
   fi
   if "$py" -B check.py >/dev/null 2>&1; then check="check.py OK"; else check="check.py FAILED"; failed=1; fi
-  lines+=("- Python $exact: unittest ${ran:-?} tests, ${verdict:-no result} in ${took} s; $check")
+  lines+=("- Python $exact: unittest ${ran:-?} tests, ${verdict} in ${took} s; $check")
 done
 
 # Optional tier on OpenUSD's own sample assets, kept out of the fast suite.
@@ -43,7 +69,7 @@ if [ -f "$openusd/LICENSE.txt" ] && [ -x "$py312" ]; then
   if printf '%s\n' "$output" | grep -qE '^OK'; then
     lines+=("- OpenUSD assets tier: ${ran:-?} tests OK")
   else
-    lines+=("- OpenUSD assets tier: FAILED")
+    lines+=("- OpenUSD assets tier: $(verdict_of "$output" 1)")
     printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
     failed=1
   fi
@@ -58,7 +84,7 @@ if [ -n "$corpus" ] && [ -d "$corpus/data" ] && [ -x "$py312" ] && "$py312" -c '
   if printf '%s\n' "$output" | grep -qE '^OK'; then
     lines+=("- ufbx corpus tier: OK")
   else
-    lines+=("- ufbx corpus tier: FAILED")
+    lines+=("- ufbx corpus tier: $(verdict_of "$output" 1)")
     printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
     failed=1
   fi
@@ -74,7 +100,7 @@ if [ -d "$khronos/Models" ] && [ -x "$py312" ] && "$py312" -c 'import msf_tools_
   if printf '%s\n' "$output" | grep -qE '^OK'; then
     lines+=("- Khronos FBX twins tier: ${ran:-?} tests OK")
   else
-    lines+=("- Khronos FBX twins tier: FAILED")
+    lines+=("- Khronos FBX twins tier: $(verdict_of "$output" 1)")
     printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):' >&2
     failed=1
   fi

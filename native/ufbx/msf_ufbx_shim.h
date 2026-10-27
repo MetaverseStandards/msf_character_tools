@@ -40,6 +40,11 @@ typedef struct {
     double to_world[16];
 } msf_fbx_node;
 
+/* Bumped whenever a declaration or struct below changes; msf_tools refuses a shim with another value. */
+#define MSF_FBX_SHIM_ABI 2
+int msf_fbx_shim_abi(void);
+/* The compiled ufbx's ufbx_source_version: major * 1000000 + minor * 1000 + patch. */
+uint32_t msf_fbx_ufbx_version(void);
 int msf_fbx_open(const uint8_t *data, size_t len, const msf_fbx_limits *limits, msf_fbx **out, char *err, size_t n);
 void msf_fbx_close(msf_fbx *h);
 int msf_fbx_info_get(const msf_fbx *h, msf_fbx_info *out);

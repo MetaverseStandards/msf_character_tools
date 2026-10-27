@@ -24,7 +24,7 @@ from .math3d import matrix, validate_trs, authored_quaternion
 from .gltf_semantics import (parse_document, morph_count, validate_meshes,
                              validate_skin_hierarchy, animation_layout, validate_bounds, validate_binary)
 from .sources import paths as source_paths
-from .sources import (SOURCE_FORMATS, SourceLimits, SourceParseError,
+from .sources import (SOURCE_FORMATS, ReaderMismatch, SourceLimits, SourceParseError,
                       GENERATED_MAX_ACCESSOR_COMPONENTS, GENERATED_MAX_TOTAL_ACCESSOR_COMPONENTS)
 
 COMPONENTS = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
@@ -724,6 +724,8 @@ def _load_adapter(fmt):
     except ImportError as exc:
         if exc.name == module:
             _missing_adapter(fmt)
+        if isinstance(exc, ReaderMismatch):
+            fail("E_FORMAT_DEPENDENCY", "/", str(exc), exc.remediation)
         fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
              f"pip install 'msf-tools[{extra}]'")
 
