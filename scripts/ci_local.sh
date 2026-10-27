@@ -188,7 +188,7 @@ if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
          preload=(LD_PRELOAD="$("$san_cc" -print-file-name=libasan.so)")
        fi ;;
   esac
-  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON "${compilers[@]}" >/dev/null 2>&1 \
+  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON ${compilers[@]+"${compilers[@]}"} >/dev/null 2>&1 \
       && cmake --build build/core-asan-3.12 >/dev/null 2>&1; then
     output=$(env "${preload[@]}" ASAN_OPTIONS=detect_leaks=0:strip_env=0 UBSAN_OPTIONS=print_stacktrace=1 "$py312" -B - <<'PY' 2>&1
 import sys, unittest
