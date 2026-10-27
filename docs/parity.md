@@ -76,14 +76,14 @@ Blender FBX twins of the Khronos assets (decision D4) have not been made yet.
 
 ### DCC reference frames from the ufbx corpus
 
-The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/test_source_fbx_dcc.py`). "differs" rows carry a declared loss that changes points; "refused" rows are singular transforms.
+The OBJ frames that each DCC exported alongside the ufbx corpus files, compared with msf-tools' world points (`tests/test_source_fbx_dcc.py`), with the axes and unit read from each file's own header. "explained" rows differ only on meshes that carry a declared loss that changes points; "refused" rows are singular transforms; "skipped" rows are OBJ files in skin bind space, frames ufbx evaluates without extrapolation, files with only skipped surface kinds, and skinned meshes at rest whose rest pose differs from the bind pose.
 
-| File prefix | differs | match | refused | skipped |
+| File prefix | explained | match | refused | skipped |
 |---|---|---|---|---|
 | `blender` | 6 | 17 | 0 | 1 |
 | `casegen` | 0 | 4 | 0 | 0 |
 | `max` | 2 | 48 | 0 | 0 |
-| `maya` | 41 | 153 | 16 | 42 |
-| `motionbuilder` | 0 | 12 | 0 | 2 |
+| `maya` | 41 | 154 | 16 | 41 |
+| `motionbuilder` | 0 | 14 | 0 | 0 |
 | `synthetic` | 0 | 16 | 0 | 1 |
 | `zbrush` | 0 | 10 | 0 | 0 |

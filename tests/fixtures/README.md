@@ -17,3 +17,7 @@ Regenerate the other fixtures using `python -B tests/make_fixtures.py`. Fixtures
 ## Synthetic USD fixtures
 
 `source/` holds original synthetic USDA scenes for the USD strict tier, one per case: skinned and animated rigs (Y-up metres and Z-up centimetres), dual-quaternion skinning, eight and constant influences, left-handed faces, an n-gon with a hole, a default subdivision cage, an in-between shape, shear on a static leaf, an interior node and an animated node, a rotated, uniformly scaled interior node, a mirrored node, negative time codes, instancing, a point instancer, sublayer/reference/payload layers under `source/layers/`, and an escaping sublayer. Same license and authorship as above. Regenerate with `python -B tests/make_source_fixtures.py`.
+
+## Recorded DCC comparison fractions
+
+`dcc_differs.json` records, for each ufbx-corpus pairing that differs from its DCC OBJ frame for a declared reason, the fraction of OBJ points and of msf-tools points that match. `tests/test_source_fbx_dcc.py` fails when a row gets worse. Rewrite it with `MSF_DCC_RECORD=1` when a change is meant to alter a row. The numbers describe ufbx's test corpus, which is not committed.

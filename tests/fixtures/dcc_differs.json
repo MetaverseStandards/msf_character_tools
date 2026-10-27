@@ -1,0 +1,198 @@
+{
+ "blender_293_ngon_subsurf_7400_binary.fbx blender_293_ngon_subsurf.obj None None": [
+  0.0,
+  0.0
+ ],
+ "blender_293_suzanne_subsurf_7400_binary.fbx blender_293_suzanne_subsurf.obj None None": [
+  0.0,
+  0.0
+ ],
+ "blender_293_suzanne_subsurf_uv_7400_binary.fbx blender_293_suzanne_subsurf_uv.obj None None": [
+  0.0,
+  0.0
+ ],
+ "blender_293x_nonmanifold_subsurf_7400_binary.fbx blender_293x_nonmanifold_subsurf.obj None None": [
+  0.087,
+  0.25
+ ],
+ "blender_293x_subsurf_boundary_7400_binary.fbx blender_293x_subsurf_boundary.obj None None": [
+  0.222,
+  0.5
+ ],
+ "blender_312x_vertex_crease_7400_binary.fbx blender_312x_vertex_crease.obj None None": [
+  0.02,
+  0.25
+ ],
+ "max_cache_box_7500_binary.fbx max_cache_box_44.obj None 1.4666666666666666": [
+  0.0,
+  0.0
+ ],
+ "max_cache_box_7500_binary.fbx max_cache_box_48.obj None 1.6": [
+  0.0,
+  0.0
+ ],
+ "maya_axes_anim_7700_ascii.fbx maya_axes_anim_5.obj None 0.20833333333333334": [
+  0.797,
+  0.797
+ ],
+ "maya_axes_anim_7700_ascii.fbx maya_axes_anim_8.obj None 0.3333333333333333": [
+  0.797,
+  0.797
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_1.obj None 0.041666666666666664": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_120.obj None 5.0": [
+  0.5,
+  0.5
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_30.obj None 1.25": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_60.obj None 2.5": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_65.obj None 2.7083333333333335": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_71.obj None 2.9583333333333335": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_80.obj None 3.3333333333333335": [
+  0.5,
+  0.5
+ ],
+ "maya_blend_inbetween_7500_ascii.fbx maya_blend_inbetween_89.obj None 3.7083333333333335": [
+  0.5,
+  0.5
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_1.obj None 0.041666666666666664": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_120.obj None 5.0": [
+  0.5,
+  0.5
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_30.obj None 1.25": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_60.obj None 2.5": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_65.obj None 2.7083333333333335": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_71.obj None 2.9583333333333335": [
+  0.692,
+  0.692
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_80.obj None 3.3333333333333335": [
+  0.5,
+  0.5
+ ],
+ "maya_blend_inbetween_7500_binary.fbx maya_blend_inbetween_89.obj None 3.7083333333333335": [
+  0.5,
+  0.5
+ ],
+ "maya_cache_sine_6100_ascii.fbx maya_cache_sine_12.obj None 0.5": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_6100_ascii.fbx maya_cache_sine_18.obj None 0.75": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_6100_binary.fbx maya_cache_sine_12.obj None 0.5": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_6100_binary.fbx maya_cache_sine_18.obj None 0.75": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_7500_ascii.fbx maya_cache_sine_12.obj None 0.5": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_7500_ascii.fbx maya_cache_sine_18.obj None 0.75": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_7500_binary.fbx maya_cache_sine_12.obj None 0.5": [
+  0.0,
+  0.0
+ ],
+ "maya_cache_sine_7500_binary.fbx maya_cache_sine_18.obj None 0.75": [
+  0.0,
+  0.0
+ ],
+ "maya_dq_weights_7500_ascii.fbx maya_dq_weights_10.obj None 0.4166666666666667": [
+  0.878,
+  0.878
+ ],
+ "maya_dq_weights_7500_ascii.fbx maya_dq_weights_18.obj None 0.75": [
+  0.862,
+  0.862
+ ],
+ "maya_dq_weights_7500_binary.fbx maya_dq_weights_10.obj None 0.4166666666666667": [
+  0.878,
+  0.878
+ ],
+ "maya_dq_weights_7500_binary.fbx maya_dq_weights_18.obj None 0.75": [
+  0.862,
+  0.862
+ ],
+ "maya_subsurf_3x_cube_7500_ascii.fbx maya_subsurf_3x_cube.obj None None": [
+  0.0,
+  0.0
+ ],
+ "maya_subsurf_3x_cube_crease_7500_ascii.fbx maya_subsurf_3x_cube_crease.obj None None": [
+  0.0,
+  0.0
+ ],
+ "maya_subsurf_cube_7500_ascii.fbx maya_subsurf_cube.obj None None": [
+  0.0,
+  0.0
+ ],
+ "maya_subsurf_cube_crease_7500_ascii.fbx maya_subsurf_cube_crease.obj None None": [
+  0.0,
+  0.0
+ ],
+ "maya_subsurf_plane_7700_ascii.fbx maya_subsurf_plane.obj None None": [
+  0.16,
+  1.0
+ ],
+ "maya_subsurf_plane_7700_binary.fbx maya_subsurf_plane.obj None None": [
+  0.16,
+  1.0
+ ],
+ "maya_vertex_crease_6100_ascii.fbx maya_vertex_crease.obj None None": [
+  0.02,
+  0.25
+ ],
+ "maya_vertex_crease_6100_binary.fbx maya_vertex_crease.obj None None": [
+  0.02,
+  0.25
+ ],
+ "maya_vertex_crease_7700_ascii.fbx maya_vertex_crease.obj None None": [
+  0.02,
+  0.25
+ ],
+ "maya_vertex_crease_7700_binary.fbx maya_vertex_crease.obj None None": [
+  0.02,
+  0.25
+ ],
+ "maya_vertex_crease_single_7700_ascii.fbx maya_vertex_crease_single.obj None None": [
+  0.231,
+  0.75
+ ]
+}
