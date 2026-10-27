@@ -5,11 +5,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Pushes run Linux only; pull requests and manual runs add macOS and Windows.
 jobs:
   python:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest"]') }}
         python: ['3.11', '3.12']
     runs-on: ${{ matrix.os }}
     steps:
@@ -22,7 +23,7 @@ jobs:
   native:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
