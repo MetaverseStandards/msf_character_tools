@@ -13,7 +13,7 @@ from . import fake_adapter
 
 
 class MisbehavingAdapter:
-    name = 'msf-misbehaving'
+    name = 'msf-fake'  # the GLB comes from the fake adapter, whose generator names it
     version = '1'
     formats = ('usda',)
 
@@ -44,6 +44,12 @@ class MisbehavingAdapter:
             raise SourceParseError('line 1: unexpected token')
         if data == b'fault':
             fail('E_SOURCE_REFERENCE', '/Root', 'Layer path @/etc/x.usda@ is not relative.', 'Use relative paths.')
+        directive = fake_adapter.MAGIC + b'pid:'
+        if data.startswith(directive):
+            record, _, rest = data[len(directive):].partition(b'\n')
+            data = fake_adapter.MAGIC + rest
+            with open(record, 'w') as handle:
+                handle.write(str(os.getpid()))
         if data.startswith(b'stdout:'):
             os.write(1, b'stray output from a reader library\n')
             data = data[len(b'stdout:'):]

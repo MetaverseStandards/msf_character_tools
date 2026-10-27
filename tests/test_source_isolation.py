@@ -30,7 +30,7 @@ class IsolatedConversion(unittest.TestCase):
         data = fake.source(fake.scene(dependencies=[]))
         generated, identity = run(b'stdout:' + data)
         self.assertEqual(generated, fake.ADAPTER.convert(data, 'usda', None, SourceLimits(), OPTIONS))
-        self.assertEqual(identity, ('msf-misbehaving', '1', 'misbehaving 1'))
+        self.assertEqual(identity, ('msf-fake', '1', 'misbehaving 1'))
 
     def test_reader_faults_and_parse_errors_cross_the_process_boundary(self):
         diagnostic = self.fault(b'fault')

@@ -280,11 +280,14 @@ Morph precedes skinning. Rest is not assumed equal to bind. Four influence LBS r
 ```text
 python -m msf_tools check AUTHORING --pack PATH --csv PATH [--coverage PATH] [--sha256 PATH] [--write]
 python -m msf_tools inspect ASSET [--resolver-root ROOT] [--sidecar JSON] [--output JSON]
+                              [--in-process] [--source-timeout SECONDS] [--max-source-bytes BYTES]
 python -m msf_tools annotate ASSET ANNOTATIONS --output SIDECAR
 python -m msf_tools map AUTHORING MAPPING --source-profile ID --target-profile ID [--allow-approximation] [--output JSON]
 python -m msf_tools evaluate AUTHORING MAPPING SAMPLES --source-profile ID --target-profile ID [--output JSON]
 python -m msf_tools geometry ASSET [--time SECONDS] [--animation INDEX] [--output JSON]
 ```
+
+The format comes from the asset's suffix, so `.usda`, `.usdc`, `.usdz`, `.usd` and `.fbx` files take the source path. Source formats are read in a separate process by default (`isolate=True`); `--in-process` reads them in the CLI's own process. `--source-timeout SECONDS` and `--max-source-bytes BYTES` set `timeout_s` and `max_source_bytes`; an invalid value is `E_CLI_INPUT`. These three flags are accepted by `inspect`, `annotate`, `geometry`, `map` and `evaluate`, and glTF assets ignore them. Output-path checks cover a source file but not the layers its reader fetches through the resolver.
 
 Map/evaluate sides also accept `--source-asset/--source-sidecar` and `--target-asset/--target-sidecar`; asset and profile choice are exclusive. Optional explicit resolver root applies to assets. SAMPLES is an array or sole-key `{samples:[...]}` file. Reports are JSON on stderr; successful values stdout or atomic output files; failed operations return nonzero and may write report to an explicitly safe output destination. Invalid CLI syntax also emits a machine-readable report after argparse help text.
 
