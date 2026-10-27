@@ -177,7 +177,7 @@ class UsdAdapter:
             except Tf.ErrorException as exc:
                 raise SourceParseError(str(exc).strip()) from None
             try:
-                return _convert(stage, self, dependencies, external)
+                return _convert(stage, self, dependencies, external, options)
             finally:
                 del stage
 
@@ -284,7 +284,134 @@ def _materialize(tmp, data, fmt, resolver, limits):
     return layer, tuple((uri, sha, length) for uri, (sha, length) in sorted(fetched.items())), len(external)
 
 
-def _convert(stage, adapter, dependencies, external):
+def _checked(gf, path, conversion):
+    matrix = _matrix(gf)
+    if not all(math.isfinite(x) for x in matrix):
+        fail("E_SOURCE_VALUE", path, "Transform has a non-finite number.")
+    if not transforms.is_affine(matrix):
+        fail("E_SOURCE_VALUE", path, "Transform is not affine.")
+    return conversion.matrix(matrix)
+
+
+class _Skeleton:
+    """One bound skeleton: joint node paths in skeleton order, converted locals and inverse binds."""
+
+    def __init__(self, skel, query, path, conversion):
+        tokens = [str(t) for t in query.GetJointOrder()]
+        valid, reason = query.GetTopology().Validate()
+        if not valid:
+            fail("E_SOURCE_VALUE", path, f"Skeleton joints are invalid: {reason}")
+        if any(not c for t in tokens for c in t.split("/")):
+            fail("E_SOURCE_VALUE", path, "Skeleton joint names must be non-empty path components.")
+        base = paths.parse_node_path(path)[0]
+        self.paths = [paths.node_path(base[:-1] + [(base[-1][0] + ".joints", None)] + [(c, None) for c in t.split("/")])
+                      for t in tokens]
+        if len(set(self.paths)) != len(self.paths):
+            fail("E_SOURCE_VALUE", path, "Skeleton joint names must be unique.")
+        self.owner = path
+        self.tokens = {t: j for j, t in enumerate(tokens)}
+        self.parents = list(query.GetTopology().GetParentIndices())
+        self.root = next(j for j, parent in enumerate(self.parents) if parent < 0) if tokens else None
+        self.locals = [_checked(gf, self.paths[j], conversion)
+                       for j, gf in enumerate(query.ComputeJointLocalTransforms(_EARLIEST) or ())]
+        binds = list(skel.GetBindTransformsAttr().Get() or ())
+        if len(self.locals) != len(tokens) or len(binds) != len(tokens):
+            fail("E_SOURCE_VALUE", path, "Skeleton needs one rest or animated transform and one bind transform per joint.")
+        self.inverse_binds = []
+        for j, gf in enumerate(binds):
+            matrix = _checked(gf, self.paths[j], conversion)
+            if transforms.determinant(matrix) == 0:
+                fail("E_SOURCE_VALUE", self.paths[j], "Bind transform is singular.")
+            self.inverse_binds.append(conversion.matrix(_matrix(gf.GetInverse())))
+
+
+def _skel_bindings(prims):
+    """Skinning queries keyed by mesh prim path, each with the skeleton prim path it binds to."""
+    predicate = Usd.TraverseInstanceProxies()
+    cache, bound, skeletons = UsdSkel.Cache(), {}, {}
+    for prim in prims:
+        if not prim.IsA(UsdSkel.Root):
+            continue
+        root = UsdSkel.Root(prim)
+        cache.Populate(root, predicate)
+        for binding in cache.ComputeSkelBindings(root, predicate):
+            skel = binding.GetSkeleton()
+            query = cache.GetSkelQuery(skel)
+            if not query:
+                fail("E_SOURCE_VALUE", _node_path(skel.GetPrim()), "Skeleton could not be read.")
+            skeletons.setdefault(skel.GetPrim().GetPath(), (skel, query))
+            for target in binding.GetSkinningTargets():
+                if target.GetPrim().IsA(UsdGeom.Mesh) and target.HasJointInfluences():
+                    bound.setdefault(target.GetPrim().GetPath(), (skel.GetPrim().GetPath(), target))
+    return skeletons, bound
+
+
+def _influences(target, skeleton, count, path, mode):
+    """Per-point (skeleton joint, weight) pairs for one skinned mesh, and the losses they declare."""
+    indices, weights = target.ComputeJointInfluences()
+    indices, weights = list(indices), [float(w) for w in weights]
+    size = target.GetNumInfluencesPerComponent()
+    if target.GetInterpolation() == UsdGeom.Tokens.constant:
+        indices, weights = indices * count, weights * count
+    if size < 1 or len(indices) != size * count or len(weights) != len(indices):
+        fail("E_SOURCE_VALUE", path, "Joint influences need one set per point.")
+    order = target.GetJointOrder()
+    if order is None:
+        mapping = list(range(len(skeleton.paths)))
+    else:
+        if any(str(t) not in skeleton.tokens for t in order):
+            fail("E_SOURCE_VALUE", path, "skel:joints names a joint the skeleton does not have.")
+        mapping = [skeleton.tokens[str(t)] for t in order]
+    rows, losses = [], []
+    normalized = unweighted = truncated = widest = 0
+    dropped = 0.0
+    for v in range(count):
+        merged = {}
+        for joint, weight in zip(indices[size * v:size * v + size], weights[size * v:size * v + size]):
+            if not math.isfinite(weight) or weight < 0 or not 0 <= joint < len(mapping):
+                fail("E_SOURCE_VALUE", path, "Joint influences need valid joint indices and finite nonnegative weights.")
+            if weight > 0:
+                merged[mapping[joint]] = merged.get(mapping[joint], 0.0) + weight
+        total = math.fsum(merged.values())
+        if total == 0:
+            unweighted += 1
+            merged = {skeleton.root: 1.0}
+        elif abs(total - 1) > 1e-6:
+            normalized += 1
+        pairs = sorted(merged.items(), key=lambda jw: (-jw[1], jw[0]))
+        if len(pairs) > 4 and mode == "top4":
+            truncated += 1
+            dropped = max(dropped, pairs[4][1] / total)
+            pairs = pairs[:4]
+        widest = max(widest, len(pairs))
+        rows.append(tuple(sorted(pairs)))
+    if widest > 4:
+        losses.append(Diagnostic("I_INFLUENCES_N", "info", path, f"Vertices have up to {widest} joint influences, stored in "
+                                 f"{(widest + 3) // 4} JOINTS/WEIGHTS sets.", "No action needed."))
+    if truncated:
+        losses.append(_warning("W_INFLUENCES_TRUNCATED", path, f"{_count(truncated, 'vertex', 'vertices')} kept only their four "
+                               f"largest influences; the largest dropped weight is {dropped:.6g}."))
+    if normalized:
+        losses.append(_warning("W_WEIGHTS_NORMALIZED", path, f"Normalized the weights of {_count(normalized, 'vertex', 'vertices')} "
+                               "that did not sum to 1."))
+    if unweighted:
+        losses.append(_warning("W_UNWEIGHTED_VERTICES", path, f"Bound {_count(unweighted, 'unweighted vertex', 'unweighted vertices')} "
+                               "to the skeleton root joint."))
+    method = str(target.GetSkinningMethod())
+    if method != "classicLinear":
+        losses.append(_warning("W_SKINNING_METHOD", path, f"Skinning method {method} is stored as linear blend skinning."))
+    return tuple(rows), losses
+
+
+def _count(n, one, many):
+    return f"{n} {one if n == 1 else many}"
+
+
+def _warning(code, ref, message):
+    return Diagnostic(code, "warning", ref, message, "Review the declared loss.")
+
+
+def _convert(stage, adapter, dependencies, external, options):
     conversion = _Conversion(stage)
     skipped = Counter({"external asset dependency": external})
     every = [p for p in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies()) if p != stage.GetPseudoRoot()]
@@ -293,38 +420,59 @@ def _convert(stage, adapter, dependencies, external):
         if kind:
             skipped[kind] += 1
     prims = [p for p in every if p.IsA(UsdGeom.Xformable) or p.IsA(UsdGeom.Scope)]
-    order = sorted(range(len(prims)), key=lambda i: paths.sort_key(_node_path(prims[i])))
-    prims = [prims[i] for i in order]
-    index = {p.GetPath(): i for i, p in enumerate(prims)}
-    children = {i: [] for i in range(len(prims))}
-    for i, prim in enumerate(prims):
+    prim_paths = {p.GetPath(): _node_path(p) for p in prims}
+    found, bound = _skel_bindings(every)
+    skeletons = {path: _Skeleton(skel, query, prim_paths[path], conversion)
+                 for path, (skel, query) in found.items() if path in prim_paths}
+    entries = [(prim_paths[p.GetPath()], p, None) for p in prims]
+    entries += [(joint_path, None, (skeleton, j)) for skeleton in skeletons.values() for j, joint_path in enumerate(skeleton.paths)]
+    entries.sort(key=lambda entry: paths.sort_key(entry[0]))
+    index = {entry[0]: i for i, entry in enumerate(entries)}
+    children = {i: [] for i in range(len(entries))}
+    for i, (_, prim, joint) in enumerate(entries):
+        if joint is not None:
+            skeleton, j = joint
+            parent = skeleton.parents[j]
+            children[index[skeleton.paths[parent] if parent >= 0 else skeleton.owner]].append(i)
+            continue
         if prim.IsA(UsdGeom.Xformable) and UsdGeom.Xformable(prim).GetResetXformStack():
             continue
         parent = prim.GetParent()
-        while parent and parent.GetPath() not in index:
+        while parent and parent.GetPath() not in prim_paths:
             parent = parent.GetParent()
         if parent:
-            children[index[parent.GetPath()]].append(i)
+            children[index[prim_paths[parent.GetPath()]]].append(i)
+    skin_of = {}
+    for path, skeleton in sorted(skeletons.items(), key=lambda item: index[item[1].owner]):
+        skin_of[path] = len(skin_of)
     nodes, meshes, target_keys, losses = [], [], [], []
-    for i, prim in enumerate(prims):
-        path = _node_path(prim)
+    for i, (path, prim, joint) in enumerate(entries):
+        if joint is not None:
+            skeleton, j = joint
+            local = skeleton.locals[j]
+            if transforms.has_shear(local):
+                _shear(path)
+            name = skeleton.paths[j].rsplit("/", 1)[1]
+            nodes.append(glb.Node(name=paths.unescape(name), children=tuple(children[i]), **_trs(local, path)))
+            continue
+        skinned = bound.get(prim.GetPath())
+        if skinned is not None and skinned[0] not in skeletons:
+            skinned = None
         local = _local(prim, path, conversion)
         baked = None
         if local is not None and transforms.has_shear(local):
-            if (not prim.IsA(UsdGeom.Mesh) or children[i]
+            if (not prim.IsA(UsdGeom.Mesh) or children[i] or skinned is not None
                     or UsdGeom.Xformable(prim).TransformMightBeTimeVarying()):
                 _shear(path)
             baked, local = local, None
-            losses.append(Diagnostic("W_SHEAR_BAKED", "warning", path, "Sheared transform baked into the mesh points.",
-                                     "Review the declared loss."))
+            losses.append(_warning("W_SHEAR_BAKED", path, "Sheared transform baked into the mesh points."))
         elif local is not None and transforms.determinant(local) < 0:
             losses.append(Diagnostic("I_MIRRORED", "info", path, "Mirrored transform stored as a negative X scale.", "No action needed."))
-        mesh_index = None
+        mesh_index = skin_index = None
         if prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(prim)
             if mesh.GetSubdivisionSchemeAttr().Get() != UsdGeom.Tokens.none:
-                losses.append(Diagnostic("W_SUBDIV_CAGE", "warning", path, "Subdivision surface uses its control cage.",
-                                         "Review the declared loss."))
+                losses.append(_warning("W_SUBDIV_CAGE", path, "Subdivision surface uses its control cage."))
             left = mesh.GetOrientationAttr().Get() == UsdGeom.Tokens.leftHanded
             if left:
                 losses.append(Diagnostic("I_WINDING_FLIPPED", "info", path, "Left-handed faces reversed to glTF winding.", "No action needed."))
@@ -333,21 +481,31 @@ def _convert(stage, adapter, dependencies, external):
                 keys, offsets = _blend_shapes(prim, points, path)
                 offsets = [tuple(conversion.point(o) for o in target) for target in offsets]
                 flip = left
+                if skinned is not None:
+                    # Skinning ignores the mesh's own transform; geomBindTransform carries the points into skeleton space.
+                    baked = _checked(skinned[1].GetGeomBindTransform(), path, conversion)
                 if baked is not None:
                     points = [_apply(baked, p) for p in points]
                     offsets = [tuple(_apply(baked[:12] + [0.0, 0.0, 0.0, 1.0], o) for o in target) for target in offsets]
                     flip = flip != (transforms.determinant(baked) < 0)
+                influences = None
+                if skinned is not None:
+                    influences, found_losses = _influences(skinned[1], skeletons[skinned[0]], len(points), path, options["influences"])
+                    losses += found_losses
+                    skin_index = skin_of[skinned[0]]
                 mesh_index = len(meshes)
                 meshes.append(glb.Mesh(points=tuple(points), triangles=tuple(_triangles(mesh, path, flip, skipped)),
-                                       targets=tuple(offsets)))
+                                       targets=tuple(offsets), influences=influences))
                 target_keys.append(tuple(keys))
         trs = _trs(local, path) if local is not None else {}
-        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, **trs))
+        nodes.append(glb.Node(name=prim.GetName(), children=tuple(children[i]), mesh=mesh_index, skin=skin_index, **trs))
+    skins = [glb.Skin(joints=tuple(index[p] for p in skeletons[path].paths), inverse_bind_matrices=tuple(skeletons[path].inverse_binds))
+             for path in skin_of]
     try:
-        raw = glb.write_glb(tuple(nodes), tuple(meshes), generator=f"{adapter.name} {adapter.version}")
+        raw = glb.write_glb(tuple(nodes), tuple(meshes), tuple(skins), generator=f"{adapter.name} {adapter.version}")
     except ValueError as exc:
         fail("E_SOURCE_VALUE", "/", str(exc))
-    return Generated(glb=raw, node_paths=tuple(_node_path(p) for p in prims), target_keys=tuple(target_keys),
+    return Generated(glb=raw, node_paths=tuple(entry[0] for entry in entries), target_keys=tuple(target_keys),
                      dependencies=dependencies, losses=tuple(conversion.losses + losses + _skipped(skipped)))
 
 

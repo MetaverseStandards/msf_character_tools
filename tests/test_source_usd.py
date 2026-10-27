@@ -2,6 +2,7 @@
 """The USD adapter with the real usd-core reader; skipped when pxr is not installed."""
 import importlib.util
 import io
+import math
 import struct
 import unittest
 import zipfile
@@ -323,3 +324,145 @@ class UsdMeshesAndTransforms(unittest.TestCase):
         self.assertEqual(snapshot.source['node_paths'], ('/Cam', '/Hair', '/Quads'))
         primitive = snapshot.document['meshes'][0]['primitives'][0]
         self.assertEqual(m.decode_accessor(snapshot, primitive['indices']).value, ((0,), (2,), (1,), (0,), (3,), (2,)))
+
+
+def matrices(rows):
+    return '[' + ', '.join('((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (%s, %s, %s, 1))' % row for row in rows) + ']'
+
+
+def rig(joints, indices, weights, size, *, header='metersPerUnit = 1', interpolation='vertex', binds=None, rests=None,
+        mesh_extra='', points='[(0, 0, 0), (1, 1, 0), (0, 2, 0)]', anim=''):
+    binds = binds or [(0, 0, 0)] * len(joints)
+    rests = rests or [(0, 0, 0)] * len(joints)
+    tokens = ', '.join(f'"{j}"' for j in joints)
+    return layer(f"""def SkelRoot "Rig"
+{{
+    def Skeleton "Skel" (prepend apiSchemas = ["SkelBindingAPI"])
+    {{
+        uniform token[] joints = [{tokens}]
+        uniform matrix4d[] bindTransforms = {matrices(binds)}
+        uniform matrix4d[] restTransforms = {matrices(rests)}
+{anim}    }}
+    def Mesh "Body" (prepend apiSchemas = ["SkelBindingAPI"])
+    {{
+        point3f[] points = {points}
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (5, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        int[] primvars:skel:jointIndices = {indices} (
+            elementSize = {size}
+            interpolation = "{interpolation}"
+        )
+        float[] primvars:skel:jointWeights = {weights} (
+            elementSize = {size}
+            interpolation = "{interpolation}"
+        )
+        rel skel:skeleton = </Rig/Skel>
+{mesh_extra}    }}
+}}
+""", header)
+
+
+ARM_ANIM = """        rel skel:animationSource = </Rig/Skel/Anim>
+        def SkelAnimation "Anim"
+        {
+            uniform token[] joints = ["root/arm"]
+            float3[] translations = [(0, 100, 0)]
+            quatf[] rotations = [(0.7071068, 0, 0, 0.7071068)]
+            half3[] scales = [(1, 1, 1)]
+        }
+"""
+
+
+def baked_world_points(data, mesh_path, time=0.0):
+    """usd-core's own skinning of the mesh, in world space, converted to metres and +Y up."""
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
+    copy = Sdf.Layer.CreateAnonymous('.usda')
+    copy.ImportFromString(data.decode())
+    stage = Usd.Stage.Open(copy)
+    for prim in stage.Traverse():
+        if prim.IsA(UsdSkel.Root):
+            UsdSkel.BakeSkinning(UsdSkel.Root(prim), Gf.Interval(time, time))
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath(mesh_path))
+    world = mesh.ComputeLocalToWorldTransform(time)
+    k = UsdGeom.GetStageMetersPerUnit(stage)
+    z_up = UsdGeom.GetStageUpAxis(stage) == UsdGeom.Tokens.z
+    out = []
+    for p in mesh.GetPointsAttr().Get(time):
+        x, y, z = world.Transform(Gf.Vec3d(p))
+        out.append([k * x, k * z, -k * y] if z_up else [k * x, k * y, k * z])
+    return out
+
+
+@unittest.skipUnless(HAVE_USD, 'usd-core is not installed')
+class UsdSkinning(unittest.TestCase):
+    codes = UsdMeshesAndTransforms.codes
+
+    def influences(self, snapshot, s=0):
+        primitive = snapshot.document['meshes'][0]['primitives'][0]['attributes']
+        if f'JOINTS_{s}' not in primitive:
+            return None
+        joints = m.decode_accessor(snapshot, primitive[f'JOINTS_{s}']).value
+        weights = m.decode_accessor(snapshot, primitive[f'WEIGHTS_{s}']).value
+        return [list(zip(j, w)) for j, w in zip(joints, weights)]
+
+    def test_skinned_points_match_usd_bake_skinning(self):
+        for header in ('metersPerUnit = 1', 'upAxis = "Z"\n    metersPerUnit = 0.01'):
+            with self.subTest(header=header):
+                data = rig(['root', 'root/arm'], '[0, 0, 0, 1, 1, 0]', '[1, 0, 0.5, 0.5, 1, 0]', 2, header=header,
+                           binds=[(0, 0, 0), (0, 100, 0)], rests=[(0, 0, 0), (0, 100, 0)], anim=ARM_ANIM,
+                           points='[(0, 0, 0), (100, 100, 0), (0, 200, 0)]')
+                snapshot = good(m.inspect_asset(data, 'usda'))
+                self.assertEqual(snapshot.source['node_paths'],
+                                 ('/Rig', '/Rig/Body', '/Rig/Skel', '/Rig/Skel.joints/root', '/Rig/Skel.joints/root/arm'))
+                self.assertEqual([skin['joints'] for skin in thaw(snapshot.document['skins'])], [[3, 4]])
+                expected = baked_world_points(data, '/Rig/Body')
+                actual = world_points(snapshot, '/Rig/Body')
+                diagonal = math.dist([min(c) for c in zip(*expected)], [max(c) for c in zip(*expected)])
+                for a, e in zip(actual, expected):
+                    self.assertLess(math.dist(a, e), 1e-5 * diagonal, (actual, expected))
+
+    def test_more_than_four_influences_are_kept_or_truncated(self):
+        joints = ['r', 'r/a', 'r/b', 'r/c', 'r/d']
+        data = rig(joints, '[0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]',
+                   '[0.3, 0.25, 0.2, 0.15, 0.1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]', 5)
+        faithful = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(faithful), [('I_INFLUENCES_N', '/Rig/Body')])
+        self.assertEqual(self.influences(faithful, 1)[0], [(4, f32(0.1)), (0, 0.0), (0, 0.0), (0, 0.0)])
+        top4 = good(m.inspect_asset(data, 'usda', options={'influences': 'top4'}))
+        self.assertEqual(self.codes(top4), [('W_INFLUENCES_TRUNCATED', '/Rig/Body')])
+        self.assertIn('1 vertex', thaw(top4.source['losses'])[0]['message'])
+        self.assertIsNone(self.influences(top4, 1))
+        self.assertEqual([j for j, _ in self.influences(top4)[0]], [0, 1, 2, 3])
+        self.assertAlmostEqual(self.influences(top4)[0][0][1], 0.3 / 0.9, places=6)
+        strict = m.inspect_asset(data, 'usda', options={'influences': 'top4', 'losses': 'strict'})
+        self.assertEqual([d.code for d in strict.report.diagnostics], ['E_INFLUENCES_TRUNCATED'])
+
+    def test_weight_sums_unweighted_vertices_and_skinning_method_are_declared(self):
+        data = rig(['root', 'root/a'], '[0, 1, 1, 0, 0, 0]', '[0.5, 0.25, 1, 0, 0, 0]', 2,
+                   mesh_extra='        uniform token primvars:skel:skinningMethod = "dualQuaternion"\n')
+        snapshot = good(m.inspect_asset(data, 'usda'))
+        self.assertEqual(self.codes(snapshot), [('W_WEIGHTS_NORMALIZED', '/Rig/Body'), ('W_UNWEIGHTED_VERTICES', '/Rig/Body'),
+                                                ('W_SKINNING_METHOD', '/Rig/Body')])
+        influences = self.influences(snapshot)
+        self.assertEqual([j for j, _ in influences[0][:2]], [0, 1])
+        self.assertAlmostEqual(influences[0][0][1], 2 / 3, places=6)
+        self.assertEqual(influences[2][0], (0, 1.0))
+        strict = m.inspect_asset(data, 'usda', options={'losses': 'strict'})
+        self.assertEqual([d.code for d in strict.report.diagnostics],
+                         ['E_WEIGHTS_NORMALIZED', 'E_UNWEIGHTED_VERTICES', 'E_SKINNING_METHOD'])
+
+    def test_constant_influences_and_joint_subsets_map_to_skeleton_joints(self):
+        constant = rig(['root', 'root/a', 'root/b'], '[2]', '[1]', 1, interpolation='constant')
+        self.assertEqual([row[0] for row in self.influences(good(m.inspect_asset(constant, 'usda')))], [(2, 1.0)] * 3)
+        subset = rig(['root', 'root/a', 'root/b'], '[0, 0, 0]', '[1, 1, 1]', 1,
+                     mesh_extra='        uniform token[] skel:joints = ["root/b"]\n')
+        self.assertEqual([row[0] for row in self.influences(good(m.inspect_asset(subset, 'usda')))], [(2, 1.0)] * 3)
+
+    def test_skinned_meshes_refuse_shear(self):
+        data = rig(['root'], '[0, 0, 0]', '[1, 1, 1]', 1).replace(
+            b'double3 xformOp:translate = (5, 0, 0)', SHEAR.encode()).replace(b'"xformOp:translate"', b'"xformOp:transform"')
+        result = m.inspect_asset(data, 'usda')
+        self.assertEqual([(d.code, d.ref) for d in result.report.diagnostics], [('E_SHEAR_UNSUPPORTED', '/Rig/Body')])
