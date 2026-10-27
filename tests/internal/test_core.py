@@ -31,6 +31,14 @@ def affine(scale, offset, low=0, high=2, out_low=-1, out_high=1):
     return doc
 
 
+def unbounded(doc, *signals):
+    """doc with the named signals' domains made unbounded, so only checked arithmetic can refuse."""
+    for signal in doc['signals']:
+        if signal['id'] in signals:
+            signal['domain'] = {}
+    return doc
+
+
 def frame(values, timestamp=0.0):
     return {'timestamp': timestamp, 'values': values, 'validity': dict.fromkeys(values, True)}
 
@@ -78,6 +86,24 @@ class CoreTests(unittest.TestCase):
         result = self.assertSameAsReference(ops.document(knots, low=0, high=1e300, out_low=-1, out_high=2), [frame({'in': 1e300})])
         self.assertIsNotNone(result.value._core)
         self.assertTrue(same(result.value.samples[0]['values']['out'], -0.0))
+
+    def test_overflow_is_refused_without_a_domain_to_catch_it(self):
+        def gaze_weights(weights):
+            doc = unbounded(ops.gaze(), 'gaze', 'toward_in', 'toward_out')
+            doc['mappings'][0]['rules'] = doc['mappings'][0]['rules'][:1]
+            doc['mappings'][0]['rules'][0]['operator']['weights'] = weights
+            doc['profiles'][1]['signal_ids'] = ['gaze']
+            return doc
+        cases = {'product': (unbounded(affine(2, 0), 'in', 'out'), {'in': 1.5e308}),
+                 'sum': (unbounded(affine(1e308, 1e308), 'in', 'out'), {'in': 1.5}),
+                 'weighted sum': (gaze_weights([1e308, 1e308]), {'look_in': 1, 'look_out': 1}),
+                 'underflow': (unbounded(affine(2**-600, 0), 'in', 'out'), {'in': 2**-600})}
+        for name, (doc, values) in cases.items():
+            with self.subTest(name):
+                result = self.assertSameAsReference(doc, [frame(values)])
+                self.assertEqual([d.code for d in result.report.diagnostics], ['E_NONFINITE'])
+        result = self.assertSameAsReference(unbounded(affine(2, 0), 'in', 'out'), [frame({'in': 8e307})])
+        self.assertIsNotNone(result.value._core, 'a large finite result should stay on the core path')
 
     def test_gaze_matches_reference_bit_for_bit(self):
         rng = random.Random(7)
