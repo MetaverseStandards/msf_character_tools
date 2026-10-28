@@ -40,6 +40,18 @@ class FbxStatic(unittest.TestCase):
         self.assertEqual(errors(result), [('E_SOURCE_MEMORY', '/')])
 
 
+class FbxNumbers(unittest.TestCase):
+    def test_numbers_at_and_past_the_int64_range_convert_without_overflow(self):
+        # ufbx stores every number as int64 too; 2^63 used to overflow that conversion (UBSan in the sanitizer tier).
+        for value in ('9.223372036854775808e18', '-9.223372036854775808e18', '1e300', '9223372036854775807'):
+            text = ('; FBX 7.4.0 project file\nFBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7400\n}\n'
+                    'Objects:  {\n\tModel: 1, "Model::a", "Null" {\n\t\tProperties70:  {\n'
+                    f'\t\t\tP: "Visibility", "Visibility", "", "A",{value}\n\t\t}}\n\t}}\n}}\n')
+            with self.subTest(value=value):
+                result = m.inspect_asset(text.encode(), 'fbx')
+                self.assertIsInstance(result, m.Result)
+
+
 class FbxSkin(unittest.TestCase):
     def test_skinned_points_match_ufbx_skinning(self):
         scene, _ = skinned_scene()

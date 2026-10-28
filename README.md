@@ -1,6 +1,6 @@
 # MSF Tools
 
-Validated signal mappings and immutable glTF inspection for Python 3.11+, with a C++ core. The package also supplies independent binary64 position evaluation for relative morph targets and linear blend skinning over every influence set, and reads USD (through usd-core) and FBX (through ufbx, compiled in) by converting them to glTF.
+Validated signal mappings and immutable glTF inspection for Python 3.11+, with a C++ core. The package also supplies independent binary64 position evaluation for relative morph targets and linear blend skinning over every influence set, and reads USD (through usd-core) and FBX (through ufbx, compiled in) by converting them to glTF. Wheels cover macOS arm64 and Linux x86_64 and aarch64 (manylinux_2_28), for CPython 3.11 and, through one abi3 wheel, 3.12 and later.
 
 ## Run
 

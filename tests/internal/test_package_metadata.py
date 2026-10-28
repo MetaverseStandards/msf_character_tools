@@ -2,6 +2,7 @@
 """Packaging metadata: the version is stated once per place and has a CHANGELOG section; vendored code is pinned."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import tomllib
 import unittest
@@ -33,6 +34,16 @@ class PackageMetadata(unittest.TestCase):
         self.assertEqual(sorted(vendored - set(pins)), [])
         for name, digest in pins.items():
             self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest, name)
+
+    def test_release_build_requirements_pin_the_build_system_with_hashes(self):
+        requires = tomllib.loads((ROOT / 'pyproject.toml').read_text())['build-system']['requires']
+        text = (ROOT / 'scripts/build-requirements.txt').read_text()
+        lines = [line for line in text.splitlines() if line and not line.startswith('#')]
+        pins = [line.removesuffix(' \\') for line in lines if not line.startswith(' ')]
+        self.assertTrue(set(requires) <= set(pins), pins)
+        for pin in pins:
+            self.assertRegex(text, rf'(?m)^{re.escape(pin)} \\\n    --hash=sha256:[0-9a-f]{{64}}')
+            self.assertRegex(pin, r'^[a-z0-9-]+==[0-9.]+$')
 
 
 if __name__ == '__main__':

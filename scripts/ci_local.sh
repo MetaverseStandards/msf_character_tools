@@ -173,14 +173,26 @@ fi
 
 # Sanitizer tier (--sanitize). Isolated source readers start a worker with a
 # cleared environment, which cannot load the ASan runtime, so their one public
-# test is left out here.
+# test is left out here. MSF_SANITIZE_CC / MSF_SANITIZE_CXX choose the compiler
+# (for example a clang where the system compiler's libasan is not installed);
+# the runtime preloaded into Python is that compiler's.
 if [ $sanitize -eq 1 ] && [ -x "$py312" ]; then
+  san_cc="${MSF_SANITIZE_CC:-cc}"
+  compilers=()
+  asan_dir=build/core-asan-3.12
+  # A build directory per compiler: CMake will not switch compilers in an existing one.
+  [ -n "${MSF_SANITIZE_CC:-}" ] && compilers=(-DCMAKE_C_COMPILER="$MSF_SANITIZE_CC" -DCMAKE_CXX_COMPILER="${MSF_SANITIZE_CXX:-c++}") \
+    && asan_dir=build/core-asan-$(basename "$MSF_SANITIZE_CC")-3.12
   case "$(uname -s)" in
     Darwin) preload=(DYLD_INSERT_LIBRARIES="$(clang -print-file-name=libclang_rt.asan_osx_dynamic.dylib)") ;;
-    *) preload=(LD_PRELOAD="$(cc -print-file-name=libasan.so)") ;;
+    *) if "$san_cc" --version 2>/dev/null | grep -q clang; then
+         preload=(LD_PRELOAD="$("$san_cc" --print-runtime-dir)/libclang_rt.asan.so")
+       else
+         preload=(LD_PRELOAD="$("$san_cc" -print-file-name=libasan.so)")
+       fi ;;
   esac
-  if cmake -S . -B build/core-asan-3.12 -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
-      && cmake --build build/core-asan-3.12 >/dev/null 2>&1; then
+  if cmake -S . -B "$asan_dir" -G Ninja -DPython_EXECUTABLE="$py312" -DMSF_SANITIZE=ON -DMSF_CORE_IN_PLACE=ON ${compilers[@]+"${compilers[@]}"} >/dev/null 2>&1 \
+      && cmake --build "$asan_dir" >/dev/null 2>&1; then
     output=$(env "${preload[@]}" ASAN_OPTIONS=detect_leaks=0:strip_env=0 UBSAN_OPTIONS=print_stacktrace=1 "$py312" -B - <<'PY' 2>&1
 import sys, unittest
 sys.path[:0] = ['tests', 'tests/public']
@@ -198,7 +210,7 @@ PY
 )
     tier "Sanitizer tier (ASan + UBSan core with ufbx; public suite less 1 isolated-worker test, core, record and FBX tests)" $? "$output"
   else
-    lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B build/core-asan-3.12 -DMSF_SANITIZE=ON)")
+    lines+=("- Sanitizer tier: BUILD FAILED (cmake -S . -B $asan_dir -DMSF_SANITIZE=ON)")
     failed=1
   fi
   # Restore the normal 3.12 build. Copy only the newest extension: an older build directory can
@@ -268,16 +280,38 @@ else
 fi
 
 # docs/parity.md is generated from measurements; regenerate it when every input is present and compare.
+# It is measured on macOS arm64, and usd-core's own arithmetic differs elsewhere, so on other platforms
+# the fresh table is compared with 0.3.0's table measured on the same machine instead: MSF_ORACLE_SOURCE,
+# a v0.3.0 checkout (default $MSF/_tools/oracle-src), run by the oracle interpreter with usd-core.
 if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] && [ -n "$khronos" ] && [ -d "$khronos/Models" ] \
     && [ -d "$corpus/data" ] && [ -n "$examples" ] && [ -f "$examples/character-female-a.glb" ] && [ -x "$py312" ]; then
   mkdir -p build
   fresh=build/parity.md
-  if MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1 \
-      && cmp -s "$fresh" docs/parity.md; then
-    lines+=("- docs/parity.md: matches a fresh measurement")
-  else
-    lines+=("- docs/parity.md: STALE or generator failed (rerun python -B scripts/parity_table.py with the asset variables set)")
+  assets=(MSF_REAL_ASSETS="$real" MSF_KHRONOS_ASSETS="$khronos" MSF_UFBX_CORPUS="$corpus" MSF_EXAMPLE_ASSETS="$examples")
+  oracle_source="${MSF_ORACLE_SOURCE:-$(workspace _tools/oracle-src)}"
+  if ! env "${assets[@]}" "$py312" -B scripts/parity_table.py "$fresh" >/dev/null 2>&1; then
+    lines+=("- docs/parity.md: generator FAILED (rerun python -B scripts/parity_table.py with the asset variables set)")
     failed=1
+  elif [ "$(uname -s)" = Darwin ]; then
+    if cmp -s "$fresh" docs/parity.md; then
+      lines+=("- docs/parity.md: matches a fresh measurement")
+    else
+      lines+=("- docs/parity.md: STALE (rerun python -B scripts/parity_table.py with the asset variables set)")
+      failed=1
+    fi
+  elif [ -n "$oracle_source" ] && [ -f "$oracle_source/scripts/parity_table.py" ] && [ -x "${MSF_ORACLE_PYTHON:-}" ] \
+      && "$MSF_ORACLE_PYTHON" -c 'import pxr' 2>/dev/null; then
+    root=$(pwd)
+    if (cd "$oracle_source" && env "${assets[@]}" "$MSF_ORACLE_PYTHON" -B scripts/parity_table.py "$root/build/parity-0.3.0.md" >/dev/null 2>&1) \
+        && grep -v '^msf-tools ' "$fresh" > build/parity-now.cmp && grep -v '^msf-tools ' build/parity-0.3.0.md > build/parity-0.3.0.cmp \
+        && cmp -s build/parity-now.cmp build/parity-0.3.0.cmp; then
+      lines+=("- docs/parity.md: a fresh measurement matches 0.3.0's on this machine ($(diff -q "$fresh" docs/parity.md >/dev/null && echo 'and the macOS table' || echo "usd-core's last digits differ from the macOS table"))")
+    else
+      lines+=("- docs/parity.md: a fresh measurement DIFFERS from 0.3.0's on this machine (compare build/parity.md and build/parity-0.3.0.md)")
+      failed=1
+    fi
+  else
+    lines+=("- docs/parity.md: NOT CHECKED (measured on macOS; elsewhere needs MSF_ORACLE_SOURCE and usd-core in the oracle)")
   fi
 else
   lines+=("- docs/parity.md: NOT CHECKED (needs the real-asset, Khronos, example and ufbx corpus inputs)")

@@ -30,12 +30,18 @@
   {
     "bytes": 11854324,
     "id": "ufbx",
+    "patched": {
+      "core/third_party/ufbx/ufbx.c": {
+        "change": "ufbxi_f64_to_i64 compares with < instead of <=, so 2^63 saturates instead of overflowing int64_t (undefined behaviour)",
+        "upstream_sha256": "4a956c26a708e40d82ecb0aeaee54da709d5ba7c144c9642174970059bda7e1d"
+      }
+    },
     "retrieved": "2026-10-26",
     "sha256": "18d5a7849378e3fe247b0df67cf845cb593c73172cbac0de99b5aba130542667",
     "url": "https://codeload.github.com/ufbx/ufbx/tar.gz/26a482ae66871d7de36eb722aa060bce95bce274",
     "vendored": {
       "core/third_party/ufbx/LICENSE.ufbx": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391",
-      "core/third_party/ufbx/ufbx.c": "4a956c26a708e40d82ecb0aeaee54da709d5ba7c144c9642174970059bda7e1d",
+      "core/third_party/ufbx/ufbx.c": "e711aeac80d0294d0abc2c078896e241953a1c22b69776d595e4f411b9bcf1a5",
       "core/third_party/ufbx/ufbx.h": "f787be529af577efc04f3e3e735844a08556718dbb613d1211c2b313d72895dc"
     },
     "version": "0.23.1"
