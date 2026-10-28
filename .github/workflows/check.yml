@@ -1,5 +1,5 @@
 # Dormant: GitHub Actions is not turned on for this repository, so this workflow does not run.
-# scripts/ci_local.sh is the CI run until it is re-enabled; keep the two in step.
+# scripts/ci_local.sh is the CI run until it is turned on; keep the two in step.
 name: Reference checks
 on:
   push:

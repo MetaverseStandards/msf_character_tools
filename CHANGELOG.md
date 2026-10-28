@@ -4,7 +4,7 @@
 
 The package has a new name, msf-character-tools. The behaviour does not change. Results, reports and output bytes are the same as in 0.4.0, apart from the message text below.
 
-The Git history was rewritten before publication. Thus, the commit hashes of 0.4.0 and earlier are different from the hashes in any earlier private copy. The tags `v0.3.0` and `v0.4.0` point to the rewritten commits. 0.4.0 and earlier have no release in this repository.
+The Git history was rewritten before publication. So the commit hashes of 0.4.0 and earlier are different from the hashes in any earlier private copy. The tags `v0.3.0` and `v0.4.0` point to the rewritten commits. 0.4.0 and earlier have no release in this repository.
 
 ### Changed
 - The distribution is now `msf-character-tools`. Install the extras as `msf-character-tools[usd]` and `msf-character-tools[fbx]`. Wheel and sdist files start with `msf_character_tools-`.
@@ -13,7 +13,7 @@ The Git history was rewritten before publication. Thus, the commit hashes of 0.4
 - The command is now `msf-character-tools`, and `python -m msf_character_tools` runs it. Its usage text names `msf-character-tools`.
 - Built packages carry the build record as `msf_character_tools/_build_info.json`. Its contents do not change.
 - The `E_FORMAT_DEPENDENCY` messages and remediations name `msf-character-tools`, for example `pip install 'msf-character-tools[usd]'`. The codes, refs and severities do not change.
-- The licence and notice files name the copyright holders as MSF Character Tools contributors. The licences do not change. Example data and goldens keep `"authorship": "MSF Tools contributors"`, so their bytes do not change.
+- The licence and notice files, and the package metadata (`authors`), name the copyright holders as MSF Character Tools contributors. The licences do not change. Example data, goldens and `tests/public/fixtures/README.md` keep `"authorship": "MSF Tools contributors"`, so their bytes do not change.
 - `tests/public` changes only in its imports, its module paths, the expected usage line and one commit hash in a comment. `tests/public.sha256` lists the new hashes.
 
 ### Unchanged
