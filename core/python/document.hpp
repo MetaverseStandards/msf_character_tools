@@ -25,8 +25,8 @@ struct Document {
         return view_;
     }
 
-    // The view is deeply immutable (proxies, tuples, scalars), so being the
-    // object this handle built binds it to the handle's value.
+    // The view is deeply immutable (proxies, tuples, scalars). So if the
+    // candidate is the same object this handle built, it holds the handle's value.
     bool check_view(nanobind::handle candidate) const { return view_.is_valid() && candidate.ptr() == view_.ptr(); }
 
     nanobind::bytes state() const {
