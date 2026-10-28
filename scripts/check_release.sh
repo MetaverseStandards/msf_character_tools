@@ -19,7 +19,7 @@
 set -u
 dist=$(cd "${1:?usage: scripts/check_release.sh DIST [COMMIT]}" && pwd)
 cd "$(dirname "$0")/.." || exit 2
-commit=$(git rev-parse "${2:-HEAD}^{commit}")
+commit=$(git rev-parse --verify -q "${2:-HEAD}^{commit}") || { echo "not a commit: ${2:-HEAD}" >&2; exit 2; }
 MSF="${MSF:-}"
 if [ -n "$MSF" ]; then
   uv="${UV:-$MSF/_tools/boot/bin/uv}"
@@ -107,6 +107,7 @@ fi
 # go next to the installed package, in the throwaway venv's site-packages.
 run_public() {
   local py=$1 wheel=$2 venv="$scratch/venv-$(basename "$1")"
+  [ -f "$wheel" ] || { note "no single wheel for $py on this platform in $dist: FAILED"; return; }
   rm -rf "$venv"
   "$uv" venv -q --python "$py" "$venv" && "$uv" pip install -q --python "$venv/bin/python" "msf-character-tools[usd] @ file://$wheel" || { note "$(basename "$wheel") on $py: install FAILED"; return; }
   local site
@@ -125,8 +126,10 @@ run_public() {
     note "$(basename "$wheel") on Python $version: public suite FAILED"
   fi
 }
-run_public "$py311" "$(ls "$dist"/*-cp311-*.whl)"
-run_public "$py312" "$(ls "$dist"/*-abi3-*.whl)"
-[ -n "${MSF_PY313:-}" ] && run_public "$MSF_PY313" "$(ls "$dist"/*-abi3-*.whl)"
+# Only this machine's wheels can be installed, so a folder with every platform's wheels also works.
+if [ "$(uname -s)" = Linux ]; then plat="manylinux_*_$(uname -m)"; else plat="macosx_*"; fi
+run_public "$py311" "$(ls "$dist"/*-cp311-cp311-$plat.whl)"
+run_public "$py312" "$(ls "$dist"/*-cp312-abi3-$plat.whl)"
+[ -n "${MSF_PY313:-}" ] && run_public "$MSF_PY313" "$(ls "$dist"/*-cp312-abi3-$plat.whl)"
 [ $failed -eq 0 ] && echo "Result: all release checks passed" || echo "Result: FAILED"
 exit $failed

@@ -62,7 +62,7 @@ A checked-in file cannot work, because a commit cannot contain its own hash.
 
 ## Release builds
 
-`scripts/build_release.sh OUTDIR [COMMIT]` builds a release from a clean clone of the commit. It builds the sdist first, and then the `cp311` and `cp312-abi3` wheels from the unpacked sdist, outside any Git checkout, with `SOURCE_DATE_EPOCH` set to the commit's time. It writes `SHA256SUMS`. A second build of the same commit, in another directory and with the pins below, gives the same bytes.
+`scripts/build_release.sh OUTDIR [COMMIT]` (COMMIT is a commit or a tag) builds a release from a clean clone of the commit. It builds the sdist first, and then the `cp311` and `cp312-abi3` wheels from the unpacked sdist, outside any Git checkout, with `SOURCE_DATE_EPOCH` set to the commit's time. It writes `SHA256SUMS`. A second build of the same commit, in another directory and with the pins below, gives the same bytes.
 
 `scripts/check_release.sh OUTDIR [COMMIT]` then checks these things:
 - each wheel's contents, build record and licence files;

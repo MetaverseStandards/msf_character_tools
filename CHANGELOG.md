@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Fixed
-- `scripts/build_release.sh` and `scripts/check_release.sh` accept a tag as the commit argument. Before, they used the tag object hash in place of the commit, so `check_release.sh v0.5.0` failed the build-record check.
+- `scripts/build_release.sh` and `scripts/check_release.sh` accept a tag as the commit argument. Before, they used the tag object hash in place of the commit, so `check_release.sh v0.5.0` failed the build-record check. A name that is not a commit now stops both scripts with an error.
+- `scripts/check_release.sh` installs only the wheels for the machine it runs on. Before, a folder with the wheels of all platforms failed the public-suite step.
 
 ## 0.5.0 (2026-10-28)
 
