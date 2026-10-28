@@ -118,7 +118,7 @@ class OwnedRecord:
         self._check_consistency()
 
     def _check_consistency(self):
-        """Specialized records also bind stored identities to their sources."""
+        """Record types that need it also tie their stored identities to their sources here."""
 
 
 def _admit(record):

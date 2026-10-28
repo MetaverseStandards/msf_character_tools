@@ -6,8 +6,9 @@ from collections.abc import Mapping
 from .common import number
 from .report import fail
 
-# Explicit blank set shared by the authoring/pack 1.0 schema character class.
-# Includes the existing control whitespace policy and the U+FEFF format mark.
+# The blank characters. The authoring and pack 1.0 schemas use the same set in
+# their character class. It holds the control whitespace that was already
+# refused, plus the U+FEFF format mark.
 _BLANK_CHARACTERS = ("\u0009\u000a\u000b\u000c\u000d\u001c\u001d\u001e\u001f\u0020"
                      "\u0085\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
                      "\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")

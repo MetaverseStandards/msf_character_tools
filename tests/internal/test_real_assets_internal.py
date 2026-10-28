@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The 09K recipe that watches the core's geometry internals (world matrices and skin palettes)."""
+"""The 09K recipe that checks the core's geometry internals (world matrices and skin palettes)."""
 import unittest
 
 import msf_tools as m

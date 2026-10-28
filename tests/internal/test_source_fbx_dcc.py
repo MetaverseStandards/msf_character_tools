@@ -9,7 +9,7 @@ was not produced by ufbx or msf-tools, so it checks the conversion independently
 
 Points are compared as sets within ufbx's own per-file tolerance (0.001 OBJ
 units unless the OBJ says otherwise). OBJ files are in the FBX file's own units
-and axes, read from its GlobalSettings by tests/support/fbx_header.py, not from
+and axes, read from its GlobalSettings by tests/public/support/fbx_header.py, not from
 ufbx or msf-tools; msf-tools' declared unit must agree with it.
 
 A pairing that disagrees is explained only mesh by mesh: every mesh with

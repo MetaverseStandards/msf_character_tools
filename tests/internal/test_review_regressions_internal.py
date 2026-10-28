@@ -21,8 +21,8 @@ class ProfileWork(unittest.TestCase):
             source = good(m.profile_snapshot(pack, 'source'))
             target = good(m.profile_snapshot(pack, 'target'))
             compiled = None
-            # Count actual full-profile reconstruction and full-pack checking,
-            # with fresh operations; no elapsed-time or digest-derived oracle.
+            # Count how often fresh operations rebuild a full profile and check the
+            # full pack. The counts use no elapsed time and no digests.
             for operation in ('compile', 'export', 'evaluate'):
                 if operation != 'compile' and compiled is None:
                     compiled = good(m.compile_mapping(pack, source, target, 'wink'))

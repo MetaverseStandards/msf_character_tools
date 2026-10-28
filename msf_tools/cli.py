@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
-"""Machine-readable CLI. Render first; atomically replace each file separately."""
+"""Command line with machine-readable reports.
+
+It renders every output first, then replaces each file atomically, one at a time.
+"""
 from __future__ import annotations
 
 import argparse
@@ -35,7 +38,7 @@ def atomic_write(path, data):
 
 
 def _preflight(outputs, inputs):
-    """Reject aliases and symlink destinations before the first replacement."""
+    """Refuse aliases and symlink destinations before any file is replaced."""
     outputs, inputs = [Path(p) for p in outputs if p], [Path(p) for p in inputs if p]
     diagnostics = []
     output_ids = set()

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Immutable glTF/GLB inventory and explicit, bounded local resource decoding."""
+"""Immutable glTF and GLB inventory, and bounded decoding of the local resources a caller allows."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -25,7 +25,7 @@ from .sources import (SOURCE_FORMATS, SourceLimits, SourceParseError,
 
 _core = _native.built
 
-SUPPORTED_REQUIRED_EXTENSIONS = frozenset()  # Inventory is broader than evaluation.
+SUPPORTED_REQUIRED_EXTENSIONS = frozenset()  # Inspection inventories more than evaluation supports.
 MAX_ASSET_BYTES = 64 * 1024 * 1024
 MAX_ACCESSOR_COMPONENTS = 1_000_000
 MAX_TOTAL_ACCESSOR_COMPONENTS = 4_000_000
@@ -240,10 +240,12 @@ def _check_source(source, doc, kind, morph_counts):
 
 
 class LocalResolver:
-    """No-follow file reads under an explicit root; cumulative budget per resolver.
+    """Read files under an explicit root without following symlinks.
+
+    The byte budget adds up over the life of each resolver.
 
     Every component is opened relative to a directory descriptor with O_NOFOLLOW.
-    This prevents symlink substitution between validation and the actual read.
+    So a symlink cannot be swapped in between the check and the read.
     O_NONBLOCK keeps the open of a FIFO from waiting for a writer, so the
     descriptor reaches the regular-file check and is refused there.
     """

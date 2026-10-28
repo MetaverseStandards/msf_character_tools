@@ -7,13 +7,14 @@
 #   scripts/fuzz.sh [SECONDS]   seconds per harness, run side by side (default 60)
 #
 # Compilers without the fuzzer runtime (Apple clang) need MSF_LIBFUZZER, a
-# libFuzzer.a built from compiler-rt; where the default compiler is GCC (Linux),
-# MSF_FUZZ_CC / MSF_FUZZ_CXX name a clang, such as an LLVM release; see docs/testing.md. Seeds come from the
-# tracked fixtures and, when present, the ufbx corpus (MSF_UFBX_CORPUS) and the
-# Khronos assets (MSF_KHRONOS_ASSETS), which default into the local workspace
-# $MSF as in scripts/ci_local.sh. MSF_PY312 (default python3.12, or the workspace
-# venv) configures the build. Corpora persist in build/fuzz/corpus and
-# findings land in build/fuzz/artifacts. Exits nonzero on any finding.
+# libFuzzer.a built from compiler-rt. Where the default compiler is GCC (Linux),
+# MSF_FUZZ_CC / MSF_FUZZ_CXX name a clang, such as an LLVM release; see
+# docs/testing.md. Seeds come from the tracked fixtures and, when present, the
+# ufbx corpus (MSF_UFBX_CORPUS) and the Khronos assets (MSF_KHRONOS_ASSETS).
+# These default into the local workspace $MSF, as in scripts/ci_local.sh.
+# MSF_PY312 (default python3.12, or the workspace venv) configures the build.
+# Corpora persist in build/fuzz/corpus, and findings land in build/fuzz/artifacts.
+# Exits nonzero on any finding.
 set -u
 cd "$(dirname "$0")/.." || exit 2
 seconds="${1:-60}"

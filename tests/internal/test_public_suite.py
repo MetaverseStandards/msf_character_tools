@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""tests/public is the gate a reimplementation must pass unchanged; this keeps it honest.
+"""tests/public is the gate a reimplementation must pass unchanged; this test checks that it stays so.
 
 After a deliberate change to tests/public, refresh the manifest with
     python -B tests/internal/test_public_suite.py --write

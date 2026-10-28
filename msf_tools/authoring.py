@@ -90,7 +90,10 @@ def _read_fragment(path, relative):
 
 
 def authoring_files(path):
-    """Prune hidden/generated directories before traversal; paths sorted globally."""
+    """Return the TOML fragments under path as one sorted list.
+
+    Hidden and `generated` directories are pruned before the walk enters them.
+    """
     path = Path(path)
     files = []
     for directory, dirs, names in os.walk(path, followlinks=False):
