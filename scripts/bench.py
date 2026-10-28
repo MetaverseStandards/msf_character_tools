@@ -4,9 +4,10 @@
     python -B scripts/bench.py [--root CHECKOUT | --installed] [--frames N] [--runs 5] [--authoring DIR]
                                [--grid 50] [--geometry-frames 300] [--fbx FILE] [--output report.json]
 
-By default msf_character_tools comes from this checkout. --root imports it from another
+By default the package comes from this checkout. --root imports it from another
 checkout; --installed uses the interpreter's installed copy, such as a 0.3.0
-wheel in a separate venv. Set MSF_TOOLS_PURE=1 to time a build without its
+wheel in a separate venv. Releases up to 0.4.0 import as msf_tools, later ones
+as msf_character_tools; the report names the package it timed. Set MSF_TOOLS_PURE=1 to time a build without its
 fast paths. --authoring also times a real authoring directory, such as RCEF's.
 --fbx also times converting an FBX file, such as the examples' Kenney character,
 and evaluating its first animation. Each workload checks one value analytically
@@ -179,9 +180,14 @@ def main():
         parser.error('frames must be 1..10000000; runs 3..100; grid 2..500; geometry-frames 1..10000')
     if not args.installed:
         sys.path.insert(0, str(args.root.resolve()))
-    m = importlib.import_module('msf_character_tools')
-    native = sys.modules.get('msf_character_tools._native')
-    report = {'msf_character_tools': m.__version__, 'imported_from': str(Path(m.__file__).parent), 'platform': platform.platform(),
+    try:
+        m = importlib.import_module('msf_character_tools')
+    except ModuleNotFoundError as exc:
+        if exc.name != 'msf_character_tools':
+            raise
+        m = importlib.import_module('msf_tools')  # 0.4.0 and earlier
+    native = sys.modules.get(m.__name__ + '._native')
+    report = {'package': m.__name__, 'version': m.__version__, 'imported_from': str(Path(m.__file__).parent), 'platform': platform.platform(),
               'machine': platform.machine(), 'processor': platform.processor(), 'python': platform.python_version(),
               'implementation': platform.python_implementation(), 'cpu_count': os.cpu_count(),
               'core': native is not None and native.core is not None, 'frames': args.frames, 'runs': args.runs, 'workloads': {}}
