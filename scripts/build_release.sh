@@ -69,7 +69,7 @@ if [ "$(uname -s)" = Linux ]; then
       for wheel in /io/raw/*.whl; do
         auditwheel repair --plat "manylinux_2_28_$(uname -m)" --only-plat -w /io/repaired "$wheel" >/dev/null 2>&1
       done
-      { echo "os $(cat /etc/os-release | grep ^PRETTY_NAME | cut -d= -f2) $(auditwheel --version)"; gcc --version | head -1; } > /io/toolchain.txt'
+      { echo "os $(cat /etc/os-release | grep ^PRETTY_NAME | cut -d= -f2) $(auditwheel --version | head -1 | cut -d" " -f1,2)"; gcc --version | head -1; } > /io/toolchain.txt'
   cp "$scratch"/repaired/*.whl "$out"/
   { echo "image $image $(${MSF_PODMAN:-podman} image inspect --format '{{.Digest}}' "$image")"
     cat "$scratch/toolchain.txt"; } > "$out/BUILD-ENV"
