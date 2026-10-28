@@ -5,7 +5,7 @@ build-backend = "build_backend"
 backend-path = ["tools"]
 
 [project]
-name = "msf-tools"
+name = "msf-character-tools"
 version = "0.4.0"
 description = "Validated signal mappings and immutable glTF reference evaluation"
 readme = "README.md"
@@ -20,11 +20,11 @@ dependencies = []
 
 [project.optional-dependencies]
 usd = ["usd-core>=25.11,<27"]
-# FBX support is compiled in; the empty extra keeps `msf-tools[fbx]` installs working.
+# FBX support is compiled in; the empty extra keeps `msf-character-tools[fbx]` installs working.
 fbx = []
 
 [project.scripts]
-msf-tools = "msf_character_tools.cli:main"
+msf-character-tools = "msf_character_tools.cli:main"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

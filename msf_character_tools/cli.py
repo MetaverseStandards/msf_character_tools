@@ -187,7 +187,7 @@ def _source_flags(x):
 
 
 def parser():
-    p = argparse.ArgumentParser(prog="msf-tools", description="Validated signal mapping and glTF reference tools")
+    p = argparse.ArgumentParser(prog="msf-character-tools", description="Validated signal mapping and glTF reference tools")
     sub = p.add_subparsers(dest="command", required=True)
     check = sub.add_parser("check")
     check.add_argument("authoring")

@@ -108,7 +108,7 @@ fi
 run_public() {
   local py=$1 wheel=$2 venv="$scratch/venv-$(basename "$1")"
   rm -rf "$venv"
-  "$uv" venv -q --python "$py" "$venv" && "$uv" pip install -q --python "$venv/bin/python" "msf-tools[usd] @ file://$wheel" || { note "$(basename "$wheel") on $py: install FAILED"; return; }
+  "$uv" venv -q --python "$py" "$venv" && "$uv" pip install -q --python "$venv/bin/python" "msf-character-tools[usd] @ file://$wheel" || { note "$(basename "$wheel") on $py: install FAILED"; return; }
   local site
   site=$("$venv/bin/python" -I -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
   cp -R "$scratch/src/tests" "$scratch/src/schemas" "$scratch/src/examples" "$site/"

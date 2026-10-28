@@ -584,7 +584,7 @@ class RealAssetRecipes(unittest.TestCase):
                                   '--target-profile', 'ren.real09K.head.target')
         report, _ = json.JSONDecoder().raw_decode(stderr.decode())
         self.assertEqual((code, [d['code'] for d in report['diagnostics']]), (1, ['E_CLI_ARGUMENT']))
-        self.assertIn(b'usage: msf-tools map', stderr)
+        self.assertIn(b'usage: msf-character-tools map', stderr)
         with tempfile.TemporaryDirectory() as tmp:
             impossible = Path(tmp) / 'annotations.json'
             binding = json.loads(self.x.sidecar_bytes)['bindings'][0]

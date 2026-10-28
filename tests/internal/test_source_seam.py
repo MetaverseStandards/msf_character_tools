@@ -307,7 +307,7 @@ class PublicSourceDispatch(unittest.TestCase):
         with patch.dict(snapshots._ADAPTER_MODULES, {'usda': 'internal.adapters.adapter_missing_reader'}):
             result = self.inspect()
         self.assertEqual(self.errors(result), [('E_FORMAT_DEPENDENCY', '/')])
-        self.assertIn("pip install 'msf-tools[usd]'", result.report.diagnostics[0].remediation)
+        self.assertIn("pip install 'msf-character-tools[usd]'", result.report.diagnostics[0].remediation)
 
     def test_unknown_formats_and_gltf_source_arguments_are_refused(self):
         result = m.inspect_asset(self.data, 'obj')

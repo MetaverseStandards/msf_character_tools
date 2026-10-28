@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Every diagnostic code msf-tools reports, one table per code.
+# Every diagnostic code msf-character-tools reports, one table per code.
 #
 # severity  error (E_), warning (W_) or info (I_).
 # strict    for warnings a source adapter declares as losses: the error that

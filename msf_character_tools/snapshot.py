@@ -378,8 +378,8 @@ def _source_options(options, fmt):
 
 def _missing_adapter(fmt):
     extra = "FBX" if fmt == "fbx" else "USD"
-    fail("E_FORMAT_DEPENDENCY", "/", f"{extra} support is not installed in this build of msf-tools.",
-         f"Use an msf-tools release that includes {extra} support.")
+    fail("E_FORMAT_DEPENDENCY", "/", f"{extra} support is not installed in this build of msf-character-tools.",
+         f"Use an msf-character-tools release that includes {extra} support.")
 
 
 def _load_adapter(fmt):
@@ -391,7 +391,7 @@ def _load_adapter(fmt):
         if exc.name == module:
             _missing_adapter(fmt)
         fail("E_FORMAT_DEPENDENCY", "/", f"Reading {fmt} sources needs the optional {extra} reader, which is not installed.",
-             f"pip install 'msf-tools[{extra}]'")
+             f"pip install 'msf-character-tools[{extra}]'")
 
 
 def _isolated_adapter(fmt, resolver):

@@ -413,7 +413,7 @@ nb::tuple compile_mapping(nb::handle pack, nb::handle mapping_id, bool allow_app
 }  // namespace
 
 NB_MODULE(_core, m) {
-    m.doc() = "The msf-tools C++ core.";
+    m.doc() = "The msf-character-tools C++ core.";
     nb::class_<Frames>(m, "Frames")
         .def("view", &Frames::view)
         .def("check_view", &Frames::check_view)

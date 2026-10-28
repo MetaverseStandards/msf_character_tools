@@ -310,7 +310,7 @@ def main():
             adapter = importlib.import_module(header["adapter"]).ADAPTER
         except ImportError as exc:
             fail("E_FORMAT_DEPENDENCY", "/", f"The reader process could not load its source reader: {exc}",
-                 "Install the reader in the Python environment that runs msf-tools.")
+                 "Install the reader in the Python environment that runs msf-character-tools.")
         generated = adapter.convert(data, header["format"], resolver, SourceLimits(**header["limits"]), header["options"])
     except Fault as exc:
         _respond(out, {"ok": False, "fault": exc.diagnostic.to_dict()})
