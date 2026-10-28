@@ -14,7 +14,7 @@ The package has a new name, msf-character-tools. The behaviour does not change. 
 - `tests/public` changes only in its imports, its module paths and the expected usage line. `tests/public.sha256` lists the new hashes.
 
 ### Unchanged
-- No pack, CSV, coverage, sidecar, snapshot, generated glTF or report contains the package name. These outputs are the same as in 0.4.0, byte for byte. The committed goldens do not change.
+- No pack, CSV, coverage, sidecar, snapshot or generated glTF contains the package name, and no report does apart from the `E_FORMAT_DEPENDENCY` text above. These outputs are the same as in 0.4.0, byte for byte. The committed goldens do not change.
 
 ## 0.4.0 (2026-10-27)
 

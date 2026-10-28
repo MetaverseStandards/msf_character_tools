@@ -63,4 +63,4 @@ The original [combined fixture](tests/public/fixtures/README.md) has jaw and hea
 
 ## Development and licences
 
-Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Coding agents should read [AGENTS.md](AGENTS.md). Original code is MIT. Original documentation, data and fixtures are CC-BY-SA-4.0. Since 0.4.0, the implementation is a C++ core, `msf_character_tools._core`, behind the same Python API. [Building](docs/building.md) describes the build record and the build tools.
+Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Coding agents should read [AGENTS.md](AGENTS.md). Original code is MIT. Original documentation, data and fixtures are CC-BY-SA-4.0. Since 0.4.0, the implementation is a C++ core (now `msf_character_tools._core`) behind the same Python API. [Building](docs/building.md) describes the build record and the build tools.

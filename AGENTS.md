@@ -18,7 +18,7 @@ echo "msf-character-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt  # 
 python -m pip install --require-hashes -r req.txt
 ```
 
-The tag `v0.4.0` is on commit `ce52dfb`.
+The name msf-character-tools starts at 0.5.0, which is not released yet. Releases up to `v0.4.0` (commit `ce52dfb`) are named msf-tools. Their wheels are `msf_tools-*.whl`, and they import as `msf_tools`. For them, write `msf-tools` in the requirement line.
 
 ### Public surface
 
@@ -42,7 +42,7 @@ Run from a directory with `examples/authoring` and `examples/samples.json` copie
 ```python
 import json
 from msf_character_tools import (load_authoring, compile_pack, profile_snapshot,
-                       compile_mapping, evaluate_mapping, inspect_asset)
+                                 compile_mapping, evaluate_mapping, inspect_asset)
 
 pack = compile_pack(load_authoring("authoring").value)
 assert pack.ok, pack.report.to_dict()
