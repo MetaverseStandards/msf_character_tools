@@ -18,7 +18,7 @@ echo "msf-character-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt  # 
 python -m pip install --require-hashes -r req.txt
 ```
 
-The name msf-character-tools starts at 0.5.0, which is not released yet. Releases up to `v0.4.0` (commit `ce52dfb`) are named msf-tools. Their wheels are `msf_tools-*.whl`, and they import as `msf_tools`. For them, write `msf-tools` in the requirement line.
+The name msf-character-tools starts at 0.5.0, which is not released yet. Releases up to `v0.4.0` (commit `05ca053`) are named msf-tools. Their wheels are `msf_tools-*.whl`, and they import as `msf_tools`. For them, write `msf-tools` in the requirement line.
 
 ### Public surface
 
@@ -120,7 +120,7 @@ Do not break these. Each one names its check.
   - `examples/generated/`: `python3 -B -m msf_character_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv --write` (check: `check.py`).
 - Never commit `msf_character_tools/_build_info.json`. Builds write it, and a commit cannot hold its own hash. Check: `.gitignore` lists it; `test_build_info.py` and the build-record tier of `ci_local.sh` check the record that builds write.
 - The bindings in `core/python/` must compile under `Py_LIMITED_API`, so the abi3 wheel keeps working. Use the functions that `core/python/limited_api.hpp` maps to, not CPython's unchecked macros. Check: the 3.12 in-place build in `ci_local.sh` defines `Py_LIMITED_API`, so a call outside the limited API does not compile. `check_release.sh` runs the public suite on the abi3 wheel (and on 3.13 with `MSF_PY313`).
-- Check the type of every item read from a caller's Mapping or sequence before C++ uses it. Do not assume `items()` gives 2-tuples. 0.4.0 fixed a segfault of this kind (`6aabfb8`). Check: the `_Odd` cases in `tests/internal/gltf_cases.py` and the `OddItems` cases in `tests/internal/test_core_json.py`, both against the oracle; `--sanitize`.
+- Check the type of every item read from a caller's Mapping or sequence before C++ uses it. Do not assume `items()` gives 2-tuples. 0.4.0 fixed a segfault of this kind (`b5effb9`). Check: the `_Odd` cases in `tests/internal/gltf_cases.py` and the `OddItems` cases in `tests/internal/test_core_json.py`, both against the oracle; `--sanitize`.
 - No runtime dependencies beyond the standard library: `dependencies = []` in `pyproject.toml`. No test checks this, so review it.
 - Every vendored file under `core/third_party` is pinned by SHA-256 in `docs/source-lock.json`, and credited in [NOTICE.md](NOTICE.md) and `LICENSES/`. Check: `tests/internal/test_package_metadata.py` (pins, and that each licence file exists). Review the credits.
 - Release builds use `scripts/build_release.sh OUTDIR [COMMIT]`, then `scripts/check_release.sh OUTDIR [COMMIT]`. The manylinux images are pinned by digest. Build requirements come from `scripts/build-requirements.txt` with hashes. Check: `test_package_metadata.py` keeps those pins in step with `pyproject.toml`.
@@ -128,7 +128,7 @@ Do not break these. Each one names its check.
 
 ### Known traps
 
-- A `_core.cpython-312-*.so` in `msf_character_tools/` shadows `_core.abi3.so`, because Python prefers the version-specific file. A stale one in `build/core-3.12` is harmless until something copies it into `msf_character_tools/`, as the `--sanitize` restore once did (fixed in `d8265f9`: it now copies only the newest build). Delete the stray file and rebuild.
+- A `_core.cpython-312-*.so` in `msf_character_tools/` shadows `_core.abi3.so`, because Python prefers the version-specific file. A stale one in `build/core-3.12` is harmless until something copies it into `msf_character_tools/`, as the `--sanitize` restore once did (fixed in `4fdb322`: it now copies only the newest build). Delete the stray file and rebuild.
 - `ci_local.sh` sets `PYTHONHASHSEED=0`. 0.3.0 checked a frame's channels in set order, so its diagnostic order depends on the hash seed. The oracle inherits the seed. Set it when you run the suites by hand.
 - On macOS, `--fuzz` fails unless `MSF_LIBFUZZER` names a `libFuzzer.a`. Apple clang has no fuzzer runtime. docs/testing.md says how to build one.
 - On Linux, the `docs/parity.md` check compares a fresh table with 0.3.0's table measured on the same machine (`MSF_ORACLE_SOURCE`, a `v0.3.0` checkout). The committed table is from macOS.

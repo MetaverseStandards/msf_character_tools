@@ -153,7 +153,7 @@ of malformed or unsafe input, they should pin exact source and artifact hashes.
 
 ## Strict native numeric pilot
 
-Removed in 0.3.0. Since 0.4.0, the C++ core (now `msf_character_tools._core`) has taken its place. This section records the pilot as it was in 0.1.1. Its sources and contract are in Git history, last at commit 746a5fe.
+Removed in 0.3.0. Since 0.4.0, the C++ core (now `msf_character_tools._core`) has taken its place. This section records the pilot as it was in 0.1.1. Its sources and contract are in Git history, last at commit 28bb027.
 
 The native pilot now validates the original Python numeric, bool, index and list
 inputs before conversion, mutable program setters included. Program getters return
@@ -167,7 +167,7 @@ weight tolerance (1e-6).
 Named native and glTF storage adapters make the row/column conversion explicit.
 Multiply computes a*b (b first). C++ multiply returns Result<Mat4> on purpose, so
 callers must rebuild and check for success. The native contract (`native/README.md`
-at 746a5fe) gave the exact surface, error codes, ownership and numeric policy.
+at 28bb027) gave the exact surface, error codes, ownership and numeric policy.
 Independent literal binding oracles and supplemental agreement tests ran on real
 local builds with bindings ON, for macOS arm64 CPython 3.11.17 and 3.12.15 (a
 vendor-patched build). A new independent review of this candidate was still needed

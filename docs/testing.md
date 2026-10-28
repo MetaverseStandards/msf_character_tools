@@ -31,7 +31,7 @@ The last two are project checks, not promises of universal equivalence.
 
 ## Public and internal suites
 
-`tests/public` uses only the 29 names in `msf_character_tools.__all__` and the `msf-character-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passed it unchanged. In 0.5.0 only the package name changed in it: its imports, module paths and the `msf-character-tools` usage line. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format; in that case a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
+`tests/public` uses only the 29 names in `msf_character_tools.__all__` and the `msf-character-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passed it unchanged. In 0.5.0 only the package name changed in it: its imports, module paths and the `msf-character-tools` usage line. One comment also names a commit by its hash in the rewritten history. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format; in that case a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
 
 `tests/internal` covers private modules:
 - record admission;
@@ -88,7 +88,7 @@ Environment variables name the inputs that are outside the repository. A tier wh
 - 10^6 vectors per arity against `math.hypot`;
 - 10^5 `math3d` cases;
 - against the oracle: 10^4 glTF assets, and 2x10^4 each of node paths, matrices, influence sets and GLB scenes;
-- every JSON file in RCEF at `MSF_RCEF_COMMIT` (default 0d90172), read from `MSF_RCEF_ROOT` with Git.
+- every JSON file in RCEF at `MSF_RCEF_COMMIT` (default 96ac4be), read from `MSF_RCEF_ROOT` with Git.
 
 `--sanitize` builds the core again, ufbx included, with ASan and UBSan, and runs the core tests, the FBX tests and the public suite on that build. `--fuzz` runs `scripts/fuzz.sh` for `MSF_FUZZ_SECONDS` (default 300) per harness.
 

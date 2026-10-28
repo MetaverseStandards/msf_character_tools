@@ -342,7 +342,7 @@ class GeometryTests(Checks):
             for x,y in zip(a,w):self.assertAlmostEqual(x,y,places=12)
 
     def test_four_influence_geometry_is_unchanged_from_v02(self):
-        # Digests of canonical geometry at 9ac984d, before N-influence skinning; at most four influences each.
+        # Digests of canonical geometry at 7949e98, before N-influence skinning; at most four influences each.
         pinned={"combined":("4d4067c1a7631c25328176f60577b3d456890579a40c0a44464d4a47c4f60f8b",
                             "8d2c81112e6918f130064e9eb61690acc4ebd91ba5f16f9b6119747908068182",
                             "5df1591f759c5f39f660e456196911ce7abc524d6289e8123fb34fd155a47fc0"),
