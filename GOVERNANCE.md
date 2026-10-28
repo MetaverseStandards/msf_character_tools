@@ -20,4 +20,4 @@ Release checklist:
 - State the unsupported capabilities, resource limits, performance measurements and the artist and semantic gates that remain open.
 - Before publishing, confirm the publisher, the release reviewer and the approved source revision. Do not change the byte formats of survey files that consumers inherit.
 
-These need separate decisions on scope, owner and effort: more formats, native packages on three operating systems, the C++ core that replaces the removed native pilot, and production artist acceptance. The current local checks do not pass those release gates.
+Since 0.4.0, the implementation is a C++ core, `msf_tools._core`, in place of the removed native pilot. 0.4.0 has wheels for macOS arm64 and for Linux x86_64 and aarch64. These still need separate decisions on scope, owner and effort: more formats, native packages for more operating systems, and production artist acceptance. The current local checks do not pass those release gates.

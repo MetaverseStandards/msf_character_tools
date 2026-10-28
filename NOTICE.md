@@ -4,7 +4,7 @@ Original Python and C++ source code is licensed MIT. Original documentation, JSO
 
 Distributions: the sdist holds the code, `docs/` and `schemas/`. The wheel holds the `msf_tools` package and its C++ extension, with the README as its description. Their licence expression, `MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0 AND CC-BY-SA-4.0`, covers both. Tests and examples are in neither.
 
-Licence texts are in [LICENSES](LICENSES). The public glTF specification informs the format behaviour. Its restricted text is not copied into the implementation or the fixture assets. Public source evidence appears as factual references with pinned revisions in [docs/sources.md](docs/sources.md). The Python reference includes no GLM, cgltf, JSON library or other third-party runtime code.
+Licence texts are in [LICENSES](LICENSES). The public glTF specification informs the format behaviour. Its restricted text is not copied into the implementation or the fixture assets. Public source evidence appears as factual references with pinned revisions in [docs/sources.md](docs/sources.md). Apart from the third-party code listed below, the package includes no GLM, cgltf, JSON library or other third-party runtime code.
 
 Two external sample meshes are committed:
 - The test fixture `tests/public/fixtures/simple-skin.gltf` is the Khronos SimpleSkin sample (glTF-Embedded) by Marco Hutter, CC0-1.0. It is copied unchanged from KhronosGroup/glTF-Sample-Assets commit 8f492390ddc7a2ae221a1369ef560589cf8c70fb. The CC0-1.0 text is in [LICENSES/CC0-1.0.txt](LICENSES/CC0-1.0.txt).

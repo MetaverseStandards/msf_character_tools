@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 # Core semantic hardening in package 0.1.1
 
+This page records package 0.1.1, when the reference was pure Python. Since 0.4.0 the C++ core implements the inspection and math rules described here. Its results match 0.3.0 exactly (see the CHANGELOG).
+
 The reference checks a selected subset of the glTF 2.0 core against specification commit
 `8e691206fa2e981fc3b8c8bc57e671595576c971`. It lists unknown attributes, unknown
 extensions and unresolved resources as inventory. A successful inspection does not
@@ -151,7 +153,7 @@ of malformed or unsafe input, they should pin exact source and artifact hashes.
 
 ## Strict native numeric pilot
 
-Removed in 0.3.0; the C++ core will replace it. This section records the pilot as it was in 0.1.1. Its sources and contract are in Git history, last at commit 746a5fe.
+Removed in 0.3.0. Since 0.4.0, the C++ core, `msf_tools._core`, has taken its place. This section records the pilot as it was in 0.1.1. Its sources and contract are in Git history, last at commit 746a5fe.
 
 The native pilot now validates the original Python numeric, bool, index and list
 inputs before conversion, mutable program setters included. Program getters return

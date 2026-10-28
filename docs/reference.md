@@ -1,10 +1,10 @@
 # Version one reference
 
-Original documentation: CC-BY-SA-4.0. This reference describes the project's contracts. The pinned [glTF specification](sources.md) defines the external format.
+Original documentation: CC-BY-SA-4.0. This reference describes the project's contracts. `msf_tools.__all__` has 29 public names: the six main operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types. The pinned [glTF specification](sources.md) defines the external format.
 
 ## Results and reports
 
-The six public functions, and the helpers decorated with `@public`, return the dataclass `Result[T]`. It has `.value: T | None`, `.report: Report` and `.ok: bool`. A `Report` has `schema_version="1.0"`, diagnostics and losses:
+The six main public functions, and the helpers decorated with `@public`, return the dataclass `Result[T]`. It has `.value: T | None`, `.report: Report` and `.ok: bool`. A `Report` has `schema_version="1.0"`, diagnostics and losses:
 - Each diagnostic has `code`, `severity`, one `ref`, `message` and `remediation`.
 - Each loss has `category`, `effect`, `reason` and `refs`, and optional `units` and `bound`.
 

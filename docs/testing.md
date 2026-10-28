@@ -31,7 +31,7 @@ The last two are project checks, not promises of universal equivalence.
 
 ## Public and internal suites
 
-`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate that a reimplementation, such as the planned C++ core, must keep passing unchanged. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name. So a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format. Then a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
+`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passes it unchanged: `tests/public` has not changed since 0.3.0. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name. So a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format. Then a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
 
 `tests/internal` covers private modules:
 - record admission;

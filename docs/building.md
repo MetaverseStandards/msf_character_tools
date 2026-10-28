@@ -14,7 +14,7 @@ In-place builds follow the same rule, so the suites test the extension that ship
 
 On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set. The wheel tag follows the target. Building needs a C++17 compiler, CMake 3.26 or newer, and Ninja or Make. The build front end fetches scikit-build-core 1.1.1 and nanobind 3.1.0, pinned exactly. Release builds pin their dependencies too (see [Release builds](#release-builds)).
 
-The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the Python reference does; see [ADR 0001](adr/0001-record-ownership.md). Everything is in the core except the CLI, TOML loading, sidecars and bindings, the USD adapter and the isolated reader process. So msf-tools does not import without the extension.
+The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the 0.3.0 Python reference did; see [ADR 0001](adr/0001-record-ownership.md). Everything is in the core except the CLI, TOML loading, sidecars and bindings, the USD adapter and the isolated reader process. So msf-tools does not import without the extension.
 
 Two paths exist twice:
 - `parse_json` and `canonical_json` use the core. For input the core declines, they fall back to Python's `json`. Malformed JSON is an example: Python reports its exact errors.
