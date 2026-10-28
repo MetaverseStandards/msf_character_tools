@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""MSF tools: six stable APIs and explicitly documented reference helpers."""
+"""MSF tools: six stable APIs, plus documented reference helpers."""
 from .report import Result, Report, Diagnostic, Loss
 from .authoring import validate_authoring, load_authoring, ValidatedAuthoring
 from .pack import compile_pack, Pack, survey_csv, coverage

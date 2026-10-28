@@ -7,9 +7,11 @@
 By default msf_tools comes from this checkout. --root imports it from another
 checkout; --installed uses the interpreter's installed copy, such as a 0.3.0
 wheel in a separate venv. Set MSF_TOOLS_PURE=1 to time a build without its
-fast paths. --authoring also times a real authoring directory, such as RCEF's, and --fbx
-converting an FBX file, such as the examples' Kenney character, and evaluating its first animation. Each workload checks one value analytically before timing.
-Timings are medians on one host; they are not a real-time or device guarantee.
+fast paths. --authoring also times a real authoring directory, such as RCEF's.
+--fbx also times converting an FBX file, such as the examples' Kenney character,
+and evaluating its first animation. Each workload checks one value analytically
+before timing. Timings are medians on one host. They are not a real-time or
+device guarantee.
 """
 import argparse
 import importlib

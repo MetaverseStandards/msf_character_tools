@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Checked binary64 column-vector math; internal matrices contain row tuples.
+"""Checked binary64 math on column vectors. Internally, matrices hold row tuples.
 
 Implemented in the C++ core (core/src/math3d.cpp, core/python/math_module.cpp).
 """

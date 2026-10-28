@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Checked binary64 column-vector maths, as msf_tools.math3d defined it in
-// 0.3.0: every result is finite, nonzero products and quotients never
-// underflow to zero, and operations run in the reference's order, so faults
-// and their refs match too. Matrices hold rows.
+// 0.3.0. Every result is finite, and nonzero products and quotients never
+// underflow to zero. Operations run in the reference's order, so faults and
+// their refs match too. Matrices hold rows.
 #pragma once
 #include <array>
 #include <cstddef>

@@ -70,10 +70,10 @@ int msf_fbx_skin_fill(const msf_fbx *h, uint32_t m, uint32_t d, uint32_t *vertex
 /* Blend channel c of mesh m, counting channels across the mesh's blend deformers in order.
    sizes: keyframes, offsets summed over keyframes. */
 int msf_fbx_blend_sizes(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t sizes[2]);
-/* Keyframe k has key_counts[k] (point index, x/y/z offset) entries, in keyframe order, with any per-offset
-   weights (Blender writes them) already applied, and a target weight
-   (1.0 is the full shape). weight is the channel's static weight (DeformPercent / 100). names[0] and names[1]
-   are the deformer and channel names, with lengths in name_lengths. */
+/* Keyframe k has key_counts[k] entries (point index, x/y/z offset), in keyframe order, and a target weight
+   (1.0 is the full shape). Per-offset weights (Blender writes them) are already applied to the offsets.
+   weight is the channel's static weight (DeformPercent / 100). names[0] and names[1] are the deformer and
+   channel names, with lengths in name_lengths. */
 int msf_fbx_blend_fill(const msf_fbx *h, uint32_t m, uint32_t c, uint32_t *deformer, uint32_t *key_counts,
                        uint32_t *indices, double *offsets, double *target_weights, uint32_t keyframes, uint32_t total,
                        double *weight, const char **names, size_t *name_lengths);

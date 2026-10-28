@@ -132,9 +132,10 @@ Sampled sample_channel(const Asset& asset, std::size_t animation, std::size_t ch
 using Pose = std::vector<std::pair<std::size_t, std::vector<std::pair<std::string, std::vector<double>>>>>;
 Pose sample_animation(const Asset& asset, const Value& animation_id, const Time& t);
 
-// The caller's resolver, called only when one was supplied: the bytes for a
-// buffer URI (image false), or for an image URI, std::nullopt when nothing was
-// fetched. Raises a Fault (or the caller's own exception) for anything else.
+// The caller's resolver, called only when the caller supplied one. For a
+// buffer URI (image false) it returns the bytes. For an image URI it returns
+// the bytes, or std::nullopt when nothing was fetched. For anything else it
+// raises a Fault (or the caller's own exception).
 using Resolve = std::function<std::optional<Bytes>(const std::string& uri, const std::string& ref, bool image)>;
 
 struct Inspection {
@@ -146,11 +147,12 @@ struct Inspection {
 Inspection inspect(const Bytes& raw, bool glb, const Resolve* resolver, Caps caps, bool generated);
 
 // One of evaluate_geometry's override mappings: absent (None), not a Mapping,
-// or its items in order, each key an integer Value when it was an exact int.
-// When the caller's own code raised while the items were read, broken_value is
-// the item whose value could not be read (its key is in items), or broken_tail
-// says iteration failed after the last item; evaluate_geometry throws
-// OverridesBroken where 0.3.0's loop would have met that error.
+// or its items in order. A key is an integer Value when it was an exact int.
+// The caller's own code can raise while the items are read. Then broken_value
+// is the item whose value could not be read (its key is in items), or
+// broken_tail says that iteration failed after the last item.
+// evaluate_geometry throws OverridesBroken at the point where 0.3.0's loop
+// would have met that error.
 struct Overrides {
     bool present = false, mapping = false;
     std::vector<std::pair<Value, Value>> items;

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Independent position geometry and animation reference; no taxonomy dependency.
+"""Reference position geometry and animation, independent of any signal taxonomy.
 
 Evaluated in the C++ core (core/src/gltf_geometry.cpp, core/src/gltf_binary.cpp).
 """
@@ -94,7 +94,10 @@ def export_geometry_golden(snapshot, **kwargs):
 
 @public
 def reparent_local(child_world, new_parent_world):
-    """Hierarchy probe only. Reject shear/singular TRS; no skin preservation claim."""
+    """Check the node hierarchy only.
+
+    A sheared or singular TRS is refused. This does not show that skinning is preserved.
+    """
     vector(child_world, 16, "/child_world")
     vector(new_parent_world, 16, "/new_parent_world")
     child = affine(matrix(child_world), 1e-9, '/child_world')

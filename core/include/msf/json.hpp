@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Strict JSON, as msf-tools reads and writes it in Python:
-// parse() accepts what common.parse_json accepts (json.loads with duplicate-key,
-// constant and 309-digit hooks, then the json_value limits) and write_canonical()
-// produces common.canonical_json's bytes (sort_keys, ensure_ascii=False, indent=2,
-// newline, -0.0 written as 0.0).
+// Strict JSON, as msf-tools reads and writes it in Python.
+// parse() accepts what common.parse_json accepts: json.loads with duplicate-key,
+// constant and 309-digit hooks, then the json_value limits.
+// write_canonical() produces common.canonical_json's bytes: sort_keys,
+// ensure_ascii=False, indent=2, a final newline, and -0.0 written as 0.0.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -55,8 +55,8 @@ int compare_numbers(const Value& a, const Value& b);
 std::string write_exact(const Value& value);
 
 // Containers nested deeper than this are refused, here and on the Python path
-// (common.MAX_NESTING), where the refusal used to depend on the stack. The
-// json_value limit (128) is below it.
+// (common.MAX_NESTING). In 0.3.0 the Python refusal depended on the stack.
+// The json_value limit (128) is lower.
 constexpr int kMaxNesting = 200;
 inline const char* const kTooDeep = "JSON nesting exceeds 200 levels.";
 

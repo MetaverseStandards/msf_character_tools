@@ -2,18 +2,22 @@
 
 Original documentation: CC-BY-SA-4.0.
 
-This is an initial reference implementation. Repository publication and release ownership must be explicit before an external release; no organization, adoption or stable binary ABI is promised. Shared schemas/operators/reports and geometry reference belong to the shared tooling review boundary. Domain repositories own reviewed signal definitions/calibration/evidence. Host adapters own actual host execution evidence. Native modules own numerical and lifetime checks.
+This is an initial reference implementation. Before an external release, the owners of repository publication and of releases must be named explicitly. The project promises no organization, no adoption and no stable binary ABI. These are the review boundaries:
+- Shared tooling review owns the shared schemas, operators, reports and the geometry reference.
+- Domain repositories own reviewed signal definitions, calibration and evidence.
+- Host adapters own the evidence that comes from running on a real host.
+- Native modules own the numeric and lifetime checks.
 
-Semantic, technical and fixture review are distinct gates. A change can pass API tests while retaining unresolved calibration or visual questions. Report quality (`exact|approximate`), disposition, coupling and evidence status remain independent. The word exact applies to the declared operation and assumptions only.
+Semantic review, technical review and fixture review are separate gates. A change can pass the API tests while calibration or visual questions stay open. Report quality (`exact|approximate`), disposition, coupling and evidence status are independent of each other. The word "exact" applies only to the declared operation and its assumptions.
 
 Release checklist:
 
-- Confirm code MIT and original docs/data/fixtures CC-BY-SA-4.0; preserve inherited terms.
-- Freeze independent schema/data/operator versions and compatibility examples.
-- Reproduce pack/CSV/coverage/SHA256SUMS and installed-package tests on supported Python versions.
-- Execute analytical and adversarial tests; record actual native/host versions and results separately.
-- Audit public artifacts for machine/private paths, credentials, stale generated data and unlicensed claims.
-- State unsupported capabilities, resource limits, performance measurements and remaining artist/semantic gates.
-- Confirm publisher/release reviewer and approved source revision before publishing; avoid changes in consumers' inherited survey byte formats.
+- Confirm that code is MIT and original documentation, data and fixtures are CC-BY-SA-4.0. Keep inherited terms.
+- Freeze the schema, data and operator versions, which are independent of each other, and the compatibility examples.
+- Reproduce the pack, CSV, coverage and SHA256SUMS files, and run the installed-package tests on the supported Python versions.
+- Run the analytical and adversarial tests. Record the native and host versions and their results separately.
+- Audit public artifacts for machine paths, private paths, credentials, out-of-date generated data and unlicensed claims.
+- State the unsupported capabilities, resource limits, performance measurements and the artist and semantic gates that remain open.
+- Before publishing, confirm the publisher, the release reviewer and the approved source revision. Do not change the byte formats of survey files that consumers inherit.
 
-Additional formats, native packaging on three operating systems, the C++ core that replaces the removed native pilot, and production artist acceptance require separate scope/owner/effort decisions. Current local checks do not establish those release gates.
+Since 0.4.0, the implementation is a C++ core, `msf_tools._core`, in place of the removed native pilot. 0.4.0 has wheels for macOS arm64 and for Linux x86_64 and aarch64. These still need separate decisions on scope, owner and effort: more formats, native packages for more operating systems, and production artist acceptance. The current local checks do not pass those release gates.

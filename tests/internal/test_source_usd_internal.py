@@ -22,7 +22,7 @@ class UsdDependencies(unittest.TestCase):
     def clip_on_variant(self, host):
         (host / 'clip.usda').write_text('#usda 1.0\nover "A" {\n    double3 xformOp:translate.timeSamples = {\n        0: (5, 0, 0),\n'
                                         '    }\n    uniform token[] xformOpOrder = ["xformOp:translate"]\n}\n')
-        # Ivo's probe: clips authored on the variant spec itself, naming a host file outside the resolver root.
+        # A review probe: clips authored on the variant spec itself, naming a host file outside the resolver root.
         return (f'#usda 1.0\ndef Xform "A" (\n    variants = {{\n        string v = "x"\n    }}\n    prepend variantSets = "v"\n)\n{{\n'
                 f'    variantSet "v" = {{\n        "x" (\n            clips = {{\n                dictionary default = {{\n'
                 f'                    asset[] assetPaths = [@{host}/clip.usda@]\n                    string primPath = "/A"\n'

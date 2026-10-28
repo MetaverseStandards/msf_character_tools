@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // abi3 builds (Python 3.12+) compile under Py_LIMITED_API, which lacks CPython's
 // unchecked access macros. There they become the limited API's functions, with
-// the same reference semantics; PyTuple_SetItem additionally needs the tuple to
+// the same reference semantics; PyTuple_SetItem also needs the tuple to
 // be unshared, which holds for the fresh tuples the bindings fill.
 #pragma once
 #include <nanobind/nanobind.h>

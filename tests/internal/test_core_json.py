@@ -372,7 +372,7 @@ class OddItems(Mapping):
 
 
 def oddly(value, rng):
-    """`value` with some dicts behind a mappingproxy whose items() are lists, short or long tuples, or right."""
+    """`value` with some dicts behind a mappingproxy whose items() are lists, short or long tuples, or correct pairs."""
     if isinstance(value, list):
         return [oddly(v, rng) for v in value]
     if not isinstance(value, dict):

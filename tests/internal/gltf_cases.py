@@ -2,7 +2,7 @@
 """Random glTF/GLB assets and the battery of public calls run on each, for the
 differential tests against the 0.3.0 oracle.
 
-random_asset(rng) builds a structurally rich asset (meshes with morph targets,
+random_asset(rng) builds an asset with many structures (meshes with morph targets,
 sparse and descriptor-only accessors, skins, node hierarchies, animations of
 every interpolation, images, materials), often damaged on purpose at the JSON,
 binary or container level. BATTERY runs the same calls on both sides.

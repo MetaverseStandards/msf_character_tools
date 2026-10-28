@@ -218,7 +218,7 @@ struct CompiledRules {
 
     nb::tuple views() const { return nb::make_tuple(instructions, required, outputs); }
 
-    // Views are deeply immutable, so being the objects built here binds them.
+    // Views are deeply immutable, so if they are the objects built here, they hold this state.
     bool check_views(nb::handle i, nb::handle r, nb::handle o) const {
         return i.ptr() == instructions.ptr() && r.ptr() == required.ptr() && o.ptr() == outputs.ptr();
     }

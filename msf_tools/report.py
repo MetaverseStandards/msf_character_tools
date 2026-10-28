@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Stable public diagnostic and fail-closed result types."""
+"""The stable public types for diagnostics and results. A result with an error has no value."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
