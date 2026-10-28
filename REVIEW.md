@@ -10,7 +10,7 @@ One implementation process applied three roles: engineering, math adversary and 
 - The deterministic pack, CSV and coverage goldens pass, and so does the thin check command. Fixture generation uses separate axis equations and is reproducible.
 - The original shared combined fixture covers two instances, four nonzero influences, signed relative morph defaults and defaults above 1, and animation times both at authored keys and between them.
 - A consumer combined fixture, authored independently, agrees at nine samples. The largest component error seen is 8.2584e-8 m and the RMS error is 2.2237e-8 m, within its 1e-5 m tolerance.
-- Consumer teams ran typed profile mappings, structural sidecars, tracking failures and separate tests on real hosts. Read their own evidence before you claim host acceptance.
+- Consumer teams ran mappings between typed profiles, structural sidecars, tracking failures and separate tests on real hosts. Read their own evidence before you claim host acceptance.
 - The native pilot's numeric and ownership agreement has separate native CTest evidence. Reference acceptance alone is not a native build result.
 
 ## Defects found and fixed
@@ -30,6 +30,6 @@ One implementation process applied three roles: engineering, math adversary and 
 
 ## Remaining gates
 
-The reference supports positions with relative Basis morphs, four-influence LBS, and one core clip that is selected explicitly. These stay explicitly unsupported: non-position geometry, eight influences, DQS, compressed semantics, unsupported required extensions, simultaneous clips and rewriting embedded assets. Resource limits can refuse large assets that are otherwise valid.
+The reference supports positions with relative Basis morphs, four-influence LBS, and one core clip that is selected explicitly. (0.2.0 lifted the four-influence limit: LBS now uses every influence set.) These stay explicitly unsupported: non-position geometry, eight influences (also lifted in 0.2.0), DQS, compressed semantics, unsupported required extensions, simultaneous clips and rewriting embedded assets. Resource limits can refuse large assets that are otherwise valid.
 
 These stay separate gates: production artist and contact acceptance, general provider calibration, ownership of external publication, packaging platforms and performance requirements. Scalar mapping quality describes a declared operation under its assumptions. This review claims none of these: universal fidelity, community adoption, security against hostile processes that write to the filesystem at the same time, or a transaction guarantee over many files.

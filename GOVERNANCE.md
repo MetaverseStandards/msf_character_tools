@@ -2,7 +2,7 @@
 
 Original documentation: CC-BY-SA-4.0.
 
-This is an initial reference implementation. Before an external release, the owners of repository publication and of releases must be named explicitly. It promises no organization, no adoption and no stable binary ABI. These are the review boundaries:
+This is an initial reference implementation. Before an external release, the owners of repository publication and of releases must be named explicitly. The project promises no organization, no adoption and no stable binary ABI. These are the review boundaries:
 - Shared tooling review owns the shared schemas, operators, reports and the geometry reference.
 - Domain repositories own reviewed signal definitions, calibration and evidence.
 - Host adapters own the evidence that comes from running on a real host.

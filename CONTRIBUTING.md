@@ -2,7 +2,7 @@
 
 Original documentation: CC-BY-SA-4.0.
 
-Use Python 3.11 or later and the standard library for the reference. When you open a change, describe a concrete input and its output. Give the licence and provenance of any new data, and list the checks you ran. Keep signal meaning and calibration explicit. Evidence that is not resolved can stay listed as inventory. A new dependency needs a measured need and a licence review.
+The implementation is a C++17 core behind the Python API, for Python 3.11 or later. The Python package has no runtime dependencies beyond the standard library; usd-core is an optional extra. When you open a change, describe a concrete input and its output. Give the licence and provenance of any new data, and list the checks you ran. Keep signal meaning and calibration explicit. Evidence that is not resolved can stay listed as inventory. A new dependency needs a measured need and a licence review.
 
 Before a change is accepted:
 

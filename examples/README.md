@@ -13,9 +13,9 @@ Each script takes real assets through all the msf-tools steps. It writes files t
 | `usd_tube.py` | A tube the script writes, packaged as USDZ | The map drives a `bulge` blend shape, and a skeleton clip bends the tube |
 | `fbx_character.py` | A Kenney Mini Characters model (FBX SDK export), and AnimatedMorphCube written as FBX | Character: its `walk` clip. Cube: the map drives its `thin` shape key |
 
-The Fox and the Kenney character have no morph targets. For each of them, the binding step is expected to fail with `E_BINDING_REFERENCE`. The script says so and continues. Then the map is evaluated against the example pack's own target profile. The cubes show a successful binding.
+The Fox and the Kenney character have no morph targets. For each of them, the binding step is expected to fail with `E_BINDING_REFERENCE`. The script says so and continues. The map is then evaluated against the example pack's own target profile. The cubes show a successful binding.
 
-msf-tools' own test FBX writer (`tests/public/make_example_fbx.py`) writes the FBX cube. So the cube tests the shape-key path, but it tells you nothing about how real exporters write FBX. The Kenney character is the real export.
+msf-tools' own test FBX writer (`tests/public/make_example_fbx.py`) writes the FBX cube. The cube therefore tests the shape-key path, but it tells you nothing about how real exporters write FBX. The Kenney character is the real export.
 
 ## Set up from a clean environment
 

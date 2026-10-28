@@ -242,12 +242,11 @@ def _check_source(source, doc, kind, morph_counts):
 class LocalResolver:
     """Read files under an explicit root without following symlinks.
 
-    The byte budget adds up over the life of each resolver.
-
-    Every component is opened relative to a directory descriptor with O_NOFOLLOW.
-    So a symlink cannot be swapped in between the check and the read.
+    Every component is opened relative to a directory descriptor with O_NOFOLLOW,
+    so a symlink cannot be swapped in between the check and the read.
     O_NONBLOCK keeps the open of a FIFO from waiting for a writer, so the
     descriptor reaches the regular-file check and is refused there.
+    The byte budget adds up over the life of each resolver.
     """
     def __init__(self, root, max_resource_bytes=64 * 1024 * 1024, max_total_bytes=256 * 1024 * 1024):
         self.root = Path(root).absolute()

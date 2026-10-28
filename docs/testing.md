@@ -6,13 +6,13 @@ Original documentation: CC-BY-SA-4.0.
 
 Final local gate: 30 tests passed on Python 3.12.15 and on the installed Python 3.11.17 wheel. The installed-package tests run from a working directory outside the checkout. Fixture generation gives the same bytes again, and check.py passes. Audits of the project's own public text and local links report zero private references and zero broken local links. Remote CI and production artist acceptance are separate gates.
 
-`python -B -m unittest discover -s tests/public -v` and `python -B -m unittest discover -s tests/internal -t tests -v` run the real APIs and CLI commands in subprocesses. The analytical fixtures use direct axis equations and import nothing from the evaluator. Original binary32 accessor storage is decoded into binary64. So analytical equations written with decimal numbers can differ at binary32 input precision.
+`python -B -m unittest discover -s tests/public -v` and `python -B -m unittest discover -s tests/internal -t tests -v` run the real APIs and CLI commands in subprocesses. The analytical fixtures use direct axis equations and import nothing from the evaluator. Original binary32 accessor storage is decoded into binary64, so analytical equations written with decimal numbers can differ at binary32 input precision.
 
 | Gate | Evidence |
 | --- | --- |
 | Authoring | Unknown keys, duplicate IDs, finite metadata, references, duplicates across fragments, versions, immutable validated inputs |
 | Determinism | Exact checked-in pack, CSV and coverage bytes; SHA256; -0.0 and Unicode settings; real CLI runs with missing, out-of-date, extra and reordered outputs |
-| Mapping | Topological reorder, cycles, multiple writers, unit, calibration and domain constraints, the approximation and loss policy, refusal of unresolved inventory |
+| Maps | Topological reorder, cycles, multiple writers, unit, calibration and domain constraints, the approximation and loss policy, refusal of unresolved inventory |
 | Tracking | Signed valid input; invalid, missing, type, domain and time failures; no neutral substitution; output domain failure |
 | Assets | Original GLB bytes, chunks, unknown extensions and attributes kept; malformed headers, bounds and NaN; interleaved, normalized, padded matrices; sparse indices and values; bounded zero accessors |
 | Resource and sidecar | No remote fetch; resolver refuses traversal, symlinks and budget overruns; out-of-date asset, resource and sparse hashes; validation of structural destinations; canonical idempotence |
@@ -31,7 +31,7 @@ The last two are project checks, not promises of universal equivalence.
 
 ## Public and internal suites
 
-`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passes it unchanged: `tests/public` has not changed since 0.3.0. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name. So a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format. Then a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
+`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passes it unchanged: `tests/public` has not changed since 0.3.0. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format; in that case a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
 
 `tests/internal` covers private modules:
 - record admission;
@@ -90,7 +90,7 @@ Environment variables name the inputs that are outside the repository. A tier wh
 - against the oracle: 10^4 glTF assets, and 2x10^4 each of node paths, matrices, influence sets and GLB scenes;
 - every JSON file in RCEF at `MSF_RCEF_COMMIT` (default 0d90172), read from `MSF_RCEF_ROOT` with Git.
 
-`--sanitize` builds the core again, ufbx included, with ASan and UBSan. Then it runs the core tests, the FBX tests and the public suite on that build. `--fuzz` runs `scripts/fuzz.sh` for `MSF_FUZZ_SECONDS` (default 300) per harness.
+`--sanitize` builds the core again, ufbx included, with ASan and UBSan, and runs the core tests, the FBX tests and the public suite on that build. `--fuzz` runs `scripts/fuzz.sh` for `MSF_FUZZ_SECONDS` (default 300) per harness.
 
 On Linux (checked on CentOS Stream 9, x86_64 and aarch64), `scripts/ci_local.sh` runs the same tiers natively. The 0.3.0 oracle is built on the same machine: msf-tools at `v0.3.0` and its `native/ufbx` cffi package, installed into an interpreter named by `MSF_ORACLE_PYTHON`. If usd-core is installed there too and `MSF_ORACLE_SOURCE` names the `v0.3.0` checkout, the `docs/parity.md` check compares a new table with the table 0.3.0 gives on that machine. This is needed because usd-core's own arithmetic differs from the macOS build that measured the committed table.
 
@@ -106,7 +106,7 @@ More Linux and macOS notes:
 - node paths and target keys, which must round-trip and sort antisymmetrically;
 - FBX conversion through ufbx, then inspection of the generated GLB, which must be clean.
 
-A harness fails on a sanitizer report, on an exception that the core does not document, or on anything that the Python boundary would report as `E_INTERNAL`. `MSF_FUZZ_ALLOW_INTERNAL=1` lets `E_INTERNAL` through. Apple clang has no fuzzer runtime. So build `libFuzzer.a` from compiler-rt's sources (`lib/fuzzer`, from the same LLVM release as the compiler): run `clang++ -O2 -g -fsanitize=address -std=c++17 -c` on each file, then `ar rcs`. Pass the result as `MSF_LIBFUZZER`. The ASan flag keeps container annotations consistent with the instrumented core.
+A harness fails on a sanitizer report, on an exception that the core does not document, or on anything that the Python boundary would report as `E_INTERNAL`. `MSF_FUZZ_ALLOW_INTERNAL=1` lets `E_INTERNAL` through. Apple clang has no fuzzer runtime, so build `libFuzzer.a` from compiler-rt's sources (`lib/fuzzer`, from the same LLVM release as the compiler): run `clang++ -O2 -g -fsanitize=address -std=c++17 -c` on each file, then `ar rcs`. Pass the result as `MSF_LIBFUZZER`. The ASan flag keeps container annotations consistent with the instrumented core.
 
 ## Real-asset recipe tier
 
@@ -159,7 +159,7 @@ Skinned meshes at rest are compared too. They are skipped only when they differ 
 - OBJ files in skin bind space. To compare them needs the FBX bind pose of the mesh node, which the generated glTF does not carry.
 - Frames that ufbx evaluates without extrapolation.
 
-`tests/public/test_source_twins.py` is an optional tier (`MSF_KHRONOS_ASSETS`). It re-authors Khronos sample assets as FBX with the same nodes, meshes, skins, morph targets and first animation. Then it compares every primitive's world-space points with the glTF original at the keyframe times. `scripts/ci_local.sh` runs these tiers when the assets are present.
+`tests/public/test_source_twins.py` is an optional tier (`MSF_KHRONOS_ASSETS`). It re-authors Khronos sample assets as FBX with the same nodes, meshes, skins, morph targets and first animation, and compares every primitive's world-space points with the glTF original at the keyframe times. `scripts/ci_local.sh` runs these tiers when the assets are present.
 
 `python -B scripts/demo_fbx.py [file.fbx ...]` does the same for an ASCII rig made by the test writer and for any FBX files you give it (for example, binary files from the ufbx corpus). It prints the declared losses, the morph binding and the mesh at three animation times.
 
@@ -174,7 +174,7 @@ Numeric agreement covers the positions and curves that are explicitly supported,
 `tests/public/test_record_integrity.py` adds 21 tests for S-H1:
 - Inputs use standard-library TOML and JSON, direct binary32 packing and an independent SHA256. The expected scalar values and one-point geometry values are literal analytic results.
 - The tests assert that the shared package import comes from this checkout.
-- These records are refused before execution or export: replaced or directly constructed records; out-of-date raw data, views and hashes; resource, chunk, channel, binding, instruction and dependency records; and cyclic hierarchy records.
+- Records that were replaced, constructed directly, out of date or tampered with are refused before execution or export. This covers stale raw data, views and hashes; changed resource, chunk, channel, binding, instruction and dependency records; and cyclic hierarchy records.
 - Whitespace variants keep their distinct raw hashes and equal geometry.
 - Diagnostics for giant numbers keep exact paths and independent authoring errors.
 - Optional metadata validity is checked against both existing 1.0 schemas, with `jsonschema` as a test tool. It is not a runtime dependency of the distribution.
@@ -237,4 +237,4 @@ Builder GREEN results:
 - the same on Python 3.12.15, a vendor-patched build (zero skips, real Draft202012 schema validation);
 - `check.py` passes on both.
 
-No native or host gate that this change does not affect was run again. The saved commands, source and test hashes, and the links from cases to RED results come with the private draft handoff. A new, independent review of the exact tree is still required. A builder GREEN result is not acceptance.
+Native and host gates that this change does not affect were not run again. The saved commands, source and test hashes, and the links from cases to RED results come with the private draft handoff. A new, independent review of the exact tree is still required. A builder GREEN result is not acceptance.
