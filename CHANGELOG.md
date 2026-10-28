@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+The package has a new name, msf-character-tools. The behaviour does not change. Results, reports and output bytes are the same as in 0.4.0, apart from the message text below.
+
+### Changed
+- The distribution is now `msf-character-tools`. Install the extras as `msf-character-tools[usd]` and `msf-character-tools[fbx]`. Wheel and sdist files start with `msf_character_tools-`.
+- The import package is now `msf_character_tools`. Replace `import msf_tools` with `import msf_character_tools`. There is no `msf_tools` alias.
+- The C++ extension is now `msf_character_tools._core`. Its exceptions are `msf_character_tools._core.PathError` and `msf_character_tools._core.FbxParseError`.
+- The command is now `msf-character-tools`, and `python -m msf_character_tools` runs it. Its usage text names `msf-character-tools`.
+- Built packages carry the build record as `msf_character_tools/_build_info.json`. Its contents do not change.
+- The `E_FORMAT_DEPENDENCY` messages and remediations name `msf-character-tools`, for example `pip install 'msf-character-tools[usd]'`. The codes, refs and severities do not change.
+- `tests/public` changes only in its imports, its module paths and the expected usage line. `tests/public.sha256` lists the new hashes.
+
+### Unchanged
+- No pack, CSV, coverage, sidecar, snapshot, generated glTF or report contains the package name. These outputs are the same as in 0.4.0, byte for byte. The committed goldens do not change.
+
 ## 0.4.0 (2026-10-27)
 
 msf-tools now runs on a C++ core, `msf_tools._core`. The public API, results and bytes are the same as in 0.3.0, apart from the two nesting differences below. There are wheels for macOS arm64 (11.0 and later) and for Linux x86_64 and aarch64 (`manylinux_2_28`). Each platform has a CPython 3.11 wheel (`cp311`) and one `cp312-abi3` wheel for CPython 3.12 and later. On each platform the results are byte-identical to 0.3.0 run on the same machine. There is one exception, on x86_64: an FBX number of exactly 2^63 (see the ufbx change below).
