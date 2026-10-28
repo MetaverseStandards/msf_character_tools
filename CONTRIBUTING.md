@@ -15,4 +15,4 @@ Before a change is accepted:
 5. Keep original licences and source attributions. For each claim taken from a public source, give the source revision, digest and locator.
 6. Record the gates that remain open, honestly. This includes runs on real hosts and native runs, and visual or contact review where it applies.
 
-The repository is https://github.com/MetaverseStandards/msf-character-tools. Use the review tools of the repository host when the publisher supplies them. This document does not imply external community channels. A local reference change that can be reverted can be reviewed before publication. Release and remote ownership follow the repository governance.
+The repository is https://github.com/MetaverseStandards/msf_character_tools. Use the review tools of the repository host when the publisher supplies them. This document does not imply external community channels. A local reference change that can be reverted can be reviewed before publication. Release and remote ownership follow the repository governance.
