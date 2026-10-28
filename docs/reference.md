@@ -1,22 +1,30 @@
 # Version one reference
 
-Original documentation: CC-BY-SA-4.0. This reference describes project contracts; the pinned [glTF specification](sources.md) defines the external format.
+Original documentation: CC-BY-SA-4.0. This reference describes the project's contracts. The pinned [glTF specification](sources.md) defines the external format.
 
 ## Results and reports
 
-All six public functions and helpers decorated with `@public` return dataclass `Result[T]` with `.value: T | None`, `.report: Report` and `.ok: bool`. Report has `schema_version="1.0"`, diagnostics and losses. Each diagnostic has `code`, `severity`, singular `ref`, `message`, `remediation`; losses have `category`, `effect`, `reason`, `refs` and optional `units`, `bound`. A report containing any error has no value. Exceptions at decorated Result APIs become diagnostics; plain serialization/helpers (`canonical_json`, record `.to_dict()`/`.to_bytes()`, `survey_csv`, `coverage`) raise exceptions, including `Fault` for inconsistent records; callers must check `.ok` before using values. Records are validated independently so a failing operation reports multiple defects where collection remains meaningful; dependent decoding stops when structure is unsafe.
+The six public functions, and the helpers decorated with `@public`, return the dataclass `Result[T]`. It has `.value: T | None`, `.report: Report` and `.ok: bool`. A `Report` has `schema_version="1.0"`, diagnostics and losses:
+- Each diagnostic has `code`, `severity`, one `ref`, `message` and `remediation`.
+- Each loss has `category`, `effect`, `reason` and `refs`, and optional `units` and `bound`.
+
+A report that contains any error has no value. At decorated Result APIs, exceptions become diagnostics. Plain serialization functions and helpers raise exceptions: `canonical_json`, record `.to_dict()` and `.to_bytes()`, `survey_csv` and `coverage`. They raise `Fault` for inconsistent records. Callers must check `.ok` before they use values. Records are validated independently, so a failing operation reports several defects where it still makes sense to collect them. Decoding of dependent data stops when the structure is unsafe.
 
 Every diagnostic code is listed in [schemas/diagnostics.toml](../schemas/diagnostics.toml) with its severity, a one-line meaning, the release that added it and, for source losses, the error that replaces it under strict losses.
 
 ## Record ownership in package 0.1.1
 
-Create records with `validate_authoring`/`load_authoring`, `compile_pack`, `inspect_asset`, `profile_snapshot`, `compile_mapping`, `annotate_asset`, `evaluate_mapping` and `evaluate_geometry`. Public dataclass constructors retain their signatures for compatibility, but direct construction, copying and `dataclasses.replace` do not produce admitted records. Recreate a record with its public factory. This stricter constructor policy affects programmatic record replacement; existing wire inputs and factory call shapes stay the same.
+Create records with `validate_authoring` or `load_authoring`, `compile_pack`, `inspect_asset`, `profile_snapshot`, `compile_mapping`, `annotate_asset`, `evaluate_mapping` and `evaluate_geometry`. The public dataclass constructors keep their signatures for compatibility. But direct construction, copying and `dataclasses.replace` do not make admitted records. To make a record again, use its public factory. This stricter constructor policy affects code that replaces records. Existing wire inputs and factory calls stay the same.
 
-Factories recursively copy containers, freeze mappings/arrays, copy nested data records and retain immutable byte values. Admitted nested executable records may share owned immutable state. At compilation, binding, sampling, evaluation and record export, checks require factory admission, recompute a typed digest of every stored state field, validate nested records and check source consistency. A token or frozen outer dataclass alone does not provide these invariants. Changed or unadmitted records fail `E_RECORD_INTEGRITY`; Result APIs return no value, and plain exporters raise `Fault`. This is an API consistency contract for callers using the public interface, not isolation from arbitrary Python code or private internals.
+Factories copy containers recursively, freeze `Mapping` objects and arrays, copy nested data records and keep immutable byte values. Admitted nested executable records can share owned immutable state. At compilation, binding, sampling, evaluation and record export, the checks do four things. They require factory admission. They compute again a typed digest of every stored state field. They validate nested records. They check source consistency. A token or a frozen outer dataclass alone does not give these invariants. Changed or unadmitted records fail with `E_RECORD_INTEGRITY`. Result APIs then return no value, and plain exporters raise `Fault`. This is an API consistency contract for callers that use the public interface. It is not isolation from arbitrary Python code or from private internals.
 
-Pack identity hashes canonical pack bytes. Asset identity hashes exact original bytes, including whitespace and opaque GLB chunks. Snapshot checks parse the original source and compare it with the owned evaluation view, verify consumed byte/resource digests and declarations, and derive channels from validated bindings. Whitespace-equivalent assets have equivalent views and distinct raw identities. External resource bytes are bound to the bytes returned by the explicit resolver; source text does not authenticate remote contents. Profile selection/channels and compiled instructions/dependencies remain bound to the supplied pack. Compilation checks each full profile once at entry and once during compiled-record admission, using a shared signal index for each boundary; per-channel checks compare declarations without rebuilding profiles. Each later operation checks current stored state afresh. Checks traverse stored state and hash consumed bytes; asset checks also parse the raw document. Nested dependencies can cause several complete asset hashes/parses per operation; this fixed-multiple cost is material for repeated-frame consumers. It is not a wall-time or heap guarantee; general resource budgets beyond the documented limits are future work.
+Pack identity hashes the canonical pack bytes. Asset identity hashes the exact original bytes, including whitespace and opaque GLB chunks. Snapshot checks parse the original source and compare it with the owned evaluation view. They verify the digests and declarations of consumed bytes and resources, and derive channels from validated bindings. Assets that differ only in whitespace have equal views and different raw identities. External resource bytes are bound to the bytes that the explicit resolver returned. Source text does not authenticate remote contents. Profile selection and channels, and compiled instructions and dependencies, stay bound to the supplied pack.
 
-Hardening release 0.1.1 keeps schema, wire and scalar operator 1.0, with no new wire keys or deterministic valid-byte changes. Scalars must fit finite binary64, excluding booleans; huge integers produce precise numeric diagnostics instead of an overflow exception. Authoring collects independent row/version diagnostics after JSON numeric refusal. Descriptions require nonblank strings, and coupling arrays require unique nonblank entries (empty arrays remain valid). Runtime and portable authoring/pack schemas use one explicit blank-character set: U+0009–000D, U+001C–0020, U+0085, U+00A0, U+1680, U+2000–200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF. A string must contain at least one character outside that set; text is preserved without trimming or normalization. This retains the prior control-whitespace rejects and additionally rejects blank-only U+FEFF. Other nonempty Unicode text remains valid. Schema patterns use explicit codepoints rather than engine-dependent whitespace classes; opaque metadata strings are not description fields. Finite binary64 range and structural references remain runtime additions to JSON Schema.
+Compilation checks each full profile twice: once at entry and once during admission of the compiled record. Each of these boundaries uses a shared signal index. Per-channel checks compare declarations without building profiles again. Each later operation checks the current stored state again. Checks walk the stored state and hash consumed bytes. Asset checks also parse the raw document. Nested dependencies can cause several complete asset hashes and parses per operation. This cost is a fixed multiple, but it matters for consumers that repeat frames. It is not a guarantee of wall time or heap use. General resource budgets beyond the documented limits are future work.
+
+Hardening release 0.1.1 keeps schema, wire and scalar operator 1.0. It adds no wire keys and changes no deterministic bytes of valid input. Scalars must fit in finite binary64, and booleans are not scalars. Huge integers give precise numeric diagnostics instead of an overflow exception. After a JSON numeric refusal, authoring still collects the independent diagnostics for rows and versions. Descriptions must be nonblank strings. Coupling arrays must have unique nonblank entries, and empty arrays stay valid.
+
+The runtime and the portable authoring and pack schemas use one explicit set of blank characters: U+0009–000D, U+001C–0020, U+0085, U+00A0, U+1680, U+2000–200A, U+2028, U+2029, U+202F, U+205F, U+3000, U+FEFF. A string must contain at least one character outside that set. Text is kept as it is, without trimming or normalization. The earlier refusals of control whitespace stay, and a string of only U+FEFF is now refused too. Other nonempty Unicode text stays valid. Schema patterns use explicit code points, not whitespace classes that depend on the regex engine. Opaque metadata strings are not description fields. The finite binary64 range and structural references are runtime checks that JSON Schema does not express.
 
 ## Authoring and packs
 
@@ -25,15 +33,17 @@ validate_authoring(document) -> Result[ValidatedAuthoring]
 compile_pack(validated_authoring) -> Result[Pack]
 ```
 
-Authoring is a JSON-compatible mapping, usually loaded from TOML. Required top keys are `schema_version` (`"1.0"` or `"1.1"`), `data_version` (independent semantic version), `operator_version` (`"1.0"` or `"1.1"`), `id`, `license`, `signals`, `profiles`, `mappings`, `evidence`. Pack wire bytes contain the same validated document. `.document` is deeply immutable; `.to_dict()` returns a detached ordinary JSON value. `.to_bytes()` gives deterministic UTF-8; `.sha256` hashes those exact bytes. Raw dicts cannot be passed to `compile_pack`.
+Authoring is a JSON-compatible `Mapping` (such as a `dict`), usually loaded from TOML. The required top-level keys are `schema_version` (`"1.0"` or `"1.1"`), `data_version` (an independent semantic version), `operator_version` (`"1.0"` or `"1.1"`), `id`, `license`, `signals`, `profiles`, `mappings` and `evidence`. The pack wire bytes contain the same validated document. `.document` is deeply immutable. `.to_dict()` returns a detached ordinary JSON value. `.to_bytes()` gives deterministic UTF-8, and `.sha256` hashes those exact bytes. You cannot pass raw dicts to `compile_pack`.
 
-Required signal keys: `id`, `label`, `value_type="scalar"`, `units`, `domain={min?,max?}`, explicit `calibration`, `disposition`, `evidence` IDs, `evidence_status`. Optional keys: `region`, `side`, `neutral`, `native_default`, `coupling`, `native_id`, `surface`, `validity`, `confidence`, `time`, `metadata`. Neutral and storage default are independently optional values within domain. Units/calibration are explicit nonempty strings; identity mappings require the same calibration basis. Scalars exclude bool and all nonfinite values. Unbounded domains are `{}`. Survey text is never executable.
+Required signal keys: `id`, `label`, `value_type="scalar"`, `units`, `domain={min?,max?}`, an explicit `calibration`, `disposition`, `evidence` IDs and `evidence_status`. Optional keys: `region`, `side`, `neutral`, `native_default`, `coupling`, `native_id`, `surface`, `validity`, `confidence`, `time` and `metadata`. The neutral value and the storage default are each optional, and each must be within the domain. Units and calibration are explicit nonempty strings. Identity mappings need the same calibration basis on both sides. Scalars exclude bool and all nonfinite values. An unbounded domain is `{}`. Survey text is never run as code.
 
-Disposition: `mapped|unsupported|unresolved|excluded`. Evidence status: `verified_current|proposed|unresolved`, plus `calibrated_software` from authoring schema 1.1 (any other schema version refuses it with `E_ENUM`). `calibrated_software` marks values fitted in software without measured people or devices; mapping compilation treats it exactly as `proposed`, so it never satisfies a `verified_current` record. Coupling is a description or array of descriptions; confidence is a description or scalar in [0,1]; validity is bool or a description; time is a description. Format-specific inventoried structures belong inside explicit `metadata` objects. Unknown keys elsewhere fail.
+Disposition: `mapped|unsupported|unresolved|excluded`. Evidence status: `verified_current|proposed|unresolved`, plus `calibrated_software` from authoring schema 1.1. Any other schema version refuses `calibrated_software` with `E_ENUM`. `calibrated_software` marks values fitted in software without measured people or devices. Map compilation treats it exactly as `proposed`, so it never satisfies a `verified_current` record.
 
-Profiles require `id,label,signal_ids` with optional evidence and metadata. Evidence requires `id,claim,status`; public evidence has `url` (HTTPS), at least one of `revision,retrieved,sha256`, and `locator`. Original fixture evidence uses `license,authorship`. Optional evidence keys are exactly `url,revision,retrieved,sha256,locator,license,authorship`.
+Coupling is a description or an array of descriptions. Confidence is a description or a scalar in [0,1]. Validity is a bool or a description. Time is a description. Format-specific structures kept as inventory belong inside explicit `metadata` objects. Unknown keys anywhere else fail.
 
-Mappings require `id,rules`. A rule has `id,inputs,outputs,operator,disposition,assumptions,evidence,evidence_status,loss_annotations`, optional `coupling`, and `mapping_quality=exact|approximate` when mapped. Rule IDs are globally unique; inventory IDs are unique within each category. References and duplicate array entries are checked. Operators:
+A profile needs `id`, `label` and `signal_ids`, with optional evidence and metadata. An evidence entry needs `id`, `claim` and `status`. Public evidence has `url` (HTTPS), at least one of `revision`, `retrieved` and `sha256`, and `locator`. Evidence for original fixtures uses `license` and `authorship`. The optional evidence keys are exactly `url,revision,retrieved,sha256,locator,license,authorship`.
+
+A map (one entry of `mappings`) needs `id` and `rules`. A rule has `id,inputs,outputs,operator,disposition,assumptions,evidence,evidence_status,loss_annotations`, an optional `coupling`, and `mapping_quality=exact|approximate` when its disposition is `mapped`. Rule IDs are unique across the document. Inventory IDs are unique within each category. References and duplicate array entries are checked. The operators are:
 
 | Operator | Coefficients | Arity | Numeric operation |
 | --- | --- | --- | --- |
@@ -42,21 +52,23 @@ Mappings require `id,rules`. A rule has `id,inputs,outputs,operator,disposition,
 | weighted_sum | explicit ordered finite weights | N scalar inputs, one output | y=sum(weights[i]*inputs[i]) in declared order |
 | piecewise_linear (operators 1.1) | `knots=[[x,y],...]`, at least two | one scalar in/out | y=y_i at a knot; otherwise y=y_i+t*(y_{i+1}-y_i), t=(x-x_i)/(x_{i+1}-x_i), in the segment holding x |
 
-Unary/weighted output domain is checked during evaluation. Identity requires equal declared domains. Compatible units are required; explicit affine unit conversion needs stated assumptions. No clamp, inverse, neutral substitution, bilateral expansion or synthesis is implied. Unresolved inventory compiles into a pack, but requesting an unresolved rule fails mapping compilation.
+The output domain of unary and weighted operators is checked during evaluation. Identity needs equal declared domains. Units must be compatible. An explicit affine unit conversion needs stated assumptions. No operator implies a clamp, an inverse, neutral substitution, bilateral expansion or synthesis. Unresolved inventory compiles into a pack, but a request for an unresolved rule fails map compilation.
 
-`piecewise_linear` needs `operator_version="1.1"`. In a document with `operator_version="1.0"`, a rule naming it fails with `E_OPERATOR_VERSION` alone, before its keys or knots are checked; 0.2 reported `E_UNKNOWN_KEY` for its `knots` key, or `E_ENUM` without one. Under operators 1.0 a `knots` key on another operator is still `E_UNKNOWN_KEY`; under 1.1 it is `E_OPERATOR`. A document whose `operator_version` is unknown fails `E_ENUM` and has its rules checked as operators 1.0. Knot x values must strictly increase and y values must be monotone in one direction, flat segments allowed; spans between neighbouring knots must be finite binary64 (`E_KNOTS`). Mapping compilation requires the first and last x to equal the input signal's declared `min` and `max` (`E_DOMAIN_COMPATIBILITY`), so there is no extrapolation. The segment formula uses the same checked binary64 arithmetic as `affine`, so an underflowing product is refused with `E_NONFINITE`, and the result is kept within the segment's two y values, which keeps the operator monotone across knots despite rounding. That guard is not a clamp to any domain: inputs and outputs are still checked against their declared domains, never clamped. A one-sided split such as `[[-1,1],[0,0],[1,0]]` is exactly zero on its flat side, so two opposite splits of one signed value are never both nonzero.
+`piecewise_linear` needs `operator_version="1.1"`. In a document with `operator_version="1.0"`, a rule that names it fails with `E_OPERATOR_VERSION` alone, before its keys or knots are checked. 0.2 reported `E_UNKNOWN_KEY` for its `knots` key, or `E_ENUM` when it had no `knots` key. Under operators 1.0, a `knots` key on another operator is still `E_UNKNOWN_KEY`. Under 1.1 it is `E_OPERATOR`. A document whose `operator_version` is unknown fails with `E_ENUM`, and its rules are checked as operators 1.0.
+
+Knot x values must strictly increase. Knot y values must be monotone in one direction, and flat segments are allowed. The span between neighbouring knots must be finite binary64 (`E_KNOTS`). Map compilation requires the first and last x to equal the input signal's declared `min` and `max` (`E_DOMAIN_COMPATIBILITY`), so there is no extrapolation. The segment formula uses the same checked binary64 arithmetic as `affine`, so a product that underflows is refused with `E_NONFINITE`. The result is kept within the segment's two y values. This keeps the operator monotone across knots, even with rounding. That guard is not a clamp to any domain. Inputs and outputs are still checked against their declared domains, and are never clamped. A one-sided split such as `[[-1,1],[0,0],[1,0]]` is exactly zero on its flat side. So two opposite splits of one signed value are never both nonzero.
 
 ### Fragment loader
 
-`load_authoring(path) -> Result[ValidatedAuthoring]` accepts one TOML file or directory containing `pack.toml`. Directory TOML fragments are recursively sorted by relative path, excluding any `generated` directory and all hidden file/directory components (names beginning with `.`). Exclusion uses relative paths: a deliberately hidden authoring root is still allowed. Hidden virtual environments and CI checkouts are pruned before traversal. Array categories concatenate in that order; metadata keys cannot occur twice even if values match. Symlinks, reserved device filenames and case-insensitive path collisions fail. Fragments are opened without blocking, so a FIFO or other non-regular `.toml` entry fails `E_FRAGMENT_PATH` instead of hanging. TOML datetime values must be quoted when stored as strings; arbitrary non-JSON objects fail.
+`load_authoring(path) -> Result[ValidatedAuthoring]` accepts one TOML file, or a directory that contains `pack.toml`. In a directory, the TOML fragments are found recursively and sorted by relative path. Any `generated` directory is left out, and so is every hidden file or directory component (a name that starts with `.`). Exclusion uses relative paths, so an authoring root that is hidden on purpose is still allowed. Hidden virtual environments and CI checkouts are pruned before the walk enters them. Array categories are joined in that order. A metadata key cannot occur twice, even if the values match. Symlinks, reserved device file names and path collisions that ignore case fail. Fragments are opened without blocking, so a FIFO or other non-regular `.toml` entry fails with `E_FRAGMENT_PATH` instead of hanging. TOML datetime values must be quoted when they are stored as strings. Arbitrary non-JSON objects fail.
 
 ### Deterministic outputs
 
-`canonical_json(value) -> bytes` recursively normalizes -0.0 to 0.0, then uses exactly `json.dumps(data, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2)+"\n"`, UTF-8. Array order is preserved. This is the project byte convention, not RFC8785 certification. No timestamps or absolute machine paths are injected. Caller-authored metadata remains caller data.
+`canonical_json(value) -> bytes` changes -0.0 to 0.0 recursively. Then it uses exactly `json.dumps(data, sort_keys=True, ensure_ascii=False, allow_nan=False, indent=2)+"\n"`, in UTF-8. Array order is kept. This is the project's byte convention. It is not certified to RFC 8785. No timestamps or absolute machine paths are added. Metadata that the caller wrote stays the caller's data.
 
-`survey_csv(pack) -> bytes` writes UTF-8 LF, `csv.QUOTE_MINIMAL`, header `id,label,value_type,units,disposition,evidence_status` then profile IDs in declared order; membership is `1` or empty. Existing independently owned CRLF survey formats must use their original checker; this new CSV does not rewrite them.
+`survey_csv(pack) -> bytes` writes UTF-8 with LF line ends and `csv.QUOTE_MINIMAL`. The header is `id,label,value_type,units,disposition,evidence_status`, then the profile IDs in declared order. Membership is `1` or empty. Existing CRLF survey formats that other projects own must use their original checker. This new CSV does not rewrite them.
 
-`coverage(pack) -> dict` includes signal disposition/reason/profile/rule uses; complete evidence including unused/unresolved entries; rule quality partitions; aggregate totals; per-profile partitions/counts and original metadata. SHA256SUMS hashes pack, CSV and coverage exact bytes, in that order, using `digest + "  " + basename + LF`. Four output basenames must be distinct.
+`coverage(pack) -> dict` includes, for each signal, its disposition, reason, and uses in profiles and rules. It includes all the evidence, unused and unresolved entries too. It also has partitions by rule quality, aggregate totals, partitions and counts for each profile, and the original metadata. SHA256SUMS hashes the exact bytes of the pack, the CSV and the coverage, in that order, with the line format `digest + "  " + basename + LF`. The four output basenames must be different.
 
 ## Snapshots and sidecars
 
@@ -66,15 +78,31 @@ inspect_asset(bytes, /, format, resolver=None, sidecar=None, *,
 annotate_asset(snapshot, annotations) -> Result[Sidecar]
 ```
 
-Supported format strings: `gltf`, `glb` (also `json`/`gltf2` JSON aliases). Input is immutable bytes, passed positionally: `bytes` is positional-only, so `inspect_asset(bytes=...)` is refused with `E_INPUT`. Snapshot retains `.original_bytes`, `.sha256`, deeply immutable `.document`, `.chunks` with original payload bytes, `.resources` with URI/declared byte length/digest/consumed data, `.channels` and `.bindings`. `.to_dict()` publishes complete document/inventory/capabilities without embedding duplicate binary payloads. Hashes are source byte identities; names are display only.
+Supported format strings: `gltf` and `glb`, and `json` and `gltf2` as aliases for JSON. The input is immutable bytes, passed by position. `bytes` is positional-only, so `inspect_asset(bytes=...)` is refused with `E_INPUT`. A snapshot keeps these:
+- `.original_bytes` and `.sha256`;
+- the deeply immutable `.document`;
+- `.chunks`, with the original payload bytes;
+- `.resources`, each with its URI, declared byte length, digest and consumed data;
+- `.channels` and `.bindings`.
 
-No default remote or local external fetch. Embedded base64 and BIN are explicitly consumed. Unconsumed external buffers produce warning/inventory; decoding them fails `E_RESOURCE_UNAVAILABLE`. Images are inventoried; external images are consumed only with explicit resolver. Unknown required extensions and extension-defined animation targets may be inspected, but requested evaluation applies the stricter capability gate.
+`.to_dict()` gives the complete document, inventory and capabilities, without copies of binary payloads. Hashes identify the source bytes. Names are only for display.
 
-`LocalResolver(root,max_resource_bytes=64MiB,max_total_bytes=256MiB)` is a callable. Root must be canonical, without symlink ancestors (`Path(root).resolve()` is explicit). URI paths are relative, percent-decoded, no traversal, query, fragment or remote scheme. Each directory/file is opened with no-follow, nonblocking descriptors to reject symlink traversal and substitution. Regular files only: FIFOs, devices and sockets fail `E_RESOURCE_TYPE` without waiting on the open. Budgets accumulate over resolver lifetime; create a new resolver for a new budget. Custom callables are explicit caller capability and must return bytes.
+By default, nothing external is fetched, remote or local. Embedded base64 data and the BIN chunk are consumed explicitly. An external buffer that is not consumed gives a warning and an inventory entry, and decoding it fails with `E_RESOURCE_UNAVAILABLE`. Images are listed as inventory. External images are consumed only with an explicit resolver. Unknown required extensions and animation targets defined by extensions can be inspected. But a request for evaluation applies the stricter capability gate.
 
-Inspection limits: 64MiB input, 64MiB/resource, 256MiB total consumed resources, 1,000,000 decoded components/accessor, 4,000,000 total declared accessor components, 100,000 objects/category, 128 JSON nesting levels. These checks precede zero-backed/sparse allocation; custom resolvers must bound their own allocation before returning. JSON parser recursion failures are diagnostics. Large production assets need a separately reviewed limit revision; limits are not a streaming guarantee.
+`LocalResolver(root,max_resource_bytes=64MiB,max_total_bytes=256MiB)` is a callable. The root must be canonical, with no symlink among its ancestors (`Path(root).resolve()` is explicit). URI paths are relative and percent-decoded, with no traversal, query, fragment or remote scheme. Each directory and file is opened with no-follow, nonblocking descriptors, which refuse symlink traversal and substitution. Only regular files are read. FIFOs, devices and sockets fail with `E_RESOURCE_TYPE`, without waiting on the open. Budgets add up over the life of a resolver. For a new budget, make a new resolver. A custom callable is a capability that the caller gives explicitly, and it must return bytes.
 
-Accessors support all core component types, matrix column padding, offsets, interleaving, normalized byte/short values and strictly increasing sparse overrides. Bounds and finite decoded floats are checked. Zero-backed accessors are supported within the same budgets. Binary geometry/animation roles receive further type/shape checks when evaluated.
+Inspection limits:
+- input: 64MiB;
+- each resource: 64MiB;
+- total consumed resources: 256MiB;
+- decoded components per accessor: 1,000,000;
+- total declared accessor components: 4,000,000;
+- objects per category: 100,000;
+- JSON nesting: 128 levels.
+
+These checks run before allocation for zero-backed and sparse accessors. Custom resolvers must limit their own allocation before they return. JSON parser recursion failures are diagnostics. Large production assets need a revision of the limits, reviewed separately. The limits do not promise streaming.
+
+Accessors support all core component types, matrix column padding, offsets, interleaving, normalized byte and short values, and strictly increasing sparse overrides. Bounds are checked, and decoded floats must be finite. Zero-backed accessors are supported within the same budgets. Binary data used for geometry or animation gets more type and shape checks when it is evaluated.
 
 ### Sidecar wire
 
@@ -97,13 +125,13 @@ Accessors support all core component types, matrix column padding, offsets, inte
 }
 ```
 
-`annotate_asset` accepts `{bindings:[...],metadata?:{...}}`; output is a canonical, idempotent sidecar. Every reuse verifies source hash, the complete consumed resource hash inventory, structural indices and locator agreement. Sparse index, sparse value and base buffer digests are all bound by the sidecar. Optional `ref.resource_sha256` must identify a consumed target resource. Binding IDs/destinations are unique. Initial version supports scalar morph weights per mesh instance; other channel binding shapes need an explicit revision.
+`annotate_asset` accepts `{bindings:[...],metadata?:{...}}`. The output is a canonical, idempotent sidecar. Each reuse of the sidecar verifies the source hash, the hashes of all consumed resources, the structural indices, and that the locator agrees. The sidecar binds the digests of sparse indices, sparse values and base buffers. The optional `ref.resource_sha256` must identify a consumed target resource. Binding IDs and destinations are unique. The first version supports scalar morph weights for each mesh instance. Other shapes of channel binding need an explicit revision.
 
-`morph_binding(snapshot, signal, node, target) -> Result[immutable binding]` creates a structural binding from a pack signal, including its single target resource digest when applicable. Multiple buffers remain fully bound in `resource_hashes`. `decode_accessor(snapshot,index)` returns `Result[tuple[tuple[number,...],...]]`.
+`morph_binding(snapshot, signal, node, target) -> Result[immutable binding]` makes a structural binding from a pack signal. When it applies, the binding includes the digest of the single target resource. When there are several buffers, `resource_hashes` still binds all of them. `decode_accessor(snapshot,index)` returns `Result[tuple[tuple[number,...],...]]`.
 
 ### Source formats
 
-`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs the format's adapter and its reader library; without them the result is `E_FORMAT_DEPENDENCY`. The message says whether this build lacks the adapter altogether or only the optional reader, which `msf-tools[usd]` installs. The FBX reader is compiled into the core, so FBX always has its reader. The adapters themselves are added separately; this section describes the shared contract.
+`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs the format's adapter and its reader library. Without them the result is `E_FORMAT_DEPENDENCY`. The message says if this build has no adapter at all, or lacks only the optional reader, which `msf-tools[usd]` installs. The FBX reader is compiled into the core, so FBX always has its reader. The adapters themselves are added separately. This section describes the contract they share.
 
 An adapter converts the source into an in-memory GLB with one glTF vertex per source point. The unchanged glTF inspector then admits it, and `original_bytes`, `sha256` and `format="glb"` describe that GLB. `source` records:
 - `format`, `sha256` and `byte_length` of the source; the source bytes are not kept;
@@ -113,22 +141,22 @@ An adapter converts the source into an in-memory GLB with one glTF vertex per so
 - `node_paths`, one per glTF node, and `target_keys`, one list per glTF mesh in target order;
 - `dependencies` (`uri`, `sha256`, `byte_length`, sorted by URI) and `losses` (warning or info diagnostics, which are also in the report).
 
-The GLB bytes are deterministic for a fixed source, dependency set, adapter version, reader version and options, but not across reader versions, so no hash of them is persisted. Every recorded hash is the source sha256 instead:
+The GLB bytes are deterministic for a fixed source, dependency set, adapter version, reader version and options. They are not deterministic across reader versions, so no hash of them is stored. Every recorded hash is the source sha256 instead:
 - snapshot `asset_sha256` (`to_dict` adds `generated_sha256` and `source`);
 - sidecar and binding `asset_sha256`;
 - geometry golden `asset_sha256`;
-- compiled-mapping `source_sha256` and `target_sha256`.
+- compiled-map `source_sha256` and `target_sha256`.
 
-Goldens and compiled mappings add a summary of how the snapshot was produced (`source`, or `source_adapter` / `target_adapter`). Sidecar `resource_hashes` lists the source dependencies. In a generated snapshot's `to_dict`, `generated_sha256`, `document`, `resources` and `chunks` describe the generated GLB and can change when the reader version changes. Only `asset_sha256` and `source` identify the source.
+Goldens and compiled maps add a summary of how the snapshot was produced (`source`, or `source_adapter` / `target_adapter`). Sidecar `resource_hashes` lists the source dependencies. In a generated snapshot's `to_dict`, `generated_sha256`, `document`, `resources` and `chunks` describe the generated GLB and can change when the reader version changes. Only `asset_sha256` and `source` identify the source.
 
-Node paths escape `%`, `/`, `#`, `[`, `]`, `:` and control characters in each component. `[k]` tells apart duplicate siblings, and `#helper:geometry` or `#helper:scale` marks reader-made helper nodes. glTF node `i` is the `i`-th path in order of unescaped components. A generated-snapshot binding must carry `ref.source_locator = <node path>#<target key>`, which is authoritative. The stored `node`, `mesh`, `target` and `locator` are hints:
+Node paths escape `%`, `/`, `#`, `[`, `]`, `:` and control characters in each component. `[k]` tells duplicate siblings apart. `#helper:geometry` or `#helper:scale` marks helper nodes that the reader made. glTF node `i` is the `i`-th path in order of unescaped components. A generated-snapshot binding must carry `ref.source_locator = <node path>#<target key>`, which is authoritative. The stored `node`, `mesh`, `target` and `locator` are hints:
 - if a different reader version moved them, the binding is admitted with the resolved indices and a `W_BINDING_REINDEXED` warning;
 - if the locator names nothing in the source, it is `E_STALE_SOURCE`;
 - `resource_sha256` is refused.
 
 glTF bindings never use `source_locator`.
 
-`options` is a mapping with these keys only:
+`options` is a `Mapping` with only these keys:
 - `influences`: `"faithful"` (default) or `"top4"`;
 - `losses`: `"declare"` (default) or `"strict"`;
 - `animation`: a stack name or a nonnegative index;
@@ -150,13 +178,13 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 
 glTF formats refuse `isolate`, `limits` and `options` with `E_SOURCE_OPTIONS`.
 
-`isolate=True` runs the source reader in a new Python process (`python -I`, started from the msf-tools checkout or installation, with only `PATH`, `TMPDIR` and `PXR_WORK_THREAD_LIMIT=1` in its environment, in its own process group). The reader library is never imported by the calling process. The returned GLB is inspected again as untrusted input, so the snapshot is the same as without isolation. The resolver must be `None` or a `LocalResolver`, which the reader process rebuilds from its root and budgets; any other resolver is `E_ISOLATE_RESOLVER`. Failures:
+`isolate=True` runs the source reader in a new Python process. The process runs `python -I`, starts from the msf-tools checkout or installation, has only `PATH`, `TMPDIR` and `PXR_WORK_THREAD_LIMIT=1` in its environment, and has its own process group. The calling process never imports the reader library. The returned GLB is inspected again as untrusted input, so the snapshot is the same as without isolation. The resolver must be `None` or a `LocalResolver`. The reader process builds the `LocalResolver` again from its root and budgets. Any other resolver is `E_ISOLATE_RESOLVER`. Failures:
 - running longer than `timeout_s` kills the process group: `E_SOURCE_TIMEOUT`;
 - physical memory over `max_reader_memory` (sampled every 100 ms) kills it too: `E_SOURCE_MEMORY`;
 - a reader process that exits with an error or a signal: `E_SOURCE_CRASHED`, with the end of its stderr;
 - a malformed response: `E_SOURCE_PROTOCOL`.
 
-An unexpected exception inside the reader (a bug, not a declared refusal) is reported differently in the two modes: `E_SOURCE_CRASHED` with the end of the traceback when isolated, and `E_INPUT` or `E_INTERNAL` from the operation boundary when in-process. Declared refusals, reader parse errors and limits give the same diagnostics in both modes.
+The two modes report an unexpected exception inside the reader (a bug, not a declared refusal) differently. Isolated, it is `E_SOURCE_CRASHED` with the end of the traceback. In-process, it is `E_INPUT` or `E_INTERNAL` from the operation boundary. Declared refusals, reader parse errors and limits give the same diagnostics in both modes.
 
 #### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
 
@@ -202,31 +230,44 @@ compile_mapping(pack, source_snapshot, target_snapshot, mapping_id,
 evaluate_mapping(compiled_mapping, samples) -> Result[EvaluatedValues]
 ```
 
-`profile_snapshot(pack,id)` explicitly constructs a virtual typed snapshot; it is never an overloaded inspect constructor. Its identity includes pack hash/profile/channels. Asset channels require verified sidecar bindings. Compiler checks snapshot type/unit/domain/calibration against pack, refuses missing references, competing drivers/multiple writers, cycles, unsupported or unresolved requested signals/rules, incompatible units/shapes, and approximation without opt-in. Instructions run in dependency waves: each wave holds the rules whose dependencies all ran in earlier waves, in declaration order, so `[A needs B, B, C]` compiles to `[B, C, A]`. Scheduling visits each rule and dependency edge once rather than rescanning all rules per wave. Intermediate values may remain virtual, terminal outputs must be bound in target. Declared losses survive compilation/evaluation reports.
+`compile_mapping` compiles one map: the `[[mappings]]` entry named by `mapping_id`. `evaluate_mapping` runs the compiled map (`CompiledMapping`) on samples.
 
-Authoring validation and pack compilation preserve well-formed `verified_current`,
-`proposed` and `unresolved` inventory, including empty evidence arrays. Requested
-execution checks each rule, input, intermediate and output: a current rule needs
-current endpoints; a proposed rule permits current/proposed endpoints. Every
-record needs nonempty own evidence. Current records require every included
-reference current, including current endpoints in proposed rules. Proposed
-records permit current/proposed references. Participating unresolved records or
-references refuse; unreferenced inventory remains allowed. Approximation opt-in
-does not change authored statuses or evidence.
+`profile_snapshot(pack,id)` explicitly makes a virtual typed snapshot. It is never an overloaded form of inspection. Its identity includes the pack hash, the profile and the channels. Asset channels need verified sidecar bindings. The compiler checks the snapshot's types, units, domains and calibration against the pack. It refuses these:
+- missing references;
+- competing drivers and multiple writers;
+- cycles;
+- requested signals or rules that are unsupported or unresolved;
+- incompatible units or shapes;
+- approximation without opt-in.
 
-Identity additionally requires equal presence and value of `neutral`, `side`
-and `coupling` on pack records. Absence differs from zero or an empty coupling
-array; null remains structurally invalid. Profile channels keep their existing
-type/unit/domain/calibration fields. These metadata equalities apply to identity.
+Instructions run in dependency waves. Each wave holds the rules whose dependencies all ran in earlier waves, in declaration order. So `[A needs B, B, C]` compiles to `[B, C, A]`. Scheduling visits each rule and dependency edge once, and does not scan all rules again for each wave. Intermediate values can stay virtual. Terminal outputs must be bound in the target. Declared losses are kept in the compilation and evaluation reports.
 
-Nonidentity operations need nonempty derivation assumptions when any input
-calibration or units differs from the output, quality is approximate, or a loss
-effect is `approximated`, `dropped` or `unknown`. Exact numeric operations on one
-basis with no declared loss can keep empty assumptions; differing bounds alone
-do not imply a different basis. Unit conversion retains its existing explicit
-affine requirement. Approximate quality requires explicitly authored nonempty
-`loss_annotations`; the compiler no longer supplies a generic loss. Existing
-opt-in applies to declared losses even when quality is exact.
+Authoring validation and pack compilation keep well-formed `verified_current`,
+`proposed` and `unresolved` inventory, empty evidence arrays included. A request
+to run a map checks each rule, input, intermediate and output. A current rule
+needs current endpoints. A proposed rule allows current or proposed endpoints.
+Every record needs nonempty evidence of its own. Current records need every
+reference they include to be current, and this includes current endpoints in
+proposed rules. Proposed records allow current or proposed references. Unresolved
+records or references that take part are refused. Inventory that nothing
+references is still allowed. Approximation opt-in does not change the authored
+statuses or evidence.
+
+Identity also needs `neutral`, `side` and `coupling` to be equally present, with
+equal values, on the pack records. An absent key is different from zero or from an
+empty coupling array. Null is still structurally invalid. Profile channels keep
+their existing type, unit, domain and calibration fields. These metadata equality
+rules apply only to identity.
+
+Operations other than identity need nonempty derivation assumptions in three
+cases: an input's calibration or units differ from the output's, the quality is
+approximate, or a loss effect is `approximated`, `dropped` or `unknown`. Exact
+numeric operations on one basis with no declared loss can keep empty assumptions.
+Different bounds alone do not mean a different basis. Unit conversion keeps its
+existing rule that it must be an explicit affine. Approximate quality needs
+nonempty `loss_annotations`, authored explicitly. The compiler no longer adds a
+generic loss. The existing opt-in applies to declared losses, even when the
+quality is exact.
 
 | Execution refusal | Diagnostic ref |
 | --- | --- |
@@ -236,17 +277,19 @@ opt-in applies to declared losses even when quality is exact.
 | `E_NEUTRAL_COMPATIBILITY`, `E_SIDE_COMPATIBILITY`, `E_COUPLING_COMPATIBILITY` | Identity rule ID; message identifies both endpoints |
 | `E_DERIVATION_ASSUMPTIONS`, `E_LOSS_REQUIRED` | Rule ID |
 
-Checks run in rule declaration order, with own rule evidence before endpoint
-evidence, inputs before output, and references in authored order. All incompatible
-included references are reported. A repeated intermediate is checked at each
-participating rule. Existing record, snapshot, graph and channel checks retain
-their order. Missing/invalid statuses and unknown IDs still refuse at authoring
-validation with `E_REQUIRED`, `E_ENUM` and `E_REFERENCE`.
+Checks run in rule declaration order. A rule's own evidence comes before endpoint
+evidence, inputs come before the output, and references follow the authored order.
+All incompatible included references are reported. A repeated intermediate is
+checked at each rule it takes part in. The existing record, snapshot, graph and
+channel checks keep their order. Missing or invalid statuses and unknown IDs are
+still refused at authoring validation, with `E_REQUIRED`, `E_ENUM` and
+`E_REFERENCE`.
 
-These are structural arithmetic admission checks. A declared status, assumption,
-loss or matching calibration string does not establish physiological, provider
-or visual equivalence. Domain review owns the meaning and support for those
-claims, including legitimate synthetic mixed-basis operations.
+These are structural checks for admitting arithmetic. A declared status,
+assumption or loss, or a matching calibration string, does not show physiological,
+provider or visual equivalence. Domain review owns the meaning of those claims and
+the support for them. This includes legitimate synthetic operations that mix
+bases.
 
 ```python
 from msf_tools import load_authoring, compile_pack, profile_snapshot
@@ -267,7 +310,7 @@ assert result.ok, result.report.to_dict()
 assert result.value.to_dict()["samples"][0]["values"]["output.wink"] == -0.5
 ```
 
-Samples are an array of exact `{timestamp,values,validity}` objects. Timestamp is finite nonnegative seconds, excluding bool. Values are typed by source channel ID; every supplied value has explicit boolean validity. Required missing or invalid input fails, even if its numeric value equals neutral. Values are checked before/after each operation. Frames are independent and preserve input order; no temporal smoothing or hidden resampling. `.to_dict()` returns `{samples:[{timestamp,values:{output_id:value},validity:{output_id:true}}]}`. If any frame fails, entire Result has no evaluated value.
+Samples are an array of objects with exactly the keys `{timestamp,values,validity}`. The timestamp is finite, nonnegative seconds, and not a bool. Values are keyed by source channel ID and typed by that channel. Every supplied value has an explicit boolean validity. A required input that is missing or invalid fails, even if its numeric value equals the neutral value. Values are checked before and after each operation. Frames are independent and keep the input order. There is no temporal smoothing and no hidden resampling. `.to_dict()` returns `{samples:[{timestamp,values:{output_id:value},validity:{output_id:true}}]}`. If any frame fails, the whole Result has no evaluated value.
 
 ## Independent geometry helpers
 
@@ -280,20 +323,34 @@ export_geometry_golden(snapshot, **kwargs) -> Result[immutable JSON value]
 reparent_local(child_world, new_parent_world) -> Result[column-major local matrix]
 ```
 
-Geometry is usable directly on an inspected fixture without any signal taxonomy. Matrices use column vectors and glTF column-major storage; quaternion XYZW, radians, metres, right-handed Y up. Arithmetic is binary64 after decoding original binary storage. Mesh-local position for every mesh node instance:
+You can use geometry directly on an inspected fixture, without any signal taxonomy. Matrices use column vectors and glTF column-major storage. Quaternions are XYZW. Units are radians and metres, in a right-handed, Y-up frame. Arithmetic is binary64, after the original binary storage is decoded. The mesh-local position for every mesh node instance is:
 
 ```text
 p_morph = p_basis + sum(morph_weight * relative_position_delta)
 p_local = sum(skin_weight * inverse(W_mesh) * W_joint * IBM * p_morph)
 ```
 
-Morph precedes skinning. Rest is not assumed equal to bind. LBS uses every influence set: each JOINTS_n must be unsigned unnormalized byte/short and each WEIGHTS_n float or normalized byte/short, paired and numbered from 0. A vertex's influences are the sets in order, so a single set evaluates exactly as four-influence LBS did. All joint indices remain intact; a vertex's weights across all sets are finite nonnegative and sum to one within project tolerance1e-6, with no implicit renormalization. Source adapters can still cut influences to four with `options={"influences": "top4"}`, which declares `W_INFLUENCES_TRUNCATED`. Signed and >1 **morph** weights are accepted. Singular mesh world transforms fail. DQS/unsupported required behavior extensions, compressed semantics and non-position requests reject evaluation. Unknown nonbehavior data remains in snapshot. No geometry is deleted or rewritten.
+Morphing comes before skinning. The rest pose is not assumed to equal the bind pose. LBS uses every influence set. Each JOINTS_n must be unsigned, unnormalized byte or short. Each WEIGHTS_n must be float, or normalized byte or short. The sets are paired and numbered from 0. A vertex's influences are the sets in order, so a single set evaluates exactly as four-influence LBS did. All joint indices stay intact. Across all sets, a vertex's weights are finite and nonnegative, and sum to one within the project tolerance 1e-6, with no implicit renormalization. Source adapters can still cut influences to four with `options={"influences": "top4"}`, which declares `W_INFLUENCES_TRUNCATED`.
 
-`animation_id=None` evaluates authored rest/defaults; explicit integer selects one clip. STEP holds; LINEAR interpolates components and shortest quaternion slerp (both keys are normalized first, and keys with a dot product above 0.9995, less than about 3.6° apart, use normalized linear interpolation instead); CUBICSPLINE uses authored in/out tangents multiplied by interval duration in Hermite, then normalizes quaternion result. Tangents and intermediate quaternion polynomials are never normalized. Endpoints clamp; key times must be nonnegative/strictly increasing. Authored rotations (node `rotation`, rotation keys and rotation overrides) must be within 0.00769 of unit length, the Khronos glTF-Validator's limit (`unitLengthThresholdVec4`), or they are `E_QUATERNION`; accepted values are normalized before use. Binary output shape/count must match target/path/interpolation. Inspection validates available core animation data; unsupported extension channels remain inventoried.
+Signed **morph** weights, and morph weights above 1, are accepted. Singular mesh world transforms fail. Evaluation refuses DQS, unsupported required behaviour extensions, compressed semantics and requests for attributes other than positions. Unknown data that does not affect behaviour stays in the snapshot. No geometry is deleted or rewritten.
 
-`morph_weights` maps integer node IDs to explicit weight arrays. `node_transforms` maps integer node IDs to local TRS or matrix fields using the authored representation. Animation/manual writes to the same property fail; defaults never imply a competing driver. Returned wire is `{timestamp,instances:[{node,mesh,primitives:[{primitive,positions:[[x,y,z],...]}]}]}`. Every primitive uses corresponding accessor vertex order; indices remain in immutable document. Output contains all mesh node instances, including those outside the default scene; callers select instance explicitly. Before any decoding, evaluation counts `3 × vertices × (1 + morph targets with POSITION)` for every primitive of every mesh node instance, plus `8 × vertices × influence sets` for every primitive of every skinned instance (four joint and four weight components per set), plus `16 × joints` once for each skin those instances use, and refuses with `E_RESOURCE_LIMIT` at `/nodes` when the total exceeds 4,000,000 components. That equals the inspection limit on total declared accessor components, so an asset that evaluates each POSITION, morph-target, JOINTS, WEIGHTS and inverse-bind-matrix accessor once always fits; instancing a mesh or sharing accessors multiplies the count. Inverse bind matrices are decoded and checked once per skin per evaluation and reused by every instance sharing that skin. The remaining per-vertex skinning work (at most one palette matrix per distinct referenced joint) grows with vertices × instances, which the budget limits to 1,333,333.
+`animation_id=None` evaluates the authored rest values and defaults. An explicit integer selects one clip. Sampling works like this:
+- STEP holds the value.
+- LINEAR interpolates components, and uses the shortest quaternion slerp. Both keys are normalized first. Keys with a dot product above 0.9995 (less than about 3.6° apart) use normalized linear interpolation instead.
+- CUBICSPLINE uses the authored in and out tangents, multiplied by the interval duration, in Hermite form. Then it normalizes a quaternion result.
 
-`export_geometry_golden` wraps evaluation with source hash/precision/coordinate/units for consumers. `reparent_local` computes `inverse(new_parent_world)*child_world`, rejects singular/sheared TRS, returns matrix. It probes child world preservation only; skin preservation requires a separate geometry check. No joint deletion is implied.
+Tangents and intermediate quaternion polynomials are never normalized. Endpoints clamp. Key times must be nonnegative and strictly increasing. Authored rotations (node `rotation`, rotation keys and rotation overrides) must be within 0.00769 of unit length, or they are `E_QUATERNION`. This is the Khronos glTF-Validator's limit (`unitLengthThresholdVec4`). Accepted values are normalized before use. The shape and count of the binary output must match the target, path and interpolation. Inspection validates the core animation data that is available. Unsupported extension channels stay in the inventory.
+
+`morph_weights` maps integer node IDs to explicit weight arrays. `node_transforms` maps integer node IDs to local TRS or matrix fields, in the authored representation. If animation and a manual override write the same property, evaluation fails. Defaults never count as a competing driver. The returned wire is `{timestamp,instances:[{node,mesh,primitives:[{primitive,positions:[[x,y,z],...]}]}]}`. Every primitive uses the vertex order of its accessor. Indices stay in the immutable document. The output contains all mesh node instances, also those outside the default scene. Callers select the instance explicitly.
+
+Before any decoding, evaluation counts components and refuses with `E_RESOURCE_LIMIT` at `/nodes` when the total is more than 4,000,000. The count is the sum of:
+- `3 × vertices × (1 + morph targets with POSITION)` for every primitive of every mesh node instance;
+- `8 × vertices × influence sets` for every primitive of every skinned instance (four joint and four weight components per set);
+- `16 × joints`, once for each skin that those instances use.
+
+That limit equals the inspection limit on total declared accessor components. So an asset that evaluates each POSITION, morph-target, JOINTS, WEIGHTS and inverse-bind-matrix accessor once always fits. Instancing a mesh or sharing accessors multiplies the count. Inverse bind matrices are decoded and checked once per skin per evaluation, and every instance that shares that skin uses them again. The remaining per-vertex skinning work (at most one palette matrix per distinct referenced joint) grows with vertices × instances. The budget limits that product to 1,333,333.
+
+`export_geometry_golden` wraps evaluation for consumers, and adds the source hash, precision, coordinate system and units. `reparent_local` computes `inverse(new_parent_world)*child_world`, refuses a singular or sheared TRS, and returns the matrix. It checks only that the child's world transform is preserved. To check that skinning is preserved needs a separate geometry check. Reparenting does not imply that a joint is deleted.
 
 ## CLI and writes
 
@@ -307,8 +364,10 @@ python -m msf_tools evaluate AUTHORING MAPPING SAMPLES --source-profile ID --tar
 python -m msf_tools geometry ASSET [--time SECONDS] [--animation INDEX] [--output JSON]
 ```
 
-The format comes from the asset's suffix, so `.usda`, `.usdc`, `.usdz`, `.usd` and `.fbx` files take the source path. Source formats are read in a separate process by default (`isolate=True`); `--in-process` reads them in the CLI's own process. `--source-timeout SECONDS` and `--max-source-bytes BYTES` set `timeout_s` and `max_source_bytes`; an invalid value is `E_CLI_INPUT`. These three flags are accepted by `inspect`, `annotate`, `geometry`, `map` and `evaluate`, and glTF assets ignore them. Output-path checks cover a source file and, after inspection, the layers its reader fetched (`source.dependencies`). When a source-format read fails, its report goes to stderr only and `--output` is not written, because the fetched layers are unknown.
+The format comes from the asset's suffix, so `.usda`, `.usdc`, `.usdz`, `.usd` and `.fbx` files take the source path. By default, source formats are read in a separate process (`isolate=True`). `--in-process` reads them in the CLI's own process. `--source-timeout SECONDS` and `--max-source-bytes BYTES` set `timeout_s` and `max_source_bytes`. An invalid value is `E_CLI_INPUT`. `inspect`, `annotate`, `geometry`, `map` and `evaluate` accept these three flags, and glTF assets ignore them. Output-path checks cover a source file and, after inspection, the layers that its reader fetched (`source.dependencies`). When a source-format read fails, its report goes only to stderr, and `--output` is not written, because the fetched layers are unknown.
 
-Map/evaluate sides also accept `--source-asset/--source-sidecar` and `--target-asset/--target-sidecar`; asset and profile choice are exclusive. Optional explicit resolver root applies to assets. SAMPLES is an array or sole-key `{samples:[...]}` file. Reports are JSON on stderr; successful values stdout or atomic output files; failed operations return nonzero and may write report to an explicitly safe output destination. Invalid CLI syntax also emits a machine-readable report after argparse help text.
+For each side, `map` and `evaluate` also accept `--source-asset/--source-sidecar` and `--target-asset/--target-sidecar`. For one side, you can choose an asset or a profile, not both. The optional explicit resolver root applies to assets. The SAMPLES file holds an array, or an object whose only key is `samples` (`{samples:[...]}`). Reports are JSON on stderr. Successful values go to stdout or to atomic output files. Failed operations return nonzero, and can write the report to an output destination that is explicitly safe. Invalid CLI syntax also gives a machine-readable report, after the argparse help text.
 
-Check renders all pack/CSV/coverage/SHA bytes before replacement and checks expected bytes afterward. Output aliases (resolved path or hardlink) of any input asset/authoring TOML/sample/sidecar/annotation/consumed resource fail `E_OUTPUT_PATH`; for a source format the consumed resources are the fetched layers in `source.dependencies`, checked after inspection and before the output is written. Explicit symlink output destinations fail. Each file is replaced atomically after fsync; there is no multi-file atomicity claim. A common output directory is owned by generation and extra files/directories fail; if outputs use different directories, extra detection is bounded to checksum manifest entries (choose a common directory for full detection). Parent paths are resolved for legitimate platform symlink prefixes. Preflight is protection against mistaken paths, not a guarantee against an adversarial process concurrently replacing directories.
+`check` renders all the pack, CSV, coverage and SHA bytes before it replaces any file, and checks the expected bytes afterwards. An output that aliases an input fails with `E_OUTPUT_PATH`. An alias is the same resolved path or a hard link. Inputs are assets, authoring TOML, samples, sidecars, annotations and consumed resources. For a source format, the consumed resources are the fetched layers in `source.dependencies`. They are checked after inspection and before the output is written. An explicit symlink as output destination fails. Each file is replaced atomically after fsync. There is no claim of atomicity across several files.
+
+Generation owns a common output directory, and extra files or directories in it fail. If the outputs are in different directories, only the entries in the checksum manifest are checked for extras. For full detection, choose a common directory. Parent paths are resolved, to allow legitimate platform symlink prefixes. The preflight check protects against mistaken paths. It does not guarantee anything against a hostile process that replaces directories at the same time.
