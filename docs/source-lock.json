@@ -31,7 +31,10 @@
     "bytes": 11854324,
     "id": "ufbx",
     "patched": {
-      "core/third_party/ufbx/ufbx.c": "ufbxi_f64_to_i64 compares with < instead of <=, so 2^63 saturates instead of overflowing int64_t (undefined behaviour); the upstream file is the archive above"
+      "core/third_party/ufbx/ufbx.c": {
+        "change": "ufbxi_f64_to_i64 compares with < instead of <=, so 2^63 saturates instead of overflowing int64_t (undefined behaviour)",
+        "upstream_sha256": "4a956c26a708e40d82ecb0aeaee54da709d5ba7c144c9642174970059bda7e1d"
+      }
     },
     "retrieved": "2026-10-26",
     "sha256": "18d5a7849378e3fe247b0df67cf845cb593c73172cbac0de99b5aba130542667",
