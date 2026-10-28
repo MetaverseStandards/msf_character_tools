@@ -20,8 +20,8 @@ import unittest
 from types import MappingProxyType
 from unittest import mock
 
-import msf_tools as m
-from msf_tools import _native
+import msf_character_tools as m
+from msf_character_tools import _native
 from internal import oracle
 import test_operators_1_1 as ops
 

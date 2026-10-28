@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MIT
-"""The build record, msf_tools/_build_info.json; see docs/building.md."""
+"""The build record, msf_character_tools/_build_info.json; see docs/building.md."""
 import json
 from pathlib import Path
 import re
 import subprocess
 
-BUILD_INFO = Path("msf_tools", "_build_info.json")
+BUILD_INFO = Path("msf_character_tools", "_build_info.json")
 # Untracked files here would be built into the wheel: CMake installs every
-# msf_tools/*.py, and core/ holds the extension's sources.
-BUILT_DIRECTORIES = ("msf_tools/", "core/")
+# msf_character_tools/*.py, and core/ holds the extension's sources.
+BUILT_DIRECTORIES = ("msf_character_tools/", "core/")
 
 
 def _git(root, *args):

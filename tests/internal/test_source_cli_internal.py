@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from msf_tools import snapshot as snapshots
+from msf_character_tools import snapshot as snapshots
 from internal.adapters import fake_adapter as fake
 from test_source_cli import FIXTURES, run
 

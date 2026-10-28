@@ -6,8 +6,8 @@ import subprocess
 import sys
 import time
 
-from msf_tools.report import fail
-from msf_tools.sources import SourceParseError
+from msf_character_tools.report import fail
+from msf_character_tools.sources import SourceParseError
 
 from . import fake_adapter
 

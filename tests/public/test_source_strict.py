@@ -12,7 +12,7 @@ import unittest
 import zipfile
 
 import make_source_fixtures
-import msf_tools as m
+import msf_character_tools as m
 from test_source_usd import HAVE_USD, trs
 
 SOURCE = Path(__file__).resolve().parent / 'fixtures' / 'source'

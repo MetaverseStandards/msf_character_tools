@@ -50,7 +50,7 @@ class Chunk:
     data: bytes
 
 
-# Views of the Snapshot handle (msf_tools._core) that every inspected or
+# Views of the Snapshot handle (msf_character_tools._core) that every inspected or
 # profile snapshot owns; the handle binds them, and each resource's and chunk's
 # fields, by identity.
 _VIEW_FIELDS = ("original_bytes", "document", "resources", "chunks", "channels", "bindings", "source")
@@ -168,8 +168,9 @@ def _source_summary(snapshot):
 
 
 # Each module exposes ADAPTER and imports its reader library at import time.
-_ADAPTER_MODULES = {"usd": "msf_tools.sources.usd", "usda": "msf_tools.sources.usd", "usdc": "msf_tools.sources.usd",
-                    "usdz": "msf_tools.sources.usd", "fbx": "msf_tools.sources.fbx"}
+_ADAPTER_MODULES = {"usd": "msf_character_tools.sources.usd", "usda": "msf_character_tools.sources.usd",
+                    "usdc": "msf_character_tools.sources.usd", "usdz": "msf_character_tools.sources.usd",
+                    "fbx": "msf_character_tools.sources.fbx"}
 _GLTF_FORMATS = ("gltf", "glb", "gltf2", "json")
 _FBX_BINARY_MAGIC = b"Kaydara FBX Binary  \x00"
 # Losses whose strict refusal has a different name from the plain W_ to E_ swap.

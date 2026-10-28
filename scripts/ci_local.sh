@@ -60,7 +60,7 @@ for version in 3.11 3.12; do
   start=$(python3 -c 'import time; print(time.time())')
   if cmake -S . -B "build/core-$version" -G Ninja -DPython_EXECUTABLE="$py" -DMSF_CORE_IN_PLACE=ON >/dev/null 2>&1 \
       && cmake --build "build/core-$version" >/dev/null 2>&1 \
-      && MSF_TOOLS_PURE= "$py" -B -c 'from msf_tools import _native; assert _native.core'; then
+      && MSF_TOOLS_PURE= "$py" -B -c 'from msf_character_tools import _native; assert _native.core'; then
     lines+=("- C++ core for Python $version: built in place and loaded in $(seconds "$start") s")
   else
     lines+=("- C++ core for Python $version: BUILD OR LOAD FAILED (cmake -S . -B build/core-$version -DMSF_CORE_IN_PLACE=ON)")
@@ -216,8 +216,8 @@ PY
   # Restore the normal 3.12 build. Copy only the newest extension: an older build directory can
   # still hold a version-specific one, which Python would load in preference to abi3.
   newest=$(ls -t build/core-3.12/_core.*.so 2>/dev/null | head -1)
-  rm -f msf_tools/_core.abi3.so msf_tools/_core.cpython-312-*.so
-  { [ -n "$newest" ] && cmake -E copy "$newest" msf_tools/; } >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
+  rm -f msf_character_tools/_core.abi3.so msf_character_tools/_core.cpython-312-*.so
+  { [ -n "$newest" ] && cmake -E copy "$newest" msf_character_tools/; } >/dev/null 2>&1 || cmake --build build/core-3.12 >/dev/null 2>&1
 else
   lines+=("- Sanitizer tier: SKIPPED (scripts/ci_local.sh --sanitize)")
 fi
@@ -324,23 +324,23 @@ if [ -n "$uv" ] && [ -x "$uv" ] && [ -x "$py312" ]; then
   head=$(git rev-parse HEAD)
   if git clone -q --no-hardlinks . "$scratch/src" && git -C "$scratch/src" checkout -q "$head" \
       && (cd "$scratch/src" && "$uv" build -q --python "$py312" --out-dir "$scratch/dist" >/dev/null 2>&1) \
-      && "$py312" -I - "$scratch/dist" "$head" $(git ls-files 'msf_tools/*.py') <<'PY'
+      && "$py312" -I - "$scratch/dist" "$head" $(git ls-files 'msf_character_tools/*.py') <<'PY'
 import json, sys, tomllib, zipfile
 from pathlib import Path
 dist, head, modules = Path(sys.argv[1]), sys.argv[2], set(sys.argv[3:])
 version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
 [wheel] = dist.glob('*.whl')
 names = set(zipfile.ZipFile(wheel).namelist())
-package = {n for n in names if n.startswith('msf_tools/')}
-extension = {n for n in package if n.startswith('msf_tools/_core.')}
-ok = (json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json')) == {'version': version, 'commit': head}
-      and len(extension) == 1 and package == modules | extension | {'msf_tools/_build_info.json'})
+package = {n for n in names if n.startswith('msf_character_tools/')}
+extension = {n for n in package if n.startswith('msf_character_tools/_core.')}
+ok = (json.loads(zipfile.ZipFile(wheel).read('msf_character_tools/_build_info.json')) == {'version': version, 'commit': head}
+      and len(extension) == 1 and package == modules | extension | {'msf_character_tools/_build_info.json'})
 sys.exit(not ok)
 PY
   then
     lines+=("- Build record: a wheel built from HEAD via its sdist records HEAD and holds only tracked modules and _core")
   else
-    lines+=("- Build record: FAILED (rerun uv build in a clean clone; read msf_tools/_build_info.json and the wheel's file list)")
+    lines+=("- Build record: FAILED (rerun uv build in a clean clone; read msf_character_tools/_build_info.json and the wheel's file list)")
     failed=1
   fi
   rm -rf "$scratch"

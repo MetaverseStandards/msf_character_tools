@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // JSON across the boundary: Python objects to json::Value and back, and the
-// translation of msf::Fault into msf_tools.report.Fault.
+// translation of msf::Fault into msf_character_tools.report.Fault.
 #include <nanobind/nanobind.h>
 #include "limited_api.hpp"
 #include <nanobind/stl/string.h>
@@ -160,7 +160,7 @@ bool from_python(PyObject* o, Value& v, int depth) {
 }
 
 [[noreturn]] void raise_fault(const msf::Diagnostic& d) {
-    nb::object report = nb::module_::import_("msf_tools.report");
+    nb::object report = nb::module_::import_("msf_character_tools.report");
     nb::object fault = report.attr("Fault")(msf::info(d.code).name, decode(d.ref), decode(d.message), decode(d.remediation));
     PyErr_SetObject(reinterpret_cast<PyObject*>(Py_TYPE(fault.ptr())), fault.ptr());
     throw nb::python_error();

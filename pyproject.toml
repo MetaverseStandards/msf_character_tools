@@ -24,14 +24,14 @@ usd = ["usd-core>=25.11,<27"]
 fbx = []
 
 [project.scripts]
-msf-tools = "msf_tools.cli:main"
+msf-tools = "msf_character_tools.cli:main"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 cmake.build-type = "Release"
-# CMakeLists.txt installs the package: msf_tools/*.py, the extension and the build record.
+# CMakeLists.txt installs the package: msf_character_tools/*.py, the extension and the build record.
 wheel.packages = []
 # One abi3 wheel for CPython 3.12 and later (nanobind's minimum for the stable ABI); 3.11 gets its own cp311 wheel.
 wheel.py-api = "cp312"
-sdist.include = ["msf_tools/_build_info.json"]
+sdist.include = ["msf_character_tools/_build_info.json"]
 sdist.exclude = ["build", "native", "tests", "examples", "scripts"]

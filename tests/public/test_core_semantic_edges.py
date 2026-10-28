@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Additional independent core negatives discovered while reading callers."""
 import unittest
-import msf_tools as m
+import msf_character_tools as m
 from test_core_semantics import Binary, point, animated, refresh
 
 

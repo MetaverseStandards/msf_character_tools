@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from msf_tools import snapshot as snapshots
+from msf_character_tools import snapshot as snapshots
 from support import capabilities
 
 BROKEN = 'internal.adapters.adapter_missing_reader'

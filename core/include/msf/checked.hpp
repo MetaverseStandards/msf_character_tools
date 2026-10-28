@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Checked binary64 arithmetic, the same refusals as msf_tools/math3d.py.
+// Checked binary64 arithmetic, the same refusals as msf_character_tools/math3d.py.
 // Built with -ffp-contract=off: a fused multiply-add would round differently.
 #pragma once
 #include <cmath>

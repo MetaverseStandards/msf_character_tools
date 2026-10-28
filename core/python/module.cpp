@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// msf_tools._core: the nanobind boundary. Python keeps the record shells; these
+// msf_character_tools._core: the nanobind boundary. Python keeps the record shells; these
 // handles are immutable once built, and only samples and results cross per call.
 #include <nanobind/nanobind.h>
 #include "limited_api.hpp"

@@ -4,11 +4,11 @@ import math
 from pathlib import Path
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 from test_core_semantic_fixes import AssetBytes, encode
 
 ROOT = Path(__file__).resolve().parents[2]
-assert Path(m.__file__).resolve().parent == ROOT / 'msf_tools'
+assert Path(m.__file__).resolve().parent == ROOT / 'msf_character_tools'
 UNIT_COLUMNS = (1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
 
 

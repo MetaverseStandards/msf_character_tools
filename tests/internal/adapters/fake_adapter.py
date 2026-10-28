@@ -3,10 +3,10 @@
 import json
 import struct
 
-from msf_tools.common import digest
-from msf_tools.report import Diagnostic
-from msf_tools.sources import Generated, SourceParseError
-from msf_tools.sources import glb, paths as source_paths
+from msf_character_tools.common import digest
+from msf_character_tools.report import Diagnostic
+from msf_character_tools.sources import Generated, SourceParseError
+from msf_character_tools.sources import glb, paths as source_paths
 
 MAGIC = b'#usda 1.0\n'
 

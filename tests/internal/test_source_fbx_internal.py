@@ -3,8 +3,8 @@
 import contextlib
 import unittest
 
-import msf_tools as m
-from msf_tools import _native
+import msf_character_tools as m
+from msf_character_tools import _native
 from support.values import plain
 from support.fbx_ascii import Scene
 from internal.test_source_fbx_native import open_scene

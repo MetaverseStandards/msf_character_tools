@@ -10,10 +10,10 @@ import struct
 import tomllib
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 
 ROOT = Path(__file__).resolve().parents[2]
-assert Path(m.__file__).resolve().parent == ROOT / "msf_tools", m.__file__
+assert Path(m.__file__).resolve().parent == ROOT / "msf_character_tools", m.__file__
 
 
 def document():

@@ -3,7 +3,7 @@
 
 Python's own repr, json and Decimal are the oracles: every case runs through
 common.parse_json / common.canonical_json with the core and again with
-msf_tools._native.core set to None, and the outcomes must be identical:
+msf_character_tools._native.core set to None, and the outcomes must be identical:
 equal bytes, identical typed values (floats by bit pattern), or the same
 diagnostic or exception. MSF_GATE=1 widens the float and fuzz counts.
 """
@@ -21,9 +21,9 @@ import unittest
 from types import MappingProxyType
 from unittest import mock
 
-from msf_tools import _native
-from msf_tools.common import canonical_json, parse_json
-from msf_tools.report import Fault
+from msf_character_tools import _native
+from msf_character_tools.common import canonical_json, parse_json
+from msf_character_tools.report import Fault
 from internal import workspace
 
 ROOT = Path(__file__).resolve().parents[2]

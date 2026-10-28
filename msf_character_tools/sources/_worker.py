@@ -29,7 +29,7 @@ POLL_SECONDS = 0.1
 _LENGTH = struct.Struct(">Q")
 # `-I` ignores PYTHONPATH and the working directory, so the checkout root is put on the path explicitly.
 _BOOT = ("import sys, runpy; sys.path.insert(0, sys.argv[1]); "
-         "runpy.run_module('msf_tools.sources._worker', run_name='__main__')")
+         "runpy.run_module('msf_character_tools.sources._worker', run_name='__main__')")
 _DIAGNOSTIC_KEYS = {"code", "severity", "ref", "message", "remediation"}
 
 

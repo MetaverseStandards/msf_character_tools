@@ -41,7 +41,7 @@ SOURCE_DATE_EPOCH=$(git -C "$scratch/src" log -1 --format=%ct)
 export SOURCE_DATE_EPOCH
 pinned=(--build-constraints "$requirements" --require-hashes)
 (cd "$scratch/src" && "$uv" build -q --sdist --python "$py312" "${pinned[@]}" --out-dir "$out")
-sdist=$(ls "$out"/msf_tools-*.tar.gz)
+sdist=$(ls "$out"/msf_character_tools-*.tar.gz)
 # Wheels come from the unpacked sdist, outside any Git checkout, as a user's build would.
 mkdir "$scratch/unpacked"
 tar -xzf "$sdist" -C "$scratch/unpacked"
@@ -63,7 +63,7 @@ if [ "$(uname -s)" = Linux ]; then
   # shellcheck disable=SC2086
   ${MSF_PODMAN:-podman} run --rm --network none -v "$scratch:/io" -e SOURCE_DATE_EPOCH "$image" bash -euc '
       for py in cp311-cp311 cp312-cp312; do
-        (cd /io/unpacked/msf_tools-* && /opt/python/$py/bin/python -m pip wheel -q --no-deps --no-index --find-links /io/wheelhouse -w /io/raw .)
+        (cd /io/unpacked/msf_character_tools-* && /opt/python/$py/bin/python -m pip wheel -q --no-deps --no-index --find-links /io/wheelhouse -w /io/raw .)
       done
       # One platform tag only: lock files (RCEF'"'"'s) key a wheel by its single tag.
       for wheel in /io/raw/*.whl; do
@@ -76,9 +76,9 @@ if [ "$(uname -s)" = Linux ]; then
   cat "$out/BUILD-ENV"
 else
   for py in "$py311" "$py312"; do
-    (cd "$scratch/unpacked"/msf_tools-* && "$uv" build -q --wheel --python "$py" "${pinned[@]}" --out-dir "$out")
+    (cd "$scratch/unpacked"/msf_character_tools-* && "$uv" build -q --wheel --python "$py" "${pinned[@]}" --out-dir "$out")
   done
 fi
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
-(cd "$out" && sha256 msf_tools-* > SHA256SUMS && cat SHA256SUMS)
+(cd "$out" && sha256 msf_character_tools-* > SHA256SUMS && cat SHA256SUMS)
 echo "commit $commit, SOURCE_DATE_EPOCH $SOURCE_DATE_EPOCH"

@@ -11,7 +11,7 @@ import time
 import unittest
 import tomllib
 
-import msf_tools as m
+import msf_character_tools as m
 
 ROOT = Path(__file__).resolve().parents[2]
 assert Path(m.__file__).resolve().parent.parent == ROOT

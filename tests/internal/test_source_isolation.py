@@ -8,9 +8,9 @@ import time
 import unittest
 from unittest import mock
 
-import msf_tools as m
-from msf_tools.report import Fault
-from msf_tools.sources import SourceLimits, SourceParseError, _worker
+import msf_character_tools as m
+from msf_character_tools.report import Fault
+from msf_character_tools.sources import SourceLimits, SourceParseError, _worker
 
 from internal.adapters import fake_adapter as fake
 

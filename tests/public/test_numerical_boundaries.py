@@ -6,12 +6,12 @@ from pathlib import Path
 import struct
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 from test_core_semantic_fixes import AssetBytes, encode, morph_asset
 from test_reference import source_doc, compile_map, rule, signal
 
 ROOT = Path(__file__).resolve().parents[2]
-assert Path(m.__file__).resolve().parent == ROOT / 'msf_tools'
+assert Path(m.__file__).resolve().parent == ROOT / 'msf_character_tools'
 ROWS = ((2,0,0,3),(0,-3,0,4),(0,0,4,5),(0,0,0,1))
 COLUMNS = (2,0,0,0, 0,-3,0,0, 0,0,4,0, 3,4,5,1)
 PARENT = (0,1,0,0, -1,0,0,0, 0,0,1,0, 10,20,0,1)

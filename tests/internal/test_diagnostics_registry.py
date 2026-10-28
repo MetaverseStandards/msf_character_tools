@@ -12,14 +12,14 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-import msf_tools as m
-from msf_tools import _native
-from msf_tools import snapshot as snapshots
+import msf_character_tools as m
+from msf_character_tools import _native
+from msf_character_tools import snapshot as snapshots
 from internal.adapters import fake_adapter as fake
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / 'schemas/diagnostics.toml'
-SOURCES = sorted((ROOT / 'msf_tools').rglob('*.py'))
+SOURCES = sorted((ROOT / 'msf_character_tools').rglob('*.py'))
 CORE_SOURCES = sorted(p for p in (ROOT / 'core').rglob('*.[ch]pp') if 'third_party' not in p.parts)
 # The core files that hold the source adapters' share (influence rows, the FBX adapter).
 SOURCE_CORE = ('source_helpers.cpp', 'fbx.cpp')

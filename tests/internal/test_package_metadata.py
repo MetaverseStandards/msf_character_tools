@@ -7,7 +7,7 @@ from pathlib import Path
 import tomllib
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 
 ROOT = Path(__file__).resolve().parents[2]
 

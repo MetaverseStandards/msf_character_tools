@@ -159,7 +159,7 @@ class GltfExample(ExampleChecks):
             for argv, wanted in ((['annotate', asset, folder / 'annotations.json', '--output', sidecar], None),
                                  (['map', folder / 'authoring.toml', 'example.drive', *target], 'mapping.json'),
                                  (['evaluate', folder / 'authoring.toml', 'example.drive', folder / 'samples.json', *target], 'evaluated.json')):
-                done = subprocess.run([sys.executable, '-B', '-m', 'msf_tools', *map(str, argv)], capture_output=True,
+                done = subprocess.run([sys.executable, '-B', '-m', 'msf_character_tools', *map(str, argv)], capture_output=True,
                                       env=dict(os.environ, PYTHONPATH=str(REPO)), timeout=60)
                 self.assertEqual(done.returncode, 0, done.stderr)
                 self.assertEqual(done.stdout or sidecar.read_bytes(), (folder / (wanted or 'sidecar.json')).read_bytes(), argv[0])
@@ -207,7 +207,7 @@ class FbxExample(ExampleChecks):
 
     def test_kenneys_glb_export_of_the_character_agrees_with_the_fbx_export(self):
         # Exporter tier: two exports of one model; the clips are keyed differently, so between keys they differ slightly.
-        from msf_tools import inspect_asset
+        from msf_character_tools import inspect_asset
         render = self.out / 'character' / 'render'
         glb = inspect_asset((ASSETS / 'character-female-a.glb').read_bytes(), 'glb').value
         walk = [a.get('name') for a in glb.document['animations']].index('walk')

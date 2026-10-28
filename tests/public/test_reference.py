@@ -17,8 +17,8 @@ import sys
 import tempfile
 import unittest
 
-import msf_tools as m
-from msf_tools import cli
+import msf_character_tools as m
+from msf_character_tools import cli
 
 ROOT = Path(__file__).resolve().parents[2]
 FIX = ROOT / "tests/public/fixtures"
@@ -75,7 +75,7 @@ class AuthoringTests(Checks):
     def test_fragment_fifo_is_refused_without_blocking(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td);(root/"pack.toml").write_bytes((ROOT/"examples/authoring/pack.toml").read_bytes());os.mkfifo(root/"zz.toml")
-            code="import json,sys,msf_tools as m;r=m.load_authoring(sys.argv[1]);print(json.dumps([(d.code,d.ref) for d in r.report.diagnostics]))"
+            code="import json,sys,msf_character_tools as m;r=m.load_authoring(sys.argv[1]);print(json.dumps([(d.code,d.ref) for d in r.report.diagnostics]))"
             # A FIFO with no writer blocks a plain open, so loading runs in a killable child process.
             try:
                 r=subprocess.run([sys.executable,"-B","-c",code,root],cwd=ROOT,capture_output=True,timeout=5)
@@ -286,7 +286,7 @@ class AssetTests(Checks):
             root=Path(td).resolve();os.mkfifo(root/"pipe.bin");(root/"asset.gltf").write_bytes(m.canonical_json(d))
             # A FIFO with no writer blocks a plain open, so the CLI runs in a killable child process.
             try:
-                r=subprocess.run([sys.executable,"-B","-m","msf_tools","inspect",root/"asset.gltf","--resolver-root",root],cwd=ROOT,capture_output=True,timeout=5)
+                r=subprocess.run([sys.executable,"-B","-m","msf_character_tools","inspect",root/"asset.gltf","--resolver-root",root],cwd=ROOT,capture_output=True,timeout=5)
             except subprocess.TimeoutExpired:
                 self.fail("Resolver blocked opening a FIFO instead of refusing it.")
         self.assertEqual(r.returncode,1);self.assertEqual(r.stdout,b"")
@@ -502,7 +502,7 @@ class CLITests(Checks):
             self.assertEqual(self.run_cli(*args,"--write").returncode,0);(p/"unexpected.csv").write_text("extra")
             self.assertIn(b'E_OUTPUT_EXTRA',self.run_cli(*args).stderr)
     def run_cli(self,*args):
-        return subprocess.run([sys.executable,"-B","-m","msf_tools",*map(str,args)],cwd=ROOT,capture_output=True,timeout=30)
+        return subprocess.run([sys.executable,"-B","-m","msf_character_tools",*map(str,args)],cwd=ROOT,capture_output=True,timeout=30)
 
     def test_generation_missing_extra_stale_and_failed_write(self):
         with tempfile.TemporaryDirectory() as td:

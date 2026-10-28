@@ -13,7 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests' / 'public')]
-import msf_tools as m  # noqa: E402
+import msf_character_tools as m  # noqa: E402
 from support.fbx_ascii import Scene  # noqa: E402
 
 SIGNAL = {'id': 'demo', 'value_type': 'scalar', 'units': '1', 'domain': {'min': 0, 'max': 1}, 'calibration': 'literal'}

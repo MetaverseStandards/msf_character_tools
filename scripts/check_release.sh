@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Check the distributions scripts/build_release.sh wrote, against the commit they
 # were built from:
-#   - each wheel holds exactly the commit's msf_tools/*.py, one _core extension,
+#   - each wheel holds exactly the commit's msf_character_tools/*.py, one _core extension,
 #     the build record naming the commit, and the licence files pyproject lists;
 #   - macOS: the extension links only system libraries and targets macOS 11.0;
 #   - Linux: auditwheel show finds the manylinux_2_28 tag for this machine's
@@ -42,19 +42,19 @@ from pathlib import Path
 dist, commit, src = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
 project = tomllib.loads((src / 'pyproject.toml').read_text())['project']
 version = project['version']
-modules = {str(p.relative_to(src)) for p in (src / 'msf_tools').rglob('*.py')}
-licences = {f'msf_tools-{version}.dist-info/licenses/{name}' for name in project['license-files']}
+modules = {str(p.relative_to(src)) for p in (src / 'msf_character_tools').rglob('*.py')}
+licences = {f'msf_character_tools-{version}.dist-info/licenses/{name}' for name in project['license-files']}
 ok = True
 for wheel in sorted(dist.glob('*.whl')):
     # auditwheel repair adds directory entries; only files count.
     names = {n for n in zipfile.ZipFile(wheel).namelist() if not n.endswith('/')}
-    package = {n for n in names if n.startswith('msf_tools/')}
-    extension = {n for n in package if n.startswith('msf_tools/_core.')}
-    record = json.loads(zipfile.ZipFile(wheel).read('msf_tools/_build_info.json'))
+    package = {n for n in names if n.startswith('msf_character_tools/')}
+    extension = {n for n in package if n.startswith('msf_character_tools/_core.')}
+    record = json.loads(zipfile.ZipFile(wheel).read('msf_character_tools/_build_info.json'))
     found = {n for n in names if '/licenses/' in n}
     checks = {'build record': record == {'version': version, 'commit': commit},
               'one extension': len(extension) == 1,
-              'only tracked modules': package == modules | extension | {'msf_tools/_build_info.json'},
+              'only tracked modules': package == modules | extension | {'msf_character_tools/_build_info.json'},
               'licence files': found == licences}
     for name, good in checks.items():
         print(f"{wheel.name}: {name} {'ok' if good else 'FAILED'}")
@@ -62,8 +62,8 @@ for wheel in sorted(dist.glob('*.whl')):
 [sdist] = dist.glob('*.tar.gz')
 with tarfile.open(sdist) as archive:
     top = {n.split('/')[1] for n in archive.getnames() if n.count('/') >= 1}
-    info = archive.extractfile(f'msf_tools-{version}/PKG-INFO').read().decode()
-good = {'docs', 'schemas', 'LICENSES', 'core', 'msf_tools'} <= top and not top & {'tests', 'examples', 'scripts', 'native'}
+    info = archive.extractfile(f'msf_character_tools-{version}/PKG-INFO').read().decode()
+good = {'docs', 'schemas', 'LICENSES', 'core', 'msf_character_tools'} <= top and not top & {'tests', 'examples', 'scripts', 'native'}
 good &= f"License-Expression: {project['license']}" in info
 print(f"{sdist.name}: contents and licence metadata {'ok' if good else 'FAILED'}")
 sys.exit(not (ok and good))
@@ -87,14 +87,14 @@ if [ "$(uname -s)" = Linux ]; then
     tags=$(unzip -p "$wheel" '*.dist-info/WHEEL' | grep -c '^Tag:')
     [ "$tags" = 1 ] || note "$name: $tags wheel tags, FAILED (want exactly one)"
     mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
-    needed=$(readelf -d "$scratch/whl"/msf_tools/_core.*.so | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
+    needed=$(readelf -d "$scratch/whl"/msf_character_tools/_core.*.so | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
     others=$(printf '%s' "$needed" | tr ' ' '\n' | grep -vE '^(libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|libpthread\.so\.0|libdl\.so\.2|ld-linux.*)?$' || true)
     [ -z "$others" ] && note "$name: needs only $needed" || note "$name: needs other libraries, FAILED: $others"
   done
 else
   for wheel in "$dist"/*macosx*.whl; do
     mkdir -p "$scratch/whl" && rm -rf "$scratch/whl"/* && (cd "$scratch/whl" && unzip -q "$wheel")
-    so=$(ls "$scratch/whl"/msf_tools/_core.*.so)
+    so=$(ls "$scratch/whl"/msf_character_tools/_core.*.so)
     others=$(otool -L "$so" | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)
     [ -z "$others" ] && note "$(basename "$wheel"): links only system libraries ($(otool -L "$so" | tail -n +2 | awk '{print $1}' | tr '\n' ' '))" \
       || note "$(basename "$wheel"): non-system libraries FAILED: $others"
@@ -103,7 +103,7 @@ else
   done
 fi
 
-# The public suite asserts that msf_tools is the one next to tests/, so the tests
+# The public suite asserts that msf_character_tools is the one next to tests/, so the tests
 # go next to the installed package, in the throwaway venv's site-packages.
 run_public() {
   local py=$1 wheel=$2 venv="$scratch/venv-$(basename "$1")"
@@ -114,8 +114,8 @@ run_public() {
   cp -R "$scratch/src/tests" "$scratch/src/schemas" "$scratch/src/examples" "$site/"
   local version file
   version=$("$venv/bin/python" -I -c 'import platform; print(platform.python_version())')
-  file=$(cd / && "$venv/bin/python" -I -c 'from msf_tools import _native; print(_native.built.__file__)')
-  case "$file" in "$site"/msf_tools/_core.*) ;; *) note "$(basename "$wheel") on $version: imported $file, FAILED"; return ;; esac
+  file=$(cd / && "$venv/bin/python" -I -c 'from msf_character_tools import _native; print(_native.built.__file__)')
+  case "$file" in "$site"/msf_character_tools/_core.*) ;; *) note "$(basename "$wheel") on $version: imported $file, FAILED"; return ;; esac
   local output
   output=$(cd / && MSF_REQUIRE_FORMATS=fbx,usd "$venv/bin/python" -I -B -m unittest discover -s "$site/tests/public" -t "$site/tests/public" 2>&1)
   if printf '%s\n' "$output" | grep -qE '^OK'; then

@@ -22,7 +22,7 @@ import tempfile
 import tomllib
 import unittest
 
-from msf_tools import _native
+from msf_character_tools import _native
 from internal import oracle, workspace
 
 GATE = os.environ.get('MSF_GATE') == '1'
@@ -293,7 +293,7 @@ class AgainstTheOracle(unittest.TestCase):
             authoring = next(p.parent for p in sorted(Path(tmp).rglob('pack.toml')) if 'generated' not in p.parts)
             self.assertSame([('(lambda r: (r, (lambda p: (p.to_bytes(), m.survey_csv(p), m.coverage(p)))(m.compile_pack(r.value).value)))'
                               '(m.load_authoring(path))', {'path': str(authoring)})])
-            import msf_tools as m
+            import msf_character_tools as m
             seed = m.load_authoring(authoring).value.to_dict()
             self.assertSame([(PACK, {'doc': d}) for d in documents(300, 17, [seed])])
 

@@ -18,8 +18,8 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / 'tests' / 'public'), str(ROOT / 'tests'), str(ROOT)]
 
-import msf_tools as m  # noqa: E402
-from msf_tools.sources import fbx as fbx_source  # noqa: E402
+import msf_character_tools as m  # noqa: E402
+from msf_character_tools.sources import fbx as fbx_source  # noqa: E402
 import test_source_strict as strict  # noqa: E402
 import test_source_twins as twins  # noqa: E402
 

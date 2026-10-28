@@ -6,8 +6,8 @@ import unittest
 import unittest.mock
 import zipfile
 
-import msf_tools as m
-from msf_tools.sources import SourceLimits
+import msf_character_tools as m
+from msf_character_tools.sources import SourceLimits
 from support.values import plain
 from test_source_usd import HAVE_USD, REF, ROOT_WITH_SUBLAYER, SUB, good, layer, usdz
 
@@ -31,7 +31,7 @@ class UsdDependencies(unittest.TestCase):
                 f'            uniform token[] xformOpOrder = ["xformOp:translate"]\n        }}\n    }}\n}}\n').encode()
 
     def test_layers_loaded_from_outside_the_materialized_folder_are_refused(self):
-        from msf_tools.sources import usd
+        from msf_character_tools.sources import usd
         with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch.object(usd, '_refuse_clips', lambda layer: None):
             host = Path(tmp).resolve()
             result = m.inspect_asset(self.clip_on_variant(host), 'usda', resolver=m.LocalResolver(host))
@@ -77,7 +77,7 @@ class UsdAnimation(unittest.TestCase):
         self.assertIn('max_animation_values', result.report.diagnostics[0].remediation)
 
     def test_the_limit_is_checked_before_any_pose_is_sampled(self):
-        from msf_tools.sources import usd
+        from msf_character_tools.sources import usd
         data = (Path(__file__).resolve().parents[1] / 'public' / 'fixtures' / 'source' / 'rig.usda').read_bytes()
         with unittest.mock.patch.object(usd, '_skeleton_poses', side_effect=AssertionError('sampled before the limit check')):
             result = m.inspect_asset(data, 'usda', isolate=False, limits=SourceLimits(max_animation_values=98))

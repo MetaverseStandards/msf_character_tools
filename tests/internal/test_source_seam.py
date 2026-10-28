@@ -3,11 +3,11 @@
 from pathlib import Path
 import unittest
 
-import msf_tools as m
-from msf_tools import snapshot as snapshots
-from msf_tools.common import digest, freeze, thaw
-from msf_tools.report import Fault
-from msf_tools.sources import SourceLimits
+import msf_character_tools as m
+from msf_character_tools import snapshot as snapshots
+from msf_character_tools.common import digest, freeze, thaw
+from msf_character_tools.report import Fault
+from msf_character_tools.sources import SourceLimits
 from internal.adapters import fake_adapter as fake
 from unittest.mock import patch
 

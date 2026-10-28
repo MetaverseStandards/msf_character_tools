@@ -7,7 +7,7 @@ import math
 import random
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 
 C, P, U, K = 'verified_current', 'proposed', 'unresolved', 'calibrated_software'
 SPLIT_NEGATIVE = [[-1, 1], [0, 0], [1, 0]]

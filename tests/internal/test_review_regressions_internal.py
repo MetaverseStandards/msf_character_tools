@@ -5,17 +5,17 @@ from dataclasses import replace
 import unittest
 from unittest.mock import patch
 
-import msf_tools as m
-from msf_tools import mapping
-from msf_tools.common import freeze, thaw
-from msf_tools.report import Fault
+import msf_character_tools as m
+from msf_character_tools import mapping
+from msf_character_tools.common import freeze, thaw
+from msf_character_tools.report import Fault
 from test_review_regressions import document, good, independent_rules
 
 
 class ProfileWork(unittest.TestCase):
     def test_profile_and_pack_checks_are_bounded_per_operation(self):
-        import msf_tools.mapping as mapping
-        from msf_tools.pack import Pack
+        import msf_character_tools.mapping as mapping
+        from msf_character_tools.pack import Pack
         for count in (3, 30, 60):
             pack = good(m.compile_pack(good(m.validate_authoring(independent_rules(count)))))
             source = good(m.profile_snapshot(pack, 'source'))

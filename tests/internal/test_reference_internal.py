@@ -2,8 +2,8 @@
 """Geometry budgets, checked by lowering the private component cap."""
 from unittest.mock import patch
 
-import msf_tools as m
-from msf_tools import geometry
+import msf_character_tools as m
+from msf_character_tools import geometry
 from test_reference import Checks, FIX, asset, instanced_points
 
 

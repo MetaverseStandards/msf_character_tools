@@ -5,7 +5,7 @@ import struct
 import unittest
 import unittest.mock
 
-import msf_tools as m
+import msf_character_tools as m
 from support import capabilities
 from support.values import plain
 from support.fbx_ascii import Scene

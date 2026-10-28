@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
-# msf_tools._core, the C++ core behind the Python API. scikit-build-core drives
+# msf_character_tools._core, the C++ core behind the Python API. scikit-build-core drives
 # this for wheels; scripts/ci_local.sh builds it in place for the test suites.
 cmake_minimum_required(VERSION 3.26)
-project(msf_tools_core LANGUAGES C CXX)
+project(msf_character_tools_core LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -85,16 +85,16 @@ if(MSF_FUZZ)
   endforeach()
 endif()
 
-install(TARGETS _core LIBRARY DESTINATION msf_tools)
-install(DIRECTORY msf_tools/ DESTINATION msf_tools FILES_MATCHING PATTERN "*.py" PATTERN "__pycache__" EXCLUDE)
+install(TARGETS _core LIBRARY DESTINATION msf_character_tools)
+install(DIRECTORY msf_character_tools/ DESTINATION msf_character_tools FILES_MATCHING PATTERN "*.py" PATTERN "__pycache__" EXCLUDE)
 if(MSF_BUILD_INFO_FILE)
-  install(FILES "${MSF_BUILD_INFO_FILE}" DESTINATION msf_tools RENAME _build_info.json)
+  install(FILES "${MSF_BUILD_INFO_FILE}" DESTINATION msf_character_tools RENAME _build_info.json)
 endif()
 
-option(MSF_CORE_IN_PLACE "Copy the built extension into msf_tools/ for running tests from the checkout" OFF)
+option(MSF_CORE_IN_PLACE "Copy the built extension into msf_character_tools/ for running tests from the checkout" OFF)
 if(MSF_CORE_IN_PLACE)
   # Python prefers a version-specific extension to abi3, so an older one for this interpreter must go.
   add_custom_command(TARGET _core POST_BUILD
-                     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/msf_tools/_core.${Python_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
-                     COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:_core>" "${CMAKE_SOURCE_DIR}/msf_tools/")
+                     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/msf_character_tools/_core.${Python_SOABI}${CMAKE_SHARED_MODULE_SUFFIX}"
+                     COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:_core>" "${CMAKE_SOURCE_DIR}/msf_character_tools/")
 endif()

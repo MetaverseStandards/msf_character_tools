@@ -2,8 +2,8 @@
 """The 09K recipe that checks the core's geometry internals (world matrices and skin palettes)."""
 import unittest
 
-import msf_tools as m
-from msf_tools import geometry, math3d
+import msf_character_tools as m
+from msf_character_tools import geometry, math3d
 import test_real_assets as recipes
 
 

@@ -103,7 +103,7 @@ def misses(points, others, tolerance):
 def world_points(snapshot, seconds):
     """Per mesh instance: (mesh index, skinned?, world points, the same points in mesh space, and unskinned), for every
     point its triangles use; or the geometry refusal code."""
-    import msf_tools as m
+    import msf_character_tools as m
     from test_source_strict import matrix
     nodes = snapshot.document['nodes']
     animated = seconds is not None and bool(snapshot.document.get('animations'))
@@ -145,7 +145,7 @@ def explaining_meshes(snapshot):
 
 def compare(fbx, obj, stack, seconds, frame_flags):
     """('match' | 'differs' | 'explained' | 'refused' | 'skipped', detail, (OBJ, msf-tools) match fractions)."""
-    import msf_tools as m
+    import msf_character_tools as m
     points, directives = obj_file(obj)
     if 'transform_skin' in directives:
         return 'skipped', 'the OBJ is in the bind pose space of the skin', None

@@ -36,7 +36,7 @@ class UfbxCorpus(unittest.TestCase):
         self.assertEqual(unexpected, [])
 
     def test_corpus_inspects_or_refuses_with_a_mapped_code(self):
-        import msf_tools as m
+        import msf_character_tools as m
         outcomes, unexpected = {}, []
         for path in sorted((ROOT / 'data').glob('*.fbx')):
             result = m.inspect_asset(path.read_bytes(), 'fbx')

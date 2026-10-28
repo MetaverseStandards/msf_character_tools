@@ -7,7 +7,7 @@ instead, so a stale or broken reader cannot pass the suite by skipping.
 """
 import os
 
-import msf_tools as m
+import msf_character_tools as m
 
 PROBES = {'fbx': b'Kaydara FBX Binary  \x00\x1a\x00', 'usda': b'#usda 1.0\n'}
 

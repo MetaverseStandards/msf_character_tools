@@ -8,6 +8,6 @@ dist/
 *.trace
 examples/assets/
 examples/out/
-msf_tools/_build_info.json
-msf_tools/_core*.so
-msf_tools/_core*.pyd
+msf_character_tools/_build_info.json
+msf_character_tools/_core*.so
+msf_character_tools/_core*.pyd

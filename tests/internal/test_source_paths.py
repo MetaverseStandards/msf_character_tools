@@ -3,7 +3,7 @@
 import random
 import unittest
 
-from msf_tools.sources import paths
+from msf_character_tools.sources import paths
 
 SPECIAL = '%/#[]:\x00\x01\x1f\x7f'
 ALPHABET = SPECIAL + 'abcXYZ09 .-_é漢\U0001F600'

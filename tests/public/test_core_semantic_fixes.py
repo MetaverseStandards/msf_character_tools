@@ -10,10 +10,10 @@ from pathlib import Path
 import struct
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 
 ROOT = Path(__file__).resolve().parents[2]
-assert Path(m.__file__).resolve().parent == ROOT / 'msf_tools'
+assert Path(m.__file__).resolve().parent == ROOT / 'msf_character_tools'
 SIGNAL = {'id': 'delta', 'value_type': 'scalar', 'units': '1',
           'domain': {'min': -2, 'max': 2}, 'calibration': 'independent literal'}
 

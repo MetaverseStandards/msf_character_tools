@@ -10,7 +10,7 @@ import unittest
 import unittest.mock
 import zipfile
 
-import msf_tools as m
+import msf_character_tools as m
 from support import capabilities
 from support.values import plain
 

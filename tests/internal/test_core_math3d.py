@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-"""msf_tools.math3d (the C++ core) against the 0.3.0 oracle and CPython's math.
+"""msf_character_tools.math3d (the C++ core) against the 0.3.0 oracle and CPython's math.
 
-Each case is an expression over `h` (msf_tools.math3d) evaluated here and in
+Each case is an expression over `h` (msf_character_tools.math3d) evaluated here and in
 the oracle venv; values, faults and their messages must be identical, floats
 bit for bit. hypot and fsum are checked against math.hypot and math.fsum in
 process. MSF_GATE=1 runs 10**6 vectors per arity and 10**5 oracle cases.
@@ -12,7 +12,7 @@ import os
 import random
 import unittest
 
-from msf_tools import _native
+from msf_character_tools import _native
 from internal import oracle
 
 GATE = os.environ.get('MSF_GATE') == '1'

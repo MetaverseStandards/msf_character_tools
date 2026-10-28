@@ -22,8 +22,8 @@ import struct
 import tempfile
 import unittest
 
-import msf_tools as m
-from msf_tools import cli
+import msf_character_tools as m
+from msf_character_tools import cli
 from support.values import plain
 
 ROOT = Path(os.environ['MSF_REAL_ASSETS']) if os.environ.get('MSF_REAL_ASSETS') else None

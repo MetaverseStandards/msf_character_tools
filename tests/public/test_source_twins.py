@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 from support import capabilities
 from support.fbx_ascii import Scene
 from test_source_usd import trs

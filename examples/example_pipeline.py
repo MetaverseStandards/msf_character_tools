@@ -23,7 +23,7 @@ from pathlib import Path
 import struct
 import sys
 
-import msf_tools as m
+import msf_character_tools as m
 
 HERE = Path(__file__).resolve().parent
 SOURCE, TARGET, MAPPING = 'example.jaw_open', 'example.target', 'example.drive'

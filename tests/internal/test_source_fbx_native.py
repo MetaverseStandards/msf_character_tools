@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
-"""The ufbx C shim compiled into the core, through its test hooks (msf_tools._core._fbx_open)."""
+"""The ufbx C shim compiled into the core, through its test hooks (msf_character_tools._core._fbx_open)."""
 from pathlib import Path
 import unittest
 
-from msf_tools import _native
+from msf_character_tools import _native
 from support.fbx_ascii import Scene
 
 _core = _native.built
@@ -32,7 +32,7 @@ def open_scene(data, memory_limit=0, allocation_limit=0):
 
 class UfbxShim(unittest.TestCase):
     def test_the_shim_reports_its_abi_and_the_compiled_ufbx_version(self):
-        from msf_tools.sources import fbx
+        from msf_character_tools.sources import fbx
         self.assertEqual(_core._fbx_shim_abi(), 5)
         self.assertEqual(_core._fbx_ufbx_version(), 23001)
         self.assertEqual(fbx.ADAPTER.reader(), 'ufbx 0.23.1')

@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from msf_tools import cli
+from msf_character_tools import cli
 from support import capabilities
 
 

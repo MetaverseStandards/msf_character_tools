@@ -5,8 +5,8 @@ import math
 import struct
 import unittest
 
-import msf_tools as m
-from msf_tools.sources import glb
+import msf_character_tools as m
+from msf_character_tools.sources import glb
 
 TRIANGLE = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.1, 0.0))
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// msf_tools.math3d's functions over Python values: the readers below check
+// msf_character_tools.math3d's functions over Python values: the readers below check
 // inputs exactly as the 0.3.0 module did (_number, _vector, _matrix), in its
 // order, before the C++ maths runs.
 #include <nanobind/nanobind.h>

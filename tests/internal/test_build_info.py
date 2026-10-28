@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""The build backend writes msf_tools/_build_info.json, {"version", "commit"}, into built packages."""
+"""The build backend writes msf_character_tools/_build_info.json, {"version", "commit"}, into built packages."""
 import contextlib
 import io
 import json
@@ -41,9 +41,9 @@ class Tree(unittest.TestCase):
     def build_info(self, top='root', status='', carried=None, git=None):
         root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, root)
-        (root / 'msf_tools').mkdir()
+        (root / 'msf_character_tools').mkdir()
         if carried is not None:
-            (root / 'msf_tools/_build_info.json').write_text(json.dumps(carried))
+            (root / 'msf_character_tools/_build_info.json').write_text(json.dumps(carried))
         with patch.object(setup, '_git', git or fake_git(top, 'b' * 40, status)):
             return setup.build_info(root, '1.2.3')
 
@@ -54,18 +54,18 @@ class GitCheckout(Tree):
         self.assertEqual(self.build_info(status='?? notes.txt\n?? docs/draft.md')['commit'], 'b' * 40)
 
     def test_a_dirty_or_nested_checkout_names_no_commit(self):
-        self.assertIsNone(self.build_info(status=' M msf_tools/__init__.py'))
+        self.assertIsNone(self.build_info(status=' M msf_character_tools/__init__.py'))
         self.assertIsNone(self.build_info(status=' M README.md'))
         self.assertIsNone(self.build_info(top='/elsewhere'))
 
     def test_untracked_package_files_would_be_built_so_name_no_commit(self):
-        self.assertIsNone(self.build_info(status='?? msf_tools/zz_untracked.py'))
-        self.assertIsNone(self.build_info(status='?? notes.txt\n?? msf_tools/sources/extra.py'))
-        self.assertIsNone(self.build_info(status='?? "msf_tools/with space.py"'))
+        self.assertIsNone(self.build_info(status='?? msf_character_tools/zz_untracked.py'))
+        self.assertIsNone(self.build_info(status='?? notes.txt\n?? msf_character_tools/sources/extra.py'))
+        self.assertIsNone(self.build_info(status='?? "msf_character_tools/with space.py"'))
         self.assertIsNone(self.build_info(status='?? core/include/msf/extra.hpp'))
 
     def test_a_record_left_in_a_checkout_is_never_used(self):
-        self.assertIsNone(self.build_info(status=' M msf_tools/mapping.py', carried=STRAY))
+        self.assertIsNone(self.build_info(status=' M msf_character_tools/mapping.py', carried=STRAY))
         self.assertIsNone(self.build_info(top='/elsewhere', carried=STRAY))
         self.assertEqual(self.build_info(carried=STRAY)['commit'], 'b' * 40)
 
@@ -100,7 +100,7 @@ class Backend(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
-        (self.root / 'msf_tools').mkdir()
+        (self.root / 'msf_character_tools').mkdir()
         (self.root / 'pyproject.toml').write_text('[project]\nversion = "1.2.3"\n')
         self.seen = []
 
@@ -110,15 +110,15 @@ class Backend(unittest.TestCase):
             return getattr(build_backend, hook)('dist')
 
     def record(self):
-        path = self.root / 'msf_tools/_build_info.json'
+        path = self.root / 'msf_character_tools/_build_info.json'
         return json.loads(path.read_text()) if path.exists() else None
 
     def test_an_sdist_carries_the_record_and_the_tree_is_left_as_it_was(self):
         self.build('build_sdist', side_effect=lambda *args: self.seen.append(self.record()))
         self.assertEqual(self.seen, [{'version': '1.2.3', 'commit': 'b' * 40}])
         self.assertIsNone(self.record())
-        (self.root / 'msf_tools/_build_info.json').write_text(json.dumps(STRAY))
-        self.build('build_sdist', status=' M msf_tools/mapping.py', side_effect=lambda *args: self.seen.append(self.record()))
+        (self.root / 'msf_character_tools/_build_info.json').write_text(json.dumps(STRAY))
+        self.build('build_sdist', status=' M msf_character_tools/mapping.py', side_effect=lambda *args: self.seen.append(self.record()))
         self.assertEqual((self.seen[1], self.record()), (None, STRAY))
 
     def test_a_wheel_gets_the_record_through_cmake(self):
@@ -126,7 +126,7 @@ class Backend(unittest.TestCase):
             path = settings.get('cmake.define.MSF_BUILD_INFO_FILE')
             self.seen.append(path and json.loads(Path(path).read_text()))
         self.build('build_wheel', side_effect=wheel)
-        self.build('build_wheel', status='?? msf_tools/zz.py', side_effect=wheel)
+        self.build('build_wheel', status='?? msf_character_tools/zz.py', side_effect=wheel)
         self.assertEqual(self.seen, [{'version': '1.2.3', 'commit': 'b' * 40}, None])
 
     def test_macos_wheels_target_a_fixed_release_unless_one_is_set(self):

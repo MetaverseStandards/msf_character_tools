@@ -9,9 +9,10 @@ diagnostic, other exceptions by type, Results by value and report. Messages
 of E_INPUT and E_INTERNAL diagnostics are not compared; every other registry
 code must match in code, ref, message and remediation.
 
-Expressions see `m` (msf_tools), `h` (msf_tools.math3d), `math`, `attempt(thunk)`
+Expressions see `m` (the package), `h` (its math3d), `math`, `attempt(thunk)`
 (a thunk's encoded outcome) and whatever define() added, with the case's names
-as globals so nested lambdas see them.
+as globals so nested lambdas see them. The package is msf_character_tools here
+and msf_tools, its 0.3.0 name, in the oracle.
 """
 import atexit
 import os
@@ -32,12 +33,14 @@ AVAILABLE = PYTHON is not None and PYTHON.exists()
 # oracle inherits, both sides iterate sets alike.
 SAME_HASHING = os.environ.get('PYTHONHASHSEED', 'random') != 'random'
 
+# ENCODER runs after a line that sets PACKAGE.
 ENCODER = r'''
-import math, struct
+import importlib, math, struct
 from types import MappingProxyType
-import msf_tools as m
-from msf_tools import math3d as h
-from msf_tools.report import Fault, Result, Report, Diagnostic, Loss
+m = importlib.import_module(PACKAGE)
+h = importlib.import_module(PACKAGE + '.math3d')
+_report = importlib.import_module(PACKAGE + '.report')
+Fault, Result, Report, Diagnostic, Loss = _report.Fault, _report.Result, _report.Report, _report.Diagnostic, _report.Loss
 
 LOOSE = {'E_INPUT', 'E_INTERNAL'}
 
@@ -83,7 +86,7 @@ def outcome(expression, names):
     return attempt(lambda: eval(expression, {**NAMESPACE, **names}))
 '''
 
-SERVER = ENCODER + r'''
+SERVER = "PACKAGE = 'msf_tools'\n" + ENCODER + r'''
 import pickle, sys
 read, write = sys.stdin.buffer, sys.stdout.buffer
 while True:
@@ -101,7 +104,7 @@ while True:
 '''
 
 _local = {}
-exec(compile(ENCODER, 'oracle.ENCODER', 'exec'), _local)
+exec(compile("PACKAGE = 'msf_character_tools'\n" + ENCODER, 'oracle.ENCODER', 'exec'), _local)
 outcome = _local['outcome']
 _process = None
 

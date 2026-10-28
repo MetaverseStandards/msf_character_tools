@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import unittest
 
-import msf_tools as m
+import msf_character_tools as m
 from test_source_strict import Oracle, msf_world_points
 from test_source_usd import HAVE_USD
 

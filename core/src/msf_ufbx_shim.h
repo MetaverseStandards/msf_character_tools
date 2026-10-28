@@ -44,7 +44,7 @@ typedef struct {
     double to_world[16];
 } msf_fbx_node;
 
-/* Bumped whenever a declaration or struct below changes; msf_tools refuses a shim with another value. */
+/* Bumped whenever a declaration or struct below changes; msf_character_tools refuses a shim with another value. */
 #define MSF_FBX_SHIM_ABI 5
 int msf_fbx_shim_abi(void);
 /* The compiled ufbx's ufbx_source_version: major * 1000000 + minor * 1000 + patch. */

@@ -263,7 +263,7 @@ struct FbxScene {
 }  // namespace
 
 void bind_sources(nb::module_& m) {
-    path_error = PyErr_NewException("msf_tools._core.PathError", PyExc_ValueError, nullptr);
+    path_error = PyErr_NewException("msf_character_tools._core.PathError", PyExc_ValueError, nullptr);
     m.attr("PathError") = nb::borrow(path_error);
     nb::register_exception_translator([](const std::exception_ptr& p, void*) {
         try {
@@ -351,7 +351,7 @@ void bind_sources(nb::module_& m) {
         if (msf::json::has_surrogate(chunk)) bridge::utf8_bytes(chunk);
         return nb::bytes(glb.data(), glb.size());
     });
-    static PyObject* parse_error = PyErr_NewException("msf_tools._core.FbxParseError", PyExc_Exception, nullptr);
+    static PyObject* parse_error = PyErr_NewException("msf_character_tools._core.FbxParseError", PyExc_Exception, nullptr);
     m.attr("FbxParseError") = nb::borrow(parse_error);
     m.attr("UFBX_VERSION") = msf::fbx::ufbx_version();
     m.def("_fbx_convert", [](nb::bytes data, bool top4, nb::handle animation, nb::handle sample_rate, unsigned long long max_reader_memory,

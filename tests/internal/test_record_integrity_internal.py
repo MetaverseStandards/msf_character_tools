@@ -4,8 +4,8 @@ from types import MappingProxyType
 import unittest
 from unittest import mock
 
-import msf_tools as m
-from msf_tools.common import number
+import msf_character_tools as m
+from msf_character_tools.common import number
 import test_record_integrity as integrity
 
 

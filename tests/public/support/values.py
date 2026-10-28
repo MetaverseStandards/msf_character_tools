@@ -2,7 +2,7 @@
 """Plain JSON values from records, through the public byte convention."""
 import json
 
-import msf_tools as m
+import msf_character_tools as m
 
 
 def plain(value):

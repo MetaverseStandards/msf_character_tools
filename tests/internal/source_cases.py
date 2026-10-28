@@ -176,8 +176,11 @@ def scene_spec(rng):
     return {'nodes': nodes, 'meshes': meshes, 'skins': skins, 'animations': animations}
 
 
+# `m` is msf_character_tools here and msf_tools in the 0.3.0 oracle.
 DEFINITIONS = r"""
-from msf_tools.sources import paths as _paths, skinning as _skinning, transforms as _transforms
+import importlib
+_paths, _skinning, _transforms = (importlib.import_module(f'{m.__name__}.sources.{name}')
+                                  for name in ('paths', 'skinning', 'transforms'))
 
 def exact(fn, *args, **kwargs):
     try:
@@ -222,7 +225,7 @@ def skinning_battery(rows, root, mode):
     return out
 
 def glb_battery(spec):
-    from msf_tools.sources import glb as _glb
+    _glb = importlib.import_module(m.__name__ + '.sources.glb')
     meshes = tuple(_glb.Mesh(points=tuple(map(tuple, m['points'])), triangles=tuple(m['triangles']),
                              targets=tuple(tuple(map(tuple, t)) for t in m['targets']),
                              influences=None if m['influences'] is None else tuple(tuple(p) for p in m['influences']),
