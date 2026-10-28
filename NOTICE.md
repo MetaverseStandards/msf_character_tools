@@ -1,6 +1,6 @@
 # Notices
 
-Original Python and C++ source code is licensed MIT. Original documentation, JSON schemas, authoring data, analytical goldens and glTF/GLB fixtures are licensed CC-BY-SA-4.0. Attribution: MSF Tools contributors, 2026. The Python scripts that generate fixtures are code and use MIT. The data they generate uses CC-BY-SA-4.0. There are two exceptions. The diagnostics registry, `schemas/diagnostics.toml`, is MIT, because the C++ core generates code from it. `tests/public/fixtures/simple-skin.gltf` is a third-party asset, described below.
+Original Python and C++ source code is licensed MIT. Original documentation, JSON schemas, authoring data, analytical goldens and glTF/GLB fixtures are licensed CC-BY-SA-4.0. Attribution: MSF Character Tools contributors (formerly MSF Tools contributors), 2026. The Python scripts that generate fixtures are code and use MIT. The data they generate uses CC-BY-SA-4.0. There are two exceptions. The diagnostics registry, `schemas/diagnostics.toml`, is MIT, because the C++ core generates code from it. `tests/public/fixtures/simple-skin.gltf` is a third-party asset, described below.
 
 Distributions: the sdist holds the code, `docs/` and `schemas/`. The wheel holds the `msf_character_tools` package and its C++ extension, with the README as its description. Their licence expression, `MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0 AND CC-BY-SA-4.0`, covers both. Tests and examples are in neither.
 

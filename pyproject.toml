@@ -15,7 +15,7 @@ requires-python = ">=3.11"
 license = "MIT AND BSD-3-Clause AND BSL-1.0 AND PSF-2.0 AND CC-BY-SA-4.0"
 license-files = ["LICENSE", "NOTICE.md", "LICENSES/MIT.txt", "LICENSES/CC-BY-SA-4.0.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/robin_map-MIT.txt",
                  "LICENSES/BSL-1.0.txt", "LICENSES/PSF-2.0.txt", "LICENSES/ufbx-MIT.txt", "core/third_party/fast_float/LICENSE-MIT"]
-authors = [{name = "MSF Tools contributors"}]
+authors = [{name = "MSF Character Tools contributors"}]
 dependencies = []
 
 [project.optional-dependencies]
