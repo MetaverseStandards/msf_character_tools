@@ -1120,7 +1120,7 @@ static ufbxi_forceinline int32_t ufbxi_f64_to_i32(double value)
 
 static ufbxi_forceinline int64_t ufbxi_f64_to_i64(double value)
 {
-	// msf-tools: `<`, not `<=`. (double)INT64_MAX rounds up to 2^63, which int64_t cannot hold.
+	// msf-character-tools: `<`, not `<=`. (double)INT64_MAX rounds up to 2^63, which int64_t cannot hold.
 	if (ufbx_fabs(value) < (double)INT64_MAX) {
 		return (int64_t)value;
 	} else {

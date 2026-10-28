@@ -41,7 +41,7 @@
     "url": "https://codeload.github.com/ufbx/ufbx/tar.gz/26a482ae66871d7de36eb722aa060bce95bce274",
     "vendored": {
       "core/third_party/ufbx/LICENSE.ufbx": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391",
-      "core/third_party/ufbx/ufbx.c": "e711aeac80d0294d0abc2c078896e241953a1c22b69776d595e4f411b9bcf1a5",
+      "core/third_party/ufbx/ufbx.c": "b02d3e6c7f4c2f6d793ccc942de8ed126cc0ae921a71b6384a951bfd9b5ba84b",
       "core/third_party/ufbx/ufbx.h": "f787be529af577efc04f3e3e735844a08556718dbb613d1211c2b313d72895dc"
     },
     "version": "0.23.1"
