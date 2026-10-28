@@ -237,4 +237,4 @@ Builder GREEN results:
 - the same on Python 3.12.15, a vendor-patched build (zero skips, real Draft202012 schema validation);
 - `check.py` passes on both.
 
-Native and host gates that this change does not affect were not run again. The saved commands, source and test hashes, and the links from cases to RED results come with the private draft handoff. A new, independent review of the exact tree is still required. A builder GREEN result is not acceptance.
+Native and host gates that this change does not affect were not run again. The saved commands, source and test hashes, and the links from cases to RED results were recorded outside this repository. A new, independent review of the exact tree is still required. A builder GREEN result is not acceptance.

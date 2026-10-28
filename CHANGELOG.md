@@ -4,7 +4,7 @@
 
 The package has a new name, msf-character-tools. The behaviour does not change. Results, reports and output bytes are the same as in 0.4.0, apart from the message text below.
 
-The Git history was rewritten before publication. So the commit hashes of 0.4.0 and earlier differ from the hashes in any earlier private copy. The tags `v0.3.0` and `v0.4.0` point to the rewritten commits.
+The Git history was rewritten before publication. Thus, the commit hashes of 0.4.0 and earlier are different from the hashes in any earlier private copy. The tags `v0.3.0` and `v0.4.0` point to the rewritten commits. 0.4.0 and earlier have no release in this repository.
 
 ### Changed
 - The distribution is now `msf-character-tools`. Install the extras as `msf-character-tools[usd]` and `msf-character-tools[fbx]`. Wheel and sdist files start with `msf_character_tools-`.

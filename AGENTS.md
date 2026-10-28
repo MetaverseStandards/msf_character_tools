@@ -14,6 +14,7 @@ msf-character-tools validates signal mappings and inspects glTF assets into immu
 - From a release: download the wheel for your platform and Python, and `SHA256SUMS`, from the [v0.5.0 release](https://github.com/MetaverseStandards/msf-character-tools/releases/tag/v0.5.0). Install the wheel pinned by its hash:
 
 ```sh
+DIR=$(pwd)  # file:// needs an absolute path
 echo "msf-character-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt  # $SHA from SHA256SUMS
 python -m pip install --require-hashes -r req.txt
 ```
