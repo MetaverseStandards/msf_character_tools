@@ -72,7 +72,7 @@ PY
 if [ "$(uname -s)" = Linux ]; then
   "$uv" venv -q --python "$py312" "$scratch/audit" && "$uv" pip install -q --python "$scratch/audit/bin/python" auditwheel
   arch=$(uname -m)
-  for wheel in "$dist"/*manylinux*.whl; do
+  for wheel in "$dist"/*-manylinux_*_"$arch".whl; do
     name=$(basename "$wheel")
     shown=$("$scratch/audit/bin/auditwheel" show "$wheel" 2>&1)
     case "$name" in *"manylinux_2_28_$arch.whl") ;; *) note "$name: tag is not manylinux_2_28_$arch, FAILED" ;; esac
@@ -128,8 +128,8 @@ run_public() {
 }
 # Only this machine's wheels can be installed, so a folder with every platform's wheels also works.
 if [ "$(uname -s)" = Linux ]; then plat="manylinux_*_$(uname -m)"; else plat="macosx_*"; fi
-run_public "$py311" "$(ls "$dist"/*-cp311-cp311-$plat.whl)"
-run_public "$py312" "$(ls "$dist"/*-cp312-abi3-$plat.whl)"
-[ -n "${MSF_PY313:-}" ] && run_public "$MSF_PY313" "$(ls "$dist"/*-cp312-abi3-$plat.whl)"
+run_public "$py311" "$(ls "$dist"/*-cp311-cp311-$plat.whl 2>/dev/null)"
+run_public "$py312" "$(ls "$dist"/*-cp312-abi3-$plat.whl 2>/dev/null)"
+[ -n "${MSF_PY313:-}" ] && run_public "$MSF_PY313" "$(ls "$dist"/*-cp312-abi3-$plat.whl 2>/dev/null)"
 [ $failed -eq 0 ] && echo "Result: all release checks passed" || echo "Result: FAILED"
 exit $failed
