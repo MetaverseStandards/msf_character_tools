@@ -19,7 +19,7 @@
 set -u
 dist=$(cd "${1:?usage: scripts/check_release.sh DIST [COMMIT]}" && pwd)
 cd "$(dirname "$0")/.." || exit 2
-commit=$(git rev-parse "${2:-HEAD}")
+commit=$(git rev-parse "${2:-HEAD}^{commit}")
 MSF="${MSF:-}"
 if [ -n "$MSF" ]; then
   uv="${UV:-$MSF/_tools/boot/bin/uv}"

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `scripts/build_release.sh` and `scripts/check_release.sh` accept a tag as the commit argument. Before, they used the tag object hash in place of the commit, so `check_release.sh v0.5.0` failed the build-record check.
+
 ## 0.5.0 (2026-10-28)
 
 The package has a new name, msf-character-tools. The behaviour does not change. Results, reports and output bytes are the same as in 0.4.0, apart from the message text below.

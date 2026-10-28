@@ -21,7 +21,7 @@ set -eu
 requirements=$(cd "$(dirname "$0")" && pwd)/build-requirements.txt
 mkdir -p "${1:?usage: scripts/build_release.sh OUTDIR [COMMIT]}"
 out=$(cd "$1" && pwd)
-commit=$(git -C "$(dirname "$0")/.." rev-parse "${2:-HEAD}")
+commit=$(git -C "$(dirname "$0")/.." rev-parse "${2:-HEAD}^{commit}")
 MSF="${MSF:-}"
 if [ -n "$MSF" ]; then
   export PATH="$MSF/_tools/bin:$PATH"
