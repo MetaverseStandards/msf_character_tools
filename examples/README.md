@@ -70,7 +70,7 @@ Each script prints one line per step and writes to `examples/out/<format>/`. Use
 | `samples.json`, `mapping.json`, `evaluated.json` | The source frames, the compiled map and the mapped frames |
 | `render/<pose>.f32` | World-space positions, little-endian float32 x, y, z per vertex, every mesh instance in one array |
 | `render/mesh.u32` | Triangle indices into those positions, little-endian uint32, shared by every pose |
-| `render/render.json` | A job list for the `meshrender` tool, with a camera framed on the deforming meshes. Its `credit` is repeated as each job's `caption`. Show it with any frame made from this file |
+| `render/render.json` | A job list for the `meshrender` tool, with a camera framed on the deforming meshes. Its `credit` is repeated as each job's `caption`. It must be shown with any frame made from this file |
 | `render/CREDITS.txt` | The same credit line |
 
 Positions are in metres for USD and FBX, because the readers convert units and axes to glTF's Y-up. glTF positions keep the asset's own units. The Fox is about 100 units long. To read a pose in Python:
