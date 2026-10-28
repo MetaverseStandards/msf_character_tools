@@ -97,10 +97,10 @@ cmake -S . -B build/core-3.12 -G Ninja -DPython_EXECUTABLE=python3.12 -DMSF_CORE
 cmake --build build/core-3.12
 ```
 
-`scripts/ci_local.sh` is the CI (the GitHub workflow is dormant). It builds the core for 3.11 and 3.12, runs the public and internal suites and `check.py` on both, runs the public suite again with `MSF_TOOLS_PURE=1`, builds a wheel from a clean clone, and prints a summary. Tiers whose inputs are absent are skipped.
+`scripts/ci_local.sh` is the CI (the GitHub workflow is dormant). It builds the core for 3.11 and 3.12, runs the public and internal suites and `check.py` on both, runs the public suite again with `MSF_TOOLS_PURE=1`, builds a wheel from a clean clone, and prints a summary. Tiers whose inputs are absent are skipped. The script needs bash: run `scripts/ci_local.sh` or `bash scripts/ci_local.sh`, not `sh scripts/ci_local.sh` (dash, the `sh` of Debian and Ubuntu, cannot parse it).
 
-- MSF workspace: `MSF=$HOME/.local/share/msf sh scripts/ci_local.sh`. Interpreters, cmake, ninja, uv, the 0.3.0 oracle and the asset tiers come from `$MSF`. A missing oracle or usd-core fails the run.
-- Outside contributor: `sh scripts/ci_local.sh` uses `python3.11` and `python3.12` on `PATH` (or `MSF_PY311`, `MSF_PY312`). Without `MSF_ORACLE_PYTHON`, the oracle tests skip.
+- MSF workspace: `MSF=$HOME/.local/share/msf scripts/ci_local.sh`. Interpreters, cmake, ninja, uv, the 0.3.0 oracle and the asset tiers come from `$MSF`. A missing oracle or usd-core fails the run.
+- Outside contributor: `scripts/ci_local.sh` uses `python3.11` and `python3.12` on `PATH` (or `MSF_PY311`, `MSF_PY312`). Without `MSF_ORACLE_PYTHON`, the oracle tests skip.
 - Optional tiers: `--gate`, `--sanitize`, `--fuzz`. Asset tiers use `MSF_OPENUSD_ASSETS`, `MSF_UFBX_CORPUS`, `MSF_KHRONOS_ASSETS`, `MSF_REAL_ASSETS`, `MSF_EXAMPLE_ASSETS`. See [docs/testing.md](docs/testing.md).
 
 ### Invariants
@@ -112,6 +112,15 @@ Do not break these. Each one names its check.
 - Every diagnostic code is registered in `schemas/diagnostics.toml`. After you edit it, run `python3 -B tools/gen_diagnostics.py` to regenerate `core/include/msf/diagnostics.inc`. Check: `tests/internal/test_diagnostics_registry.py` and `python3 -B tools/gen_diagnostics.py --check`.
 - The core (and Ryu) compile with `-ffp-contract=off -fno-fast-math`. ufbx and its shim keep `-O2` and the compiler's default contraction, as in 0.3.0. See `CMakeLists.txt`. Check: the oracle differential tests and the ufbx corpus tier.
 - Record views are bound to their C++ handles by identity, so an equal copy is refused (`EvaluatedValues.samples` is compared by type and bits instead). See [ADR 0001](docs/adr/0001-record-ownership.md). Check: `tests/internal/test_record_integrity_internal.py`.
+- Do not edit generated files by hand. Edit the source and run the generator:
+  - `core/include/msf/diagnostics.inc`: see the registry rule above.
+  - `docs/parity.md`: `python -B scripts/parity_table.py` with the asset variables set (check: `ci_local.sh` compares a fresh table when all asset inputs are present).
+  - The generated fixtures and goldens in `tests/public/fixtures/`: `tests/public/make_fixtures.py` and `make_source_fixtures.py`. They must give the same bytes again (check: `tests/public.sha256`).
+  - `examples/data/AnimatedMorphCube.writer.fbx`: `tests/public/make_example_fbx.py` (check: the examples tier).
+  - `examples/generated/`: `python3 -B -m msf_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv --write` (check: `check.py`).
+- Never commit `msf_tools/_build_info.json`. Builds write it, and a commit cannot hold its own hash. Check: `.gitignore` lists it; `test_build_info.py` and the build-record tier of `ci_local.sh` check the record that builds write.
+- The bindings in `core/python/` must compile under `Py_LIMITED_API`, so the abi3 wheel keeps working. Use the functions that `core/python/limited_api.hpp` maps to, not CPython's unchecked macros. Check: the 3.12 in-place build in `ci_local.sh` defines `Py_LIMITED_API`, so a call outside the limited API does not compile. `check_release.sh` runs the public suite on the abi3 wheel (and on 3.13 with `MSF_PY313`).
+- Check the type of every item read from a caller's Mapping or sequence before C++ uses it. Do not assume `items()` gives 2-tuples. 0.4.0 fixed a segfault of this kind (`6aabfb8`). Check: the `_Odd` cases in `tests/internal/gltf_cases.py` and the `OddItems` cases in `tests/internal/test_core_json.py`, both against the oracle; `--sanitize`.
 - No runtime dependencies beyond the standard library: `dependencies = []` in `pyproject.toml`. No test checks this, so review it.
 - Every vendored file under `core/third_party` is pinned by SHA-256 in `docs/source-lock.json`, and credited in [NOTICE.md](NOTICE.md) and `LICENSES/`. Check: `tests/internal/test_package_metadata.py` (pins, and that each licence file exists). Review the credits.
 - Release builds use `scripts/build_release.sh OUTDIR [COMMIT]`, then `scripts/check_release.sh OUTDIR [COMMIT]`. The manylinux images are pinned by digest. Build requirements come from `scripts/build-requirements.txt` with hashes. Check: `test_package_metadata.py` keeps those pins in step with `pyproject.toml`.
@@ -119,7 +128,7 @@ Do not break these. Each one names its check.
 
 ### Known traps
 
-- A stale `_core.cpython-312-*.so` in `msf_tools/` or `build/core-3.12` shadows `_core.abi3.so`, because Python prefers the version-specific file. It can come from an old build directory or a copy by hand. Delete it and rebuild. `ci_local.sh --sanitize` copies back only the newest build for this reason.
+- A `_core.cpython-312-*.so` in `msf_tools/` shadows `_core.abi3.so`, because Python prefers the version-specific file. A stale one in `build/core-3.12` is harmless until something copies it into `msf_tools/`, as the `--sanitize` restore once did (fixed in `d8265f9`: it now copies only the newest build). Delete the stray file and rebuild.
 - `ci_local.sh` sets `PYTHONHASHSEED=0`. 0.3.0 checked a frame's channels in set order, so its diagnostic order depends on the hash seed. The oracle inherits the seed. Set it when you run the suites by hand.
 - On macOS, `--fuzz` fails unless `MSF_LIBFUZZER` names a `libFuzzer.a`. Apple clang has no fuzzer runtime. docs/testing.md says how to build one.
 - On Linux, the `docs/parity.md` check compares a fresh table with 0.3.0's table measured on the same machine (`MSF_ORACLE_SOURCE`, a `v0.3.0` checkout). The committed table is from macOS.
