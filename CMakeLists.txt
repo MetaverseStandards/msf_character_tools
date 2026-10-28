@@ -18,9 +18,10 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
 find_package(nanobind CONFIG REQUIRED)
 
 option(MSF_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer (scripts/ci_local.sh --sanitize)" OFF)
+# GCC's undefined group leaves out float-cast-overflow; clang's includes it.
 if(MSF_SANITIZE)
-  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
-  add_link_options(-fsanitize=address,undefined)
+  add_compile_options(-fsanitize=address,undefined,float-cast-overflow -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined,float-cast-overflow)
 endif()
 # libFuzzer harnesses (core/fuzz), on an ASan and UBSan core. Compilers without
 # the fuzzer runtime (Apple clang) take a libFuzzer.a built from compiler-rt
@@ -28,8 +29,8 @@ endif()
 option(MSF_FUZZ "Build the libFuzzer harnesses in core/fuzz" OFF)
 set(MSF_LIBFUZZER "" CACHE FILEPATH "libFuzzer.a, for compilers without -fsanitize=fuzzer")
 if(MSF_FUZZ)
-  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
-  add_link_options(-fsanitize=address,undefined)
+  add_compile_options(-fsanitize=address,undefined,float-cast-overflow -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined,float-cast-overflow)
   if(MSF_LIBFUZZER)
     add_compile_options(-fsanitize-coverage=inline-8bit-counters,trace-cmp,pc-table)
   else()
