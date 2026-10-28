@@ -303,7 +303,8 @@ if [ -n "$real" ] && [ -f "$real/real-asset-harness-plan09K/CASE_MATRIX.json" ] 
       && "$MSF_ORACLE_PYTHON" -c 'import pxr' 2>/dev/null; then
     root=$(pwd)
     if (cd "$oracle_source" && env "${assets[@]}" "$MSF_ORACLE_PYTHON" -B scripts/parity_table.py "$root/build/parity-0.3.0.md" >/dev/null 2>&1) \
-        && cmp -s <(grep -v '^msf-tools ' "$fresh") <(grep -v '^msf-tools ' build/parity-0.3.0.md); then
+        && grep -v '^msf-tools ' "$fresh" > build/parity-now.cmp && grep -v '^msf-tools ' build/parity-0.3.0.md > build/parity-0.3.0.cmp \
+        && cmp -s build/parity-now.cmp build/parity-0.3.0.cmp; then
       lines+=("- docs/parity.md: a fresh measurement matches 0.3.0's on this machine ($(diff -q "$fresh" docs/parity.md >/dev/null && echo 'and the macOS table' || echo "usd-core's last digits differ from the macOS table"))")
     else
       lines+=("- docs/parity.md: a fresh measurement DIFFERS from 0.3.0's on this machine (compare build/parity.md and build/parity-0.3.0.md)")
