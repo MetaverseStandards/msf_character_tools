@@ -68,7 +68,7 @@ python3 -B check.py
 
 Fixture generation is deterministic. When fixtures are generated again, the checked-in source and golden bytes must stay equal. Analytical golden values must not come from evaluator output. Run the installed-wheel tests from a working directory outside the checkout, with both Python 3.11 and 3.12. Cross-platform CI runs the reference commands. Native gates belong to the native build integration.
 
-`scripts/ci_local.sh` is the CI run while `.github/workflows/check.yml` is dormant (GitHub Actions is blocked by account billing). Use it while hosted CI is unavailable. It does these steps:
+`scripts/ci_local.sh` is the CI run while `.github/workflows/check.yml` is dormant (GitHub Actions is not turned on for this repository). Use it while hosted CI is not available. It does these steps:
 - It builds the C++ core in place for each Python, because msf-character-tools does not import without it.
 - It runs the public and internal suites and `check.py` on local Python 3.11 and 3.12 environments (`MSF_PY311` / `MSF_PY312`, by default `python3.11` and `python3.12` on `PATH`), then the optional asset tiers.
 - It runs the public suite once more without the core's fast paths (`MSF_TOOLS_PURE=1`, see [building](building.md)).
