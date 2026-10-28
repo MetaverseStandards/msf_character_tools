@@ -2,11 +2,11 @@
 
 Original documentation: CC-BY-SA-4.0.
 
-This file is for coding agents. Part 1 is for an agent that uses msf-tools. Part 2 is for an agent that changes it. Follow the [writing style](#writing-style) in all prose.
+This file is for coding agents. Part 1 is for an agent that uses msf-character-tools. Part 2 is for an agent that changes it. Follow the [writing style](#writing-style) in all prose.
 
-## Part 1: Using msf-tools
+## Part 1: Using msf-character-tools
 
-msf-tools validates signal mappings and inspects glTF assets into immutable snapshots. It also evaluates vertex positions (morph targets and linear blend skinning) in binary64, with a C++ core behind a Python API for Python 3.11 and later.
+msf-character-tools validates signal mappings and inspects glTF assets into immutable snapshots. It also evaluates vertex positions (morph targets and linear blend skinning) in binary64, with a C++ core behind a Python API for Python 3.11 and later.
 
 ### Install
 
@@ -14,7 +14,7 @@ msf-tools validates signal mappings and inspects glTF assets into immutable snap
 - From a release: download the wheel for your platform and Python, and `SHA256SUMS`, from the GitHub release. Install the wheel pinned by its hash:
 
 ```sh
-echo "msf-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt  # $SHA from SHA256SUMS
+echo "msf-character-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt  # $SHA from SHA256SUMS
 python -m pip install --require-hashes -r req.txt
 ```
 
@@ -22,7 +22,7 @@ The tag `v0.4.0` is on commit `ce52dfb`.
 
 ### Public surface
 
-- `msf_tools.__all__` has 29 names. Use nothing else. `tests/public` uses only these names and the CLI.
+- `msf_character_tools.__all__` has 29 names. Use nothing else. `tests/public` uses only these names and the CLI.
 - The six main operations: `validate_authoring`, `compile_pack`, `inspect_asset`, `annotate_asset`, `compile_mapping`, `evaluate_mapping`.
 - The other names are helpers (such as `load_authoring`, `profile_snapshot`, `LocalResolver`, `evaluate_geometry`, `canonical_json`) and the result and record types.
 - [docs/reference.md](docs/reference.md) gives every signature, the types, the byte formats and the geometry conventions. [schemas/](schemas/README.md) has the JSON schemas for the wire types.
@@ -41,7 +41,7 @@ Run from a directory with `examples/authoring` and `examples/samples.json` copie
 
 ```python
 import json
-from msf_tools import (load_authoring, compile_pack, profile_snapshot,
+from msf_character_tools import (load_authoring, compile_pack, profile_snapshot,
                        compile_mapping, evaluate_mapping, inspect_asset)
 
 pack = compile_pack(load_authoring("authoring").value)
@@ -59,13 +59,13 @@ print(bad.ok, bad.value, bad.report.diagnostics[0].code)   # False None E_GLB_HE
 
 ### Command line
 
-`msf-tools` (or `python -m msf_tools`) has six commands: `check`, `inspect`, `annotate`, `geometry`, `map`, `evaluate`. Reports go to stderr as JSON. Values go to stdout or to `--output`. A failure exits nonzero. See "CLI and writes" in [docs/reference.md](docs/reference.md).
+`msf-character-tools` (or `python -m msf_character_tools`) has six commands: `check`, `inspect`, `annotate`, `geometry`, `map`, `evaluate`. Reports go to stderr as JSON. Values go to stdout or to `--output`. A failure exits nonzero. See "CLI and writes" in [docs/reference.md](docs/reference.md).
 
 ### Formats
 
 - glTF and GLB: built in.
 - FBX: built in (ufbx is compiled into the core). The `fbx` extra is empty.
-- USD (`usd`, `usda`, `usdc`, `usdz`): needs the `usd` extra (`msf-tools[usd]`, usd-core). Without it, `inspect_asset` returns `E_FORMAT_DEPENDENCY`.
+- USD (`usd`, `usda`, `usdc`, `usdz`): needs the `usd` extra (`msf-character-tools[usd]`, usd-core). Without it, `inspect_asset` returns `E_FORMAT_DEPENDENCY`.
 - Source formats are converted to glTF. `inspect_asset(..., isolate=True)` reads them in a separate process. The CLI does this by default.
 
 ## Part 2: Contributing
@@ -76,9 +76,9 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first. [docs/building.md](docs/building.
 
 | Path | Contents |
 | --- | --- |
-| `msf_tools/` | The Python package: API, CLI, records, sidecars, source adapters (`sources/`) |
+| `msf_character_tools/` | The Python package: API, CLI, records, sidecars, source adapters (`sources/`) |
 | `core/` | The C++17 core: `src/`, `include/msf/`, `fuzz/` (libFuzzer harnesses) |
-| `core/python/` | The nanobind bindings that make `msf_tools._core` |
+| `core/python/` | The nanobind bindings that make `msf_character_tools._core` |
 | `core/third_party/` | Vendored Ryu, fast_float and ufbx |
 | `tests/public/` | The frozen public gate: public API and CLI only |
 | `tests/internal/` | Private modules, and the core against the 0.3.0 oracle |
@@ -117,8 +117,8 @@ Do not break these. Each one names its check.
   - `docs/parity.md`: `python -B scripts/parity_table.py` with the asset variables set (check: `ci_local.sh` compares a fresh table when all asset inputs are present).
   - The generated fixtures and goldens in `tests/public/fixtures/`: `tests/public/make_fixtures.py` and `make_source_fixtures.py`. They must give the same bytes again (check: `tests/public.sha256`).
   - `examples/data/AnimatedMorphCube.writer.fbx`: `tests/public/make_example_fbx.py` (check: the examples tier).
-  - `examples/generated/`: `python3 -B -m msf_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv --write` (check: `check.py`).
-- Never commit `msf_tools/_build_info.json`. Builds write it, and a commit cannot hold its own hash. Check: `.gitignore` lists it; `test_build_info.py` and the build-record tier of `ci_local.sh` check the record that builds write.
+  - `examples/generated/`: `python3 -B -m msf_character_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv --write` (check: `check.py`).
+- Never commit `msf_character_tools/_build_info.json`. Builds write it, and a commit cannot hold its own hash. Check: `.gitignore` lists it; `test_build_info.py` and the build-record tier of `ci_local.sh` check the record that builds write.
 - The bindings in `core/python/` must compile under `Py_LIMITED_API`, so the abi3 wheel keeps working. Use the functions that `core/python/limited_api.hpp` maps to, not CPython's unchecked macros. Check: the 3.12 in-place build in `ci_local.sh` defines `Py_LIMITED_API`, so a call outside the limited API does not compile. `check_release.sh` runs the public suite on the abi3 wheel (and on 3.13 with `MSF_PY313`).
 - Check the type of every item read from a caller's Mapping or sequence before C++ uses it. Do not assume `items()` gives 2-tuples. 0.4.0 fixed a segfault of this kind (`6aabfb8`). Check: the `_Odd` cases in `tests/internal/gltf_cases.py` and the `OddItems` cases in `tests/internal/test_core_json.py`, both against the oracle; `--sanitize`.
 - No runtime dependencies beyond the standard library: `dependencies = []` in `pyproject.toml`. No test checks this, so review it.
@@ -128,7 +128,7 @@ Do not break these. Each one names its check.
 
 ### Known traps
 
-- A `_core.cpython-312-*.so` in `msf_tools/` shadows `_core.abi3.so`, because Python prefers the version-specific file. A stale one in `build/core-3.12` is harmless until something copies it into `msf_tools/`, as the `--sanitize` restore once did (fixed in `d8265f9`: it now copies only the newest build). Delete the stray file and rebuild.
+- A `_core.cpython-312-*.so` in `msf_character_tools/` shadows `_core.abi3.so`, because Python prefers the version-specific file. A stale one in `build/core-3.12` is harmless until something copies it into `msf_character_tools/`, as the `--sanitize` restore once did (fixed in `d8265f9`: it now copies only the newest build). Delete the stray file and rebuild.
 - `ci_local.sh` sets `PYTHONHASHSEED=0`. 0.3.0 checked a frame's channels in set order, so its diagnostic order depends on the hash seed. The oracle inherits the seed. Set it when you run the suites by hand.
 - On macOS, `--fuzz` fails unless `MSF_LIBFUZZER` names a `libFuzzer.a`. Apple clang has no fuzzer runtime. docs/testing.md says how to build one.
 - On Linux, the `docs/parity.md` check compares a fresh table with 0.3.0's table measured on the same machine (`MSF_ORACLE_SOURCE`, a `v0.3.0` checkout). The committed table is from macOS.

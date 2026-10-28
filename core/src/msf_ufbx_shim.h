@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Flat-array access to a ufbx scene for msf-tools. Every function checks its
+/* Flat-array access to a ufbx scene for msf-character-tools. Every function checks its
    indices and returns 0 with an error string instead of aborting. Pointers it
    hands out stay valid until msf_fbx_close. */
 #ifndef MSF_UFBX_SHIM_H

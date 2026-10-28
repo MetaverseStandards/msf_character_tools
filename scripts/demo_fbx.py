@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Show FBX files going through msf-tools: an ASCII rig made by the test writer, plus any FBX paths given.
+"""Show FBX files going through msf-character-tools: an ASCII rig made by the test writer, plus any FBX paths given.
 
 For each file it inspects in a separate reader process, lists declared losses,
 binds the first morph target if there is one, and prints the first mesh's

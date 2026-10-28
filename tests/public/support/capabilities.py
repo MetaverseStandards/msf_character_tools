@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""What this build of msf-tools can read, asked through the public API rather than by package name.
+"""What this build of msf-character-tools can read, asked through the public API rather than by package name.
 
 A format missing here makes its tests skip. Set MSF_REQUIRE_FORMATS (for example
 "fbx,usd", as scripts/ci_local.sh does) to make a missing or broken reader fail

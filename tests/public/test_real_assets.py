@@ -177,7 +177,7 @@ class RealAssetRecipes(unittest.TestCase):
             size = struct.calcsize('<' + kind)
             stride = view.get('byteStride', size * width)
             start = view.get('byteOffset', 0) + accessor.get('byteOffset', 0)
-            # Read straight from the buffer, independently of msf-tools' accessor decoding.
+            # Read straight from the buffer, independently of msf-character-tools' accessor decoding.
             wanted = [struct.unpack_from('<' + kind * width, buffer, start + k * stride) for k in range(accessor['count'])]
             decoded = m.decode_accessor(self.x.head, index).value
             self.assertEqual([tuple(row) for row in decoded], wanted, index)

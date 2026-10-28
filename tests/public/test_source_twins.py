@@ -3,7 +3,7 @@
 
 Set MSF_KHRONOS_ASSETS to a glTF-Sample-Assets checkout (its Models folder holds
 the assets; they are never committed here). Each asset is decoded with
-msf-tools, written as FBX with the same nodes, meshes, skins, morph targets and
+msf-character-tools, written as FBX with the same nodes, meshes, skins, morph targets and
 first animation, read back through the FBX adapter, and every primitive's
 world-space points must match the original within 1e-5 of the bounding-box
 diagonal at every keyframe time.

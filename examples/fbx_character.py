@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""FBX example: a skinned Kenney character (CC0) and a shape-key cube written by msf-tools' FBX test writer.
+"""FBX example: a skinned Kenney character (CC0) and a shape-key cube written by msf-character-tools' FBX test writer.
 
     python fbx_character.py [--assets DIR] [--out DIR]
 
@@ -32,5 +32,5 @@ if __name__ == '__main__':
     run(args, name='fbx_morph_cube', data=cube, fmt='fbx', binding=('/AnimatedMorphCube', 0, 'thin'), asset={
         'name': 'AnimatedMorphCube as FBX', 'file': 'data/AnimatedMorphCube.writer.fbx', 'format': 'fbx',
         'sha256': hashlib.sha256(cube).hexdigest(), 'license': 'CC0-1.0',
-        'credit': "Microsoft, 2017 (Khronos glTF-Sample-Assets); written to FBX by msf-tools' test FBX writer, not a DCC export.",
+        'credit': "Microsoft, 2017 (Khronos glTF-Sample-Assets); written to FBX by msf-character-tools' test FBX writer, not a DCC export.",
     })

@@ -3,7 +3,7 @@
 
     python usd_tube.py [--out DIR]
 
-Needs usd-core (pip install "msf-tools[usd]") for msf-tools' USD reader. The
+Needs usd-core (pip install "msf-character-tools[usd]") for msf-character-tools' USD reader. The
 tube is written by this script, so there is no asset licence to track. It
 has three joints that bend it over two seconds and a "bulge" blend shape that
 the mapping drives.

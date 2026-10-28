@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Show a skinned, animated USD rig going through msf-tools as USDA, USDC and USDZ.
+"""Show a skinned, animated USD rig going through msf-character-tools as USDA, USDC and USDZ.
 
 For each container it inspects the rig in a separate reader process, binds the
 "lift" blend shape to a signal, and prints mesh-local points at three
@@ -34,7 +34,7 @@ def containers():
 
 def need(result):
     if not result.ok:
-        sys.exit(f'msf-tools refused the rig: {result.report.to_dict()}')
+        sys.exit(f'msf-character-tools refused the rig: {result.report.to_dict()}')
     return result.value
 
 

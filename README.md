@@ -1,6 +1,6 @@
-# MSF Tools
+# MSF Character Tools
 
-MSF Tools validates signal mappings and inspects glTF assets into immutable snapshots. It runs on Python 3.11 and later, with a C++ core. It also gives an independent binary64 evaluation of vertex positions, for relative morph targets and for linear blend skinning over every influence set. It reads USD (through usd-core) and FBX (through ufbx, which is compiled in) by converting them to glTF. Wheels are available for macOS arm64 and for Linux x86_64 and aarch64 (manylinux_2_28). There is one wheel for CPython 3.11 and one abi3 wheel for CPython 3.12 and later.
+MSF Character Tools validates signal mappings and inspects glTF assets into immutable snapshots. It runs on Python 3.11 and later, with a C++ core. It also gives an independent binary64 evaluation of vertex positions, for relative morph targets and for linear blend skinning over every influence set. It reads USD (through usd-core) and FBX (through ufbx, which is compiled in) by converting them to glTF. Wheels are available for macOS arm64 and for Linux x86_64 and aarch64 (manylinux_2_28). There is one wheel for CPython 3.11 and one abi3 wheel for CPython 3.12 and later.
 
 ## Run
 
@@ -8,9 +8,9 @@ MSF Tools validates signal mappings and inspects glTF assets into immutable snap
 python3 -B -m unittest discover -s tests/public
 python3 -B -m unittest discover -s tests/internal -t tests
 python3 -B check.py
-python3 -B -m msf_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv
-python3 -B -m msf_tools evaluate examples/authoring wink examples/samples.json --source-profile source --target-profile target
-python3 -B -m msf_tools geometry tests/public/fixtures/combined.gltf --animation 0 --time 0.5
+python3 -B -m msf_character_tools check examples/authoring --pack examples/generated/pack.json --csv examples/generated/survey.csv
+python3 -B -m msf_character_tools evaluate examples/authoring wink examples/samples.json --source-profile source --target-profile target
+python3 -B -m msf_character_tools geometry tests/public/fixtures/combined.gltf --animation 0 --time 0.5
 ```
 
 These commands run from a checkout after you build the C++ core in place (see [building](docs/building.md)). CMake finds nanobind through the interpreter, so install nanobind into that interpreter first:
@@ -25,23 +25,23 @@ To install into a virtual environment of your choice, use the commands below. Th
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install .
-.venv/bin/python -m msf_tools --help
+.venv/bin/python -m msf_character_tools --help
 ```
 
 [examples/README.md](examples/README.md) is a walkthrough. It takes a real glTF, USD and FBX asset through inspection, a sidecar binding, a map and posed geometry.
 
-There are no runtime dependencies. The optional `usd` extra installs usd-core. The build backend is scikit-build-core, through `tools/build_backend.py`. After an in-place core build, `python -m msf_tools` works from the repository root without installation. Other programs that use msf-tools should import an installed package, or select a local tools path explicitly.
+There are no runtime dependencies. The optional `usd` extra installs usd-core. The build backend is scikit-build-core, through `tools/build_backend.py`. After an in-place core build, `python -m msf_character_tools` works from the repository root without installation. Other programs that use msf-character-tools should import an installed package, or select a local tools path explicitly.
 
 ## Six public APIs
 
 ```python
-from msf_tools import (
+from msf_character_tools import (
     validate_authoring, compile_pack, inspect_asset,
     compile_mapping, evaluate_mapping, annotate_asset,
 )
 ```
 
-These six are the main operations. `msf_tools.__all__` has 29 public names in all: the six operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types.
+These six are the main operations. `msf_character_tools.__all__` has 29 public names in all: the six operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types.
 
 Words used in this documentation: a *mapping* is one rule (one entry of a map's `rules`). A *map* is a named group of rules: one `[[mappings]]` entry, selected by `mapping_id`. `compile_mapping` compiles one map, and `evaluate_mapping` runs the compiled map on samples.
 
@@ -63,4 +63,4 @@ The original [combined fixture](tests/public/fixtures/README.md) has jaw and hea
 
 ## Development and licences
 
-Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Coding agents should read [AGENTS.md](AGENTS.md). Original code is MIT. Original documentation, data and fixtures are CC-BY-SA-4.0. Since 0.4.0, the implementation is a C++ core, `msf_tools._core`, behind the same Python API. [Building](docs/building.md) describes the build record and the build tools.
+Read [CONTRIBUTING](CONTRIBUTING.md), [GOVERNANCE](GOVERNANCE.md), [NOTICE](NOTICE.md) and [public sources](docs/sources.md). Coding agents should read [AGENTS.md](AGENTS.md). Original code is MIT. Original documentation, data and fixtures are CC-BY-SA-4.0. Since 0.4.0, the implementation is a C++ core, `msf_character_tools._core`, behind the same Python API. [Building](docs/building.md) describes the build record and the build tools.

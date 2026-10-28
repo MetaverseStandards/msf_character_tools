@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Strict JSON, as msf-tools reads and writes it in Python.
+// Strict JSON, as msf-character-tools reads and writes it in Python.
 // parse() accepts what common.parse_json accepts: json.loads with duplicate-key,
 // constant and 309-digit hooks, then the json_value limits.
 // write_canonical() produces common.canonical_json's bytes: sort_keys,

@@ -4,7 +4,7 @@ Original documentation: CC-BY-SA-4.0.
 
 ## Package and C++ core
 
-`pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_tools._core` (C++17, nanobind). It installs the core with every tracked `msf_tools/*.py` module and the build record.
+`pyproject.toml` builds with scikit-build-core through the in-tree backend `tools/build_backend.py`, which adds the build record below. `CMakeLists.txt` compiles the C++ core, `msf_character_tools._core` (C++17, nanobind). It installs the core with every tracked `msf_character_tools/*.py` module and the build record.
 
 Each platform (macOS arm64, Linux x86_64 and aarch64) gets two wheels:
 - a `cp311` wheel;
@@ -14,7 +14,7 @@ In-place builds follow the same rule, so the suites test the extension that ship
 
 On macOS the backend targets macOS 11.0, the oldest release for arm64, unless `MACOSX_DEPLOYMENT_TARGET` is already set. The wheel tag follows the target. Building needs a C++17 compiler, CMake 3.26 or newer, and Ninja or Make. The build front end fetches scikit-build-core 1.1.1 and nanobind 3.1.0, pinned exactly. Release builds pin their dependencies too (see [Release builds](#release-builds)).
 
-The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the 0.3.0 Python reference did; see [ADR 0001](adr/0001-record-ownership.md). Everything is in the core except the CLI, TOML loading, sidecars and bindings, the USD adapter and the isolated reader process. msf-tools does not import without the extension.
+The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so it rounds exactly as the 0.3.0 Python reference did; see [ADR 0001](adr/0001-record-ownership.md). Everything is in the core except the CLI, TOML loading, sidecars and bindings, the USD adapter and the isolated reader process. msf-character-tools does not import without the extension.
 
 Two paths exist twice:
 - `parse_json` and `canonical_json` use the core. For input the core declines, they fall back to Python's `json`. Malformed JSON is an example: Python reports its exact errors.
@@ -37,7 +37,7 @@ The core's diagnostic codes come from `core/include/msf/diagnostics.inc`. `pytho
 
 ## Build record
 
-Every built package contains `msf_tools/_build_info.json`:
+Every built package contains `msf_character_tools/_build_info.json`:
 
 ```json
 {
@@ -50,8 +50,8 @@ Every built package contains `msf_tools/_build_info.json`:
 
 `tools/build_backend.py` writes the file at build time, so it is never checked in (`.gitignore` lists it). The rules are in `tools/build_info.py`:
 
-- A build from the top of a Git checkout records `HEAD` when no tracked file has changed, and no untracked file is under `msf_tools/` or `core/` (where it would be built into the wheel). This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
-- Inside a Git checkout only Git counts: a stray `msf_tools/_build_info.json` there is never used.
+- A build from the top of a Git checkout records `HEAD` when no tracked file has changed, and no untracked file is under `msf_character_tools/` or `core/` (where it would be built into the wheel). This covers `pip install git+...@COMMIT`, `uv pip install`, `uv build` and wheels built from a clean clone.
+- Inside a Git checkout only Git counts: a stray `msf_character_tools/_build_info.json` there is never used.
 - CMake installs modules from the source tree into a new staging directory for each wheel, and a module left over from an earlier build never ships under the new record.
 - An sdist has no `.git`, so building an sdist writes the record into it. A wheel built from that sdist, outside any Git checkout, installs the record if its version matches.
 - Any other build records no commit and leaves out the file. Examples: a build from a checkout with uncommitted changes or untracked package files, an editable install, or a source tree inside a checkout but not at its top. Non-editable builds print a warning. RCEF then refuses the install, as it does for any install without a source commit.

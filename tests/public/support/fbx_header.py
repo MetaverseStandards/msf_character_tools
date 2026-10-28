@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Read an FBX file's GlobalSettings properties straight from its bytes, without ufbx or msf-tools."""
+"""Read an FBX file's GlobalSettings properties straight from its bytes, without ufbx or msf-character-tools."""
 import re
 import struct
 

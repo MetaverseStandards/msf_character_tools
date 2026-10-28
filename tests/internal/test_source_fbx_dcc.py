@@ -4,16 +4,16 @@
 ufbx's own tests pair each FBX file with OBJ files that Blender, Maya, 3ds Max and
 MotionBuilder exported from the same scene, either at rest or at a named frame.
 This tier reads those pairings from ufbx's test sources and compares every
-mesh point msf-tools evaluates, in world space, with the OBJ points. The OBJ data
-was not produced by ufbx or msf-tools, so it checks the conversion independently.
+mesh point msf-character-tools evaluates, in world space, with the OBJ points. The OBJ data
+was not produced by ufbx or msf-character-tools, so it checks the conversion independently.
 
 Points are compared as sets within ufbx's own per-file tolerance (0.001 OBJ
 units unless the OBJ says otherwise). OBJ files are in the FBX file's own units
 and axes, read from its GlobalSettings by tests/public/support/fbx_header.py, not from
-ufbx or msf-tools; msf-tools' declared unit must agree with it.
+ufbx or msf-character-tools; msf-character-tools' declared unit must agree with it.
 
 A pairing that disagrees is explained only mesh by mesh: every mesh with
-unmatched points (an OBJ point counts against the mesh of its nearest msf-tools
+unmatched points (an OBJ point counts against the mesh of its nearest msf-character-tools
 point) must carry a declared loss that changes points, such as dropped vertex
 caches or in-between shapes. Each explained row's match fractions are recorded
 in tests/public/fixtures/dcc_differs.json, so a row that gets worse fails; set
@@ -144,13 +144,13 @@ def explaining_meshes(snapshot):
 
 
 def compare(fbx, obj, stack, seconds, frame_flags):
-    """('match' | 'differs' | 'explained' | 'refused' | 'skipped', detail, (OBJ, msf-tools) match fractions)."""
+    """('match' | 'differs' | 'explained' | 'refused' | 'skipped', detail, (OBJ, msf-character-tools) match fractions)."""
     import msf_character_tools as m
     points, directives = obj_file(obj)
     if 'transform_skin' in directives:
         return 'skipped', 'the OBJ is in the bind pose space of the skin', None
     if 'NO_EXTRAPOLATE' in frame_flags:
-        return 'skipped', 'ufbx evaluates this frame with extrapolation off, which msf-tools does not use', None
+        return 'skipped', 'ufbx evaluates this frame with extrapolation off, which msf-character-tools does not use', None
     data = fbx.read_bytes()
     options = {}
     if stack:
@@ -165,14 +165,14 @@ def compare(fbx, obj, stack, seconds, frame_flags):
     rotation, unit = axes_and_unit(data)
     declared_unit = next((float(d['message'].split()[1]) for d in losses if d['code'] == 'I_UNITS_CONVERTED'), 1.0)
     if not math.isclose(unit, declared_unit, rel_tol=1e-6):
-        return 'differs', f'the file header says {unit:g} metres per unit; msf-tools declared {declared_unit:g}', None
+        return 'differs', f'the file header says {unit:g} metres per unit; msf-character-tools declared {declared_unit:g}', None
     if (rotation not in (None, ((1, 0, 0), (0, 1, 0), (0, 0, 1)))) != any(d['code'] == 'I_AXES_CONVERTED' for d in losses):
-        return 'differs', 'the file header and msf-tools disagree about converting axes', None
+        return 'differs', 'the file header and msf-character-tools disagree about converting axes', None
     rotation = rotation or ((1, 0, 0), (0, 1, 0), (0, 0, 1))
     shift = next((float(d['message'].split()[4]) for d in losses if d['code'] == 'W_TIME_SHIFTED'), 0.0)
     instances = world_points(snapshot, None if seconds is None else seconds + shift)
     if instances == 'E_GEOMETRY_EMPTY' and any(d['code'] == 'W_SKIPPED' for d in losses):
-        return 'skipped', 'every surface in the file is of a kind msf-tools skips and declares', None
+        return 'skipped', 'every surface in the file is of a kind msf-character-tools skips and declares', None
     if isinstance(instances, str):
         return 'differs', f'geometry refused with {instances}', None
     scale = unit * (0.01 if 'SCALE_100' in frame_flags else 1.0)
@@ -183,11 +183,11 @@ def compare(fbx, obj, stack, seconds, frame_flags):
     owner = [mesh for mesh, _, world, _, _ in instances for _ in world]
     lost_obj, lost_ours = misses(theirs, ours, tolerance), misses(ours, theirs, tolerance)
     fractions = (round(1 - len(lost_obj) / max(1, len(theirs)), 3), round(1 - len(lost_ours) / max(1, len(ours)), 3))
-    detail = f'{fractions[0]:.3f} of OBJ points and {fractions[1]:.3f} of msf-tools points match'
+    detail = f'{fractions[0]:.3f} of OBJ points and {fractions[1]:.3f} of msf-character-tools points match'
     if not lost_obj and not lost_ours:
         return 'match', detail, fractions
     if seconds is None and any(skinned for _, skinned, _, _, _ in instances):
-        # At rest the OBJ holds the mesh as authored; msf-tools skins it with the rest pose, which differs when
+        # At rest the OBJ holds the mesh as authored; msf-character-tools skins it with the rest pose, which differs when
         # rest is not bind. Only then is a difference expected.
         if any(any(math.dist(a, b) > 1e-6 for a, b in zip(local, unskinned))
                for _, skinned, _, local, unskinned in instances if skinned):

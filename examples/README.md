@@ -1,6 +1,6 @@
 # End-to-end examples
 
-Each script takes real assets through all the msf-tools steps. It writes files that you can read or render:
+Each script takes real assets through all the msf-character-tools steps. It writes files that you can read or render:
 
 1. **Inspect** the asset: nodes, meshes, skins, morph targets, clips, and any losses that the format reader declares.
 2. **Annotate**: bind a signal to one morph target and write a hash-bound sidecar.
@@ -15,7 +15,7 @@ Each script takes real assets through all the msf-tools steps. It writes files t
 
 The Fox and the Kenney character have no morph targets. For each of them, the binding step is expected to fail with `E_BINDING_REFERENCE`. The script says so and continues. The map is then evaluated against the example pack's own target profile. The cubes show a successful binding.
 
-msf-tools' own test FBX writer (`tests/public/make_example_fbx.py`) writes the FBX cube. The cube therefore tests the shape-key path, but it tells you nothing about how real exporters write FBX. The Kenney character is the real export.
+msf-character-tools' own test FBX writer (`tests/public/make_example_fbx.py`) writes the FBX cube. The cube therefore tests the shape-key path, but it tells you nothing about how real exporters write FBX. The Kenney character is the real export.
 
 ## Set up from a clean environment
 
@@ -28,7 +28,7 @@ uv pip install '.[usd]'
 python examples/fetch_assets.py
 ```
 
-With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install '.[usd]'`. Then fetch the assets as above. The install compiles msf-tools' C++ core, FBX reader included, so you need a C++17 compiler and CMake 3.26 or newer (see `docs/building.md`). Without the `usd` extra, you can run every script except `usd_tube.py`.
+With another CPython, run `python3.12 -m venv .venv`, then `source .venv/bin/activate`, then `pip install '.[usd]'`. Then fetch the assets as above. The install compiles msf-character-tools' C++ core, FBX reader included, so you need a C++17 compiler and CMake 3.26 or newer (see `docs/building.md`). Without the `usd` extra, you can run every script except `usd_tube.py`.
 
 `fetch_assets.py` downloads the assets at pinned revisions into `examples/assets/` and checks each SHA-256:
 - Fox and AnimatedMorphCube from Khronos glTF-Sample-Assets;
@@ -85,20 +85,20 @@ To render PNGs with the `meshrender` tool from the visual checks, run it from in
 
 ## The same steps from the command line
 
-With the environment active, the `msf-tools` command can make every file again, except the poses. For the glTF morph cube:
+With the environment active, the `msf-character-tools` command can make every file again, except the poses. For the glTF morph cube:
 
 ```sh
 cd examples/out/gltf/morph_cube
-msf-tools inspect ../../../assets/AnimatedMorphCube.glb --sidecar sidecar.json
-msf-tools annotate ../../../assets/AnimatedMorphCube.glb annotations.json --output sidecar.json
-msf-tools map authoring.toml example.drive --source-profile example.source \
+msf-character-tools inspect ../../../assets/AnimatedMorphCube.glb --sidecar sidecar.json
+msf-character-tools annotate ../../../assets/AnimatedMorphCube.glb annotations.json --output sidecar.json
+msf-character-tools map authoring.toml example.drive --source-profile example.source \
     --target-asset ../../../assets/AnimatedMorphCube.glb --target-sidecar sidecar.json > mapping.json
-msf-tools evaluate authoring.toml example.drive samples.json --source-profile example.source \
+msf-character-tools evaluate authoring.toml example.drive samples.json --source-profile example.source \
     --target-asset ../../../assets/AnimatedMorphCube.glb --target-sidecar sidecar.json > evaluated.json
-msf-tools geometry ../../../assets/AnimatedMorphCube.glb
+msf-character-tools geometry ../../../assets/AnimatedMorphCube.glb
 ```
 
-If the environment is not active, use `.venv/bin/msf-tools`. `geometry` prints mesh-local positions for every instance. The scripts also apply each node's world transform and the mapped morph weights.
+If the environment is not active, use `.venv/bin/msf-character-tools`. `geometry` prints mesh-local positions for every instance. The scripts also apply each node's world transform and the mapped morph weights.
 
 ## Asset licences
 
@@ -113,7 +113,7 @@ Wherever renders of the Fox are shown, its CC-BY credits must be shown too. That
 
 ## Checks
 
-`tests/public/test_examples.py` runs every script in a subprocess and checks the outputs against references that do not come from msf-tools:
+`tests/public/test_examples.py` runs every script in a subprocess and checks the outputs against references that do not come from msf-character-tools:
 - the assets' hashes, counts and licence text;
 - the glTF cube's data read from the GLB with `struct`, with its target delta applied by hand;
 - usd-core's own skinning of the tube;
@@ -121,4 +121,4 @@ Wherever renders of the Fox are shown, its CC-BY credits must be shown too. That
 - ufbx's own evaluation of the FBX cube with its shape key set to each mapped weight;
 - the Fox against the independent Decimal oracle, when `MSF_REAL_ASSETS` is set.
 
-It also checks that the command line rebuilds the glTF cube's files byte for byte. That check compares msf-tools with itself, so it is only a reproducibility check. The tests run when `MSF_EXAMPLE_ASSETS` names the folder that `fetch_assets.py` downloaded into.
+It also checks that the command line rebuilds the glTF cube's files byte for byte. That check compares msf-character-tools with itself, so it is only a reproducibility check. The tests run when `MSF_EXAMPLE_ASSETS` names the folder that `fetch_assets.py` downloaded into.

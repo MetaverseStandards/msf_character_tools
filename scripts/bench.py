@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Time msf-tools operations through the public API and print a JSON report.
+"""Time msf-character-tools operations through the public API and print a JSON report.
 
     python -B scripts/bench.py [--root CHECKOUT | --installed] [--frames N] [--runs 5] [--authoring DIR]
                                [--grid 50] [--geometry-frames 300] [--fbx FILE] [--output report.json]

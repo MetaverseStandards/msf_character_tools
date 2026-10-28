@@ -31,7 +31,7 @@ The last two are project checks, not promises of universal equivalence.
 
 ## Public and internal suites
 
-`tests/public` uses only the 29 names in `msf_tools.__all__` and the `msf-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passes it unchanged: `tests/public` has not changed since 0.3.0. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format; in that case a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
+`tests/public` uses only the 29 names in `msf_character_tools.__all__` and the `msf-character-tools` command line, through `cli.main`. It is the gate that a reimplementation must keep passing unchanged. The C++ core in 0.4.0 passed it unchanged. In 0.5.0 only the package name changed in it: its imports, module paths and the `msf-character-tools` usage line. Its helpers and fixtures are inside it, and `tests/public.sha256` lists a SHA-256 for every file under it. It names no package version. It finds optional FBX and USD support by asking `inspect_asset`, not by package name, so a new release or core can pass it as it is. If a format has no working reader, its tests skip, unless `MSF_REQUIRE_FORMATS` names that format; in that case a missing or broken reader fails the suite. `scripts/ci_local.sh` sets `fbx`, or `fbx,usd` when `MSF` is set.
 
 `tests/internal` covers private modules:
 - record admission;
@@ -69,7 +69,7 @@ python3 -B check.py
 Fixture generation is deterministic. When fixtures are generated again, the checked-in source and golden bytes must stay equal. Analytical golden values must not come from evaluator output. Run the installed-wheel tests from a working directory outside the checkout, with both Python 3.11 and 3.12. Cross-platform CI runs the reference commands. Native gates belong to the native build integration.
 
 `scripts/ci_local.sh` is the CI run while `.github/workflows/check.yml` is dormant (GitHub Actions is blocked by account billing). Use it while hosted CI is unavailable. It does these steps:
-- It builds the C++ core in place for each Python, because msf-tools does not import without it.
+- It builds the C++ core in place for each Python, because msf-character-tools does not import without it.
 - It runs the public and internal suites and `check.py` on local Python 3.11 and 3.12 environments (`MSF_PY311` / `MSF_PY312`, by default `python3.11` and `python3.12` on `PATH`), then the optional asset tiers.
 - It runs the public suite once more without the core's fast paths (`MSF_TOOLS_PURE=1`, see [building](building.md)).
 - It builds a wheel from a clean clone of HEAD, and checks the wheel's build record and contents.
@@ -116,13 +116,13 @@ N-influence skinning replaces two expectations. The eight-influence item in GEOM
 
 `python -B scripts/parity_table.py` generates `docs/parity.md` from new measurements. The table has independent references and consistency checks:
 - Independent references: each synthetic USD scene against usd-core, the real glTF assets against the Decimal oracles, Kenney's FBX and GLB exports of one character against each other, and the DCC reference frames grouped by exporter.
-- Consistency checks only: round trips through msf-tools' own FBX writer, for the USD scenes and the Khronos assets.
+- Consistency checks only: round trips through msf-character-tools' own FBX writer, for the USD scenes and the Khronos assets.
 
 When all the inputs are present, `scripts/ci_local.sh` generates the table again and fails if the committed file differs.
 
 ## Examples tier
 
-`tests/public/test_examples.py` runs the scripts in `examples/` (see `examples/README.md`) as a user would, in subprocesses. It uses the assets that `examples/fetch_assets.py` downloads at pinned revisions. The expected values do not come from msf-tools:
+`tests/public/test_examples.py` runs the scripts in `examples/` (see `examples/README.md`) as a user would, in subprocesses. It uses the assets that `examples/fetch_assets.py` downloads at pinned revisions. The expected values do not come from msf-character-tools:
 - asset hashes, counts and licence text;
 - GLB data read with `struct`, with a morph delta applied by hand;
 - usd-core's `BakeSkinning`;
@@ -147,11 +147,11 @@ Positions must agree within 1e-5 of the bounding-box diagonal, and weights withi
 
 `tests/internal/test_source_fbx_corpus.py` is an optional tier over ufbx's test corpus (`MSF_UFBX_CORPUS`). Every file loads, except the expected failures. Every file inspects, or is refused with a mapped code.
 
-`tests/internal/test_source_fbx_dcc.py` is in the same tier. It compares msf-tools' world-space points with the OBJ frames that Blender, Maya, 3ds Max and MotionBuilder exported together with the corpus files. It uses the pairings, frame times and per-file tolerances from ufbx's own tests. It does not rely on how ufbx or msf-tools read FBX. The expected axis rotation and unit come from the file's own GlobalSettings, which `tests/public/support/fbx_header.py` reads from its bytes. msf-tools' declared unit and axis conversion must agree with them.
+`tests/internal/test_source_fbx_dcc.py` is in the same tier. It compares msf-character-tools' world-space points with the OBJ frames that Blender, Maya, 3ds Max and MotionBuilder exported together with the corpus files. It uses the pairings, frame times and per-file tolerances from ufbx's own tests. It does not rely on how ufbx or msf-character-tools read FBX. The expected axis rotation and unit come from the file's own GlobalSettings, which `tests/public/support/fbx_header.py` reads from its bytes. msf-character-tools' declared unit and axis conversion must agree with them.
 
 A pairing that disagrees is explained only mesh by mesh:
 - Every mesh with unmatched points must carry a declared loss that changes points (`W_SUBDIV_CAGE`, `W_POINTS_ANIMATION_DROPPED`, `W_INBETWEENS_DROPPED`, `W_INBETWEEN_PARTIAL`, `W_SKINNING_METHOD`).
-- An OBJ point counts against the mesh of its nearest msf-tools point.
+- An OBJ point counts against the mesh of its nearest msf-character-tools point.
 - Each explained row's match fractions are recorded in `tests/public/fixtures/dcc_differs.json`, and a row that gets worse fails.
 - The only accepted refusal is a singular transform.
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Read GLB accessors with struct alone, as a reference that does not use msf-tools' decoding."""
+"""Read GLB accessors with struct alone, as a reference that does not use msf-character-tools' decoding."""
 import json
 import struct
 

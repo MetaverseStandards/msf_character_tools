@@ -20,4 +20,4 @@ Regenerate the other fixtures using `python -B tests/public/make_fixtures.py`. F
 
 ## Recorded DCC comparison fractions
 
-`dcc_differs.json` records, for each ufbx-corpus pairing that differs from its DCC OBJ frame for a declared reason, the fraction of OBJ points and of msf-tools points that match. `tests/internal/test_source_fbx_dcc.py` fails when a row gets worse. Rewrite it with `MSF_DCC_RECORD=1` when a change is meant to alter a row. The numbers describe ufbx's test corpus, which is not committed.
+`dcc_differs.json` records, for each ufbx-corpus pairing that differs from its DCC OBJ frame for a declared reason, the fraction of OBJ points and of msf-character-tools points that match. `tests/internal/test_source_fbx_dcc.py` fails when a row gets worse. Rewrite it with `MSF_DCC_RECORD=1` when a change is meant to alter a row. The numbers describe ufbx's test corpus, which is not committed.

@@ -3,10 +3,10 @@
 
 Set MSF_EXAMPLE_ASSETS to the folder examples/fetch_assets.py downloaded into.
 Each example runs in a subprocess and writes into a temporary folder. The checks
-use facts about the assets that do not come from msf-tools: counts, licences and
+use facts about the assets that do not come from msf-character-tools: counts, licences and
 hashes; GLB data read with struct and morph deltas applied by hand; usd-core's
 and ufbx's own evaluation; the independent Fox oracle when MSF_REAL_ASSETS is
-set. The command-line check compares msf-tools with itself and is only a
+set. The command-line check compares msf-character-tools with itself and is only a
 reproducibility check.
 """
 import json

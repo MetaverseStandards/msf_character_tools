@@ -1,6 +1,6 @@
 # Version one reference
 
-Original documentation: CC-BY-SA-4.0. This reference describes the project's contracts. `msf_tools.__all__` has 29 public names: the six main operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types. The pinned [glTF specification](sources.md) defines the external format.
+Original documentation: CC-BY-SA-4.0. This reference describes the project's contracts. `msf_character_tools.__all__` has 29 public names: the six main operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types. The pinned [glTF specification](sources.md) defines the external format.
 
 ## Results and reports
 
@@ -131,7 +131,7 @@ Accessors support all core component types, matrix column padding, offsets, inte
 
 ### Source formats
 
-`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs the format's adapter and its reader library. Without them the result is `E_FORMAT_DEPENDENCY`. The message says if this build has no adapter at all, or lacks only the optional reader, which `msf-tools[usd]` installs. The FBX reader is compiled into the core, so FBX always has its reader. The adapters themselves are added separately. This section describes the contract they share.
+`format` may also be `usd`, `usda`, `usdc`, `usdz` or `fbx`. The leading bytes must match: `#usda`, `PXR-USDC`, a ZIP header for `usdz`, and for `fbx` the binary magic or text that starts with a letter or `;`. `usd` accepts USDA or USDC and records which one it found. A mismatch is `E_FORMAT_MISMATCH`, and an unknown format is `E_ASSET_TYPE`. Reading needs the format's adapter and its reader library. Without them the result is `E_FORMAT_DEPENDENCY`. The message says if this build has no adapter at all, or lacks only the optional reader, which `msf-character-tools[usd]` installs. The FBX reader is compiled into the core, so FBX always has its reader. The adapters themselves are added separately. This section describes the contract they share.
 
 An adapter converts the source into an in-memory GLB with one glTF vertex per source point. The unchanged glTF inspector then admits it, and `original_bytes`, `sha256` and `format="glb"` describe that GLB. `source` records:
 - `format`, `sha256` and `byte_length` of the source; the source bytes are not kept;
@@ -164,7 +164,7 @@ glTF bindings never use `source_locator`.
 
 Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning loss refuses with its paired error code (`W_X` becomes `E_X`; `W_SHEAR_BAKED` becomes `E_SHEAR_UNSUPPORTED` and `W_INBETWEENS_DROPPED` becomes `E_INBETWEEN_UNSUPPORTED`). Info losses never refuse. Reader rejections are `E_SOURCE_PARSE`, truncated to 512 characters.
 
-`limits` is a `msf_tools.sources.SourceLimits` of positive integers (`E_RESOURCE_LIMIT` when exceeded):
+`limits` is a `msf_character_tools.sources.SourceLimits` of positive integers (`E_RESOURCE_LIMIT` when exceeded):
 
 | Field | Default | Notes |
 | --- | --- | --- |
@@ -178,7 +178,7 @@ Any other key or value is `E_SOURCE_OPTIONS`. Under `"strict"`, every warning lo
 
 glTF formats refuse `isolate`, `limits` and `options` with `E_SOURCE_OPTIONS`.
 
-`isolate=True` runs the source reader in a new Python process. The process runs `python -I`, starts from the msf-tools checkout or installation, has only `PATH`, `TMPDIR` and `PXR_WORK_THREAD_LIMIT=1` in its environment, and has its own process group. The calling process never imports the reader library. The returned GLB is inspected again as untrusted input, so the snapshot is the same as without isolation. The resolver must be `None` or a `LocalResolver`. The reader process builds the `LocalResolver` again from its root and budgets. Any other resolver is `E_ISOLATE_RESOLVER`. Failures:
+`isolate=True` runs the source reader in a new Python process. The process runs `python -I`, starts from the msf-character-tools checkout or installation, has only `PATH`, `TMPDIR` and `PXR_WORK_THREAD_LIMIT=1` in its environment, and has its own process group. The calling process never imports the reader library. The returned GLB is inspected again as untrusted input, so the snapshot is the same as without isolation. The resolver must be `None` or a `LocalResolver`. The reader process builds the `LocalResolver` again from its root and budgets. Any other resolver is `E_ISOLATE_RESOLVER`. Failures:
 - running longer than `timeout_s` kills the process group: `E_SOURCE_TIMEOUT`;
 - physical memory over `max_reader_memory` (sampled every 100 ms) kills it too: `E_SOURCE_MEMORY`;
 - a reader process that exits with an error or a signal: `E_SOURCE_CRASHED`, with the end of its stderr;
@@ -188,7 +188,7 @@ The two modes report an unexpected exception inside the reader (a bug, not a dec
 
 #### USD adapter (`msf-usd`, usd-core 25.11 to 26.x)
 
-Install with `pip install 'msf-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Reader errors in any layer are `E_SOURCE_PARSE`.
+Install with `pip install 'msf-character-tools[usd]'`. Every Xformable or Scope prim (instance proxies included) becomes a glTF node, in path-sorted order. A Mesh prim gets its own glTF mesh: points become vertices and faces are fan-triangulated from their first corner. Blend shapes bound through `skel:blendShapes`/`skel:blendShapeTargets` become morph targets keyed by their token. Reader errors in any layer are `E_SOURCE_PARSE`.
 
 - **Units and up axis** are applied to the data, so geometry comes back in metres with +Y up. With C = `metersPerUnit` times the Z-up to Y-up rotation (identity for Y-up), points and blend offsets become C·p and local transforms C·L·C⁻¹. An unauthored `metersPerUnit` means centimetres, as in USD. Conversions are declared as `I_UNITS_CONVERTED` and `I_AXES_CONVERTED`.
 - **Local transforms** come from the earliest authored time and must be affine, finite and nonsingular. A negative determinant is stored as a negative X scale (`I_MIRRORED`). Shear means two axes of the linear part are more than 1e-6 from perpendicular, in cosine. On a static, unskinned leaf mesh, shear is baked into the points and the node is left with no transform (`W_SHEAR_BAKED`). Anywhere else it is `E_SHEAR_UNSUPPORTED`.
@@ -292,8 +292,8 @@ the support for them. This includes legitimate synthetic operations that mix
 bases.
 
 ```python
-from msf_tools import load_authoring, compile_pack, profile_snapshot
-from msf_tools import compile_mapping, evaluate_mapping
+from msf_character_tools import load_authoring, compile_pack, profile_snapshot
+from msf_character_tools import compile_mapping, evaluate_mapping
 
 authoring = load_authoring("examples/authoring")
 assert authoring.ok, authoring.report.to_dict()
@@ -355,13 +355,13 @@ That limit equals the inspection limit on total declared accessor components. An
 ## CLI and writes
 
 ```text
-python -m msf_tools check AUTHORING --pack PATH --csv PATH [--coverage PATH] [--sha256 PATH] [--write]
-python -m msf_tools inspect ASSET [--resolver-root ROOT] [--sidecar JSON] [--output JSON]
+python -m msf_character_tools check AUTHORING --pack PATH --csv PATH [--coverage PATH] [--sha256 PATH] [--write]
+python -m msf_character_tools inspect ASSET [--resolver-root ROOT] [--sidecar JSON] [--output JSON]
                               [--in-process] [--source-timeout SECONDS] [--max-source-bytes BYTES]
-python -m msf_tools annotate ASSET ANNOTATIONS --output SIDECAR
-python -m msf_tools map AUTHORING MAPPING --source-profile ID --target-profile ID [--allow-approximation] [--output JSON]
-python -m msf_tools evaluate AUTHORING MAPPING SAMPLES --source-profile ID --target-profile ID [--output JSON]
-python -m msf_tools geometry ASSET [--time SECONDS] [--animation INDEX] [--output JSON]
+python -m msf_character_tools annotate ASSET ANNOTATIONS --output SIDECAR
+python -m msf_character_tools map AUTHORING MAPPING --source-profile ID --target-profile ID [--allow-approximation] [--output JSON]
+python -m msf_character_tools evaluate AUTHORING MAPPING SAMPLES --source-profile ID --target-profile ID [--output JSON]
+python -m msf_character_tools geometry ASSET [--time SECONDS] [--animation INDEX] [--output JSON]
 ```
 
 The format comes from the asset's suffix, so `.usda`, `.usdc`, `.usdz`, `.usd` and `.fbx` files take the source path. By default, source formats are read in a separate process (`isolate=True`). `--in-process` reads them in the CLI's own process. `--source-timeout SECONDS` and `--max-source-bytes BYTES` set `timeout_s` and `max_source_bytes`. An invalid value is `E_CLI_INPUT`. `inspect`, `annotate`, `geometry`, `map` and `evaluate` accept these three flags, and glTF assets ignore them. Output-path checks cover a source file and, after inspection, the layers that its reader fetched (`source.dependencies`). When a source-format read fails, its report goes only to stderr, and `--output` is not written, because the fetched layers are unknown.
