@@ -11,11 +11,16 @@ The fast path must agree with the exact path (MSF_TOOLS_PURE=1). MSF_GATE=1
 runs 5000 random maps in place of 300.
 """
 import copy
+import json
 import math
 import os
 import random
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 from types import MappingProxyType
 from unittest import mock
 
@@ -369,6 +374,33 @@ class PartialEvaluation(Model):
         del samples[5]['values']['look_in'], samples[5]['validity']['look_in']
         result = self.assertExpected(doc, samples)
         self.assertEqual([(r['sample'], r['output']) for r in result.value.refusals], [(3, 'toward_out'), (3, 'toward_in')])
+
+
+class CommandLine(unittest.TestCase):
+    ROOT = Path(__file__).resolve().parents[2]
+
+    def evaluate(self, samples, *flags):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'samples.json'
+            path.write_text(json.dumps({'samples': samples}))
+            run = subprocess.run([sys.executable, '-B', '-m', 'msf_character_tools', 'evaluate', 'examples/authoring', 'wink', str(path),
+                                  '--source-profile', 'source', '--target-profile', 'target', *flags],
+                                 cwd=self.ROOT, capture_output=True)
+        return run.returncode, json.loads(run.stdout or 'null'), json.loads(run.stderr)
+
+    def test_evaluate_partial(self):
+        samples = [frame({'input.wink': -0.5}), frame({'input.wink': 0.5}, 1, {'input.wink': False}), frame({}, 2)]
+        code, value, report = self.evaluate(samples, '--partial')
+        self.assertEqual((code, report['diagnostics']), (0, []))
+        self.assertEqual([dict(s['values']) for s in value['samples']], [{'output.wink': -0.5}, {}, {}])
+        self.assertEqual([(r['sample'], r['output'], [d['code'] for d in r['diagnostics']]) for r in value['refusals']],
+                         [(1, 'output.wink', ['E_INVALID_SAMPLE'])])
+        self.assertEqual(value['unavailable'], [{'sample': 2, 'output': 'output.wink', 'inputs': ['input.wink']}])
+        code, value, report = self.evaluate(samples)
+        self.assertEqual((code, value), (1, None))
+        self.assertEqual([d['code'] for d in report['diagnostics']], ['E_INVALID_SAMPLE', 'E_MISSING_SAMPLE'])
+        code, value, _ = self.evaluate(samples[:1])
+        self.assertEqual((code, list(value)), (0, ['samples']))
 
 
 # Random maps -------------------------------------------------------------------

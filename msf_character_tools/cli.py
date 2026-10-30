@@ -215,6 +215,7 @@ def parser():
         x.add_argument("mapping")
         if command == "evaluate":
             x.add_argument("samples")
+            x.add_argument("--partial", action="store_true", help="refuse only the outputs that depend on a bad input")
         for side in ("source", "target"):
             group = x.add_mutually_exclusive_group(required=True)
             group.add_argument(f"--{side}-profile")
@@ -250,7 +251,7 @@ def main(argv=None):
                 samples = parse_json(Path(args.samples).read_bytes())
                 if isinstance(samples, dict) and set(samples) == {"samples"}:
                     samples = samples["samples"]
-                result = evaluate_mapping(result.value, samples)
+                result = evaluate_mapping(result.value, samples, partial=args.partial)
         payload = canonical_json(result.value) if result.ok else canonical_json(result.report)
         # A failed source read lists no fetched layers, so its report is not written where a layer might be.
         if args.output and (result.ok or not _reads_source(args)):
