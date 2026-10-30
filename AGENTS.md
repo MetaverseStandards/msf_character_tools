@@ -11,19 +11,19 @@ msf-character-tools validates signal mappings and inspects glTF assets into immu
 ### Install
 
 - From a checkout: clone `https://github.com/MetaverseStandards/msf_character_tools`, then see "Run" in [README.md](README.md).
-- From a release: download the wheel for your platform and Python, and `SHA256SUMS`, from the [v0.5.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.5.0). Install the wheel pinned by its hash:
+- From a release: download the wheel for your platform and Python, and `SHA256SUMS`, from the [v0.6.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.6.0). Install the wheel pinned by its hash:
 
 Run this in the folder that has the wheel. The folder path must not contain spaces.
 
 ```sh
-WHEEL=msf_character_tools-0.5.0-<tag>.whl  # the wheel file name
+WHEEL=msf_character_tools-0.6.0-<tag>.whl  # the wheel file name
 SHA=<hash>                                # its hash from SHA256SUMS
 DIR=$(pwd)                                # file:// needs an absolute path
 echo "msf-character-tools @ file://$DIR/$WHEEL --hash=sha256:$SHA" > req.txt
 python -m pip install --require-hashes -r req.txt
 ```
 
-0.5.0 is the first release under the name msf-character-tools, and the first release in this repository. Older releases, up to `v0.4.0` (commit `05ca053`), are named msf-tools, and they import as `msf_tools`. The tags `v0.3.0` and `v0.4.0` stay in this repository as source history only.
+0.5.0 was the first release under the name msf-character-tools, and the first release in this repository. 0.6.0 adds partial evaluation. Older releases, up to `v0.4.0` (commit `05ca053`), are named msf-tools, and they import as `msf_tools`. The tags `v0.3.0` and `v0.4.0` stay in this repository as source history only.
 
 ### Public surface
 

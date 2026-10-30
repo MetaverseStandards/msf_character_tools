@@ -1,6 +1,6 @@
 # MSF Character Tools
 
-MSF Character Tools validates signal mappings and inspects glTF assets into immutable snapshots. It runs on Python 3.11 and later, with a C++ core. It also gives an independent binary64 evaluation of vertex positions, for relative morph targets and for linear blend skinning over every influence set. It reads USD (through usd-core) and FBX (through ufbx, which is compiled in) by converting them to glTF. The repository is https://github.com/MetaverseStandards/msf_character_tools. Its [v0.5.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.5.0) has wheels for macOS arm64 and for Linux x86_64 and aarch64 (manylinux_2_28). There is one wheel for CPython 3.11 and one abi3 wheel for CPython 3.12 and later.
+MSF Character Tools validates signal mappings and inspects glTF assets into immutable snapshots. It runs on Python 3.11 and later, with a C++ core. It also gives an independent binary64 evaluation of vertex positions, for relative morph targets and for linear blend skinning over every influence set. It reads USD (through usd-core) and FBX (through ufbx, which is compiled in) by converting them to glTF. The repository is https://github.com/MetaverseStandards/msf_character_tools. Its [v0.6.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.6.0) has wheels for macOS arm64 and for Linux x86_64 and aarch64 (manylinux_2_28). There is one wheel for CPython 3.11 and one abi3 wheel for CPython 3.12 and later.
 
 ## Run
 
@@ -20,7 +20,7 @@ python3 -m pip install nanobind==3.1.0
 cmake -S . -B build/core -G Ninja -DPython_EXECUTABLE=python3 -DMSF_CORE_IN_PLACE=ON && cmake --build build/core
 ```
 
-To install a release, download the wheel for your platform and Python, and `SHA256SUMS`, from the [v0.5.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.5.0). Check the wheel's hash, then install it with `python -m pip install`. [AGENTS.md](AGENTS.md#install) shows an install pinned by the hash.
+To install a release, download the wheel for your platform and Python, and `SHA256SUMS`, from the [v0.6.0 release](https://github.com/MetaverseStandards/msf_character_tools/releases/tag/v0.6.0). Check the wheel's hash, then install it with `python -m pip install`. [AGENTS.md](AGENTS.md#install) shows an install pinned by the hash.
 
 To install from a checkout into a virtual environment of your choice, use the commands below. The install compiles the core, so you need a C++17 compiler, CMake 3.26 or newer, and Ninja or Make.
 

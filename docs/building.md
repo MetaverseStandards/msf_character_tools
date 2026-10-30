@@ -18,7 +18,7 @@ The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so i
 
 Two paths exist twice:
 - `parse_json` and `canonical_json` use the core. For input the core declines, they fall back to Python's `json`. Malformed JSON is an example: Python reports its exact errors.
-- `evaluate_mapping` uses a fast path, in whole-map and in partial mode. For samples the fast path declines, it falls back to the core's exact path. In partial mode the fast path takes only samples whose inputs are each valid or absent.
+- `evaluate_mapping` uses a fast path, in whole-map and in partial mode. For samples the fast path declines, it falls back to the core's exact path. In partial mode the fast path takes only samples whose inputs are each valid or absent. One bad input or failed rule in any frame sends the whole call to the exact path. Taking the good frames on the fast path, frame by frame, is a possible follow-up.
 
 The fallbacks otherwise see only rare inputs. `MSF_TOOLS_PURE=1` sends every input down the fallbacks, and `scripts/ci_local.sh` runs the public suite that way.
 
