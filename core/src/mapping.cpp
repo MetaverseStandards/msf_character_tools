@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <iterator>
 #include <set>
 #include <stdexcept>
 #include <unordered_set>
@@ -233,9 +235,30 @@ Compiled compile(const Value& pack, const std::string& mapping_id, bool allow_ap
 
 // ---------------------------------------------------------------- evaluation
 
-Evaluator::Evaluator(const Value& pack, const Compiled& compiled, std::vector<std::string> sources) : compiled_(compiled) {
+Evaluator::Evaluator(const Value& pack, const Compiled& compiled, std::vector<std::string> sources, bool partial)
+    : compiled_(compiled), partial_(partial) {
     for (const Value& s : at(pack, "signals").items) signals_.emplace(text(s, "id"), &s);
     for (std::string& sid : sources) sources_.emplace(std::move(sid), true);
+    for (const std::string& sid : compiled.required) required_.emplace(sid, true);
+}
+
+std::vector<std::vector<std::size_t>> output_inputs(const Compiled& compiled) {
+    // Each signal's inputs, carried forward through the rules in execution order.
+    std::unordered_map<std::string, std::vector<std::size_t>> reads;
+    for (std::size_t i = 0; i < compiled.required.size(); ++i) reads[compiled.required[i]] = {i};
+    for (const Value* rule : compiled.instructions) {
+        std::vector<std::size_t> all;
+        for (const Value& sid : at(*rule, "inputs").items) {
+            auto found = reads.find(sid.text);
+            if (found != reads.end()) all.insert(all.end(), found->second.begin(), found->second.end());
+        }
+        std::sort(all.begin(), all.end());
+        all.erase(std::unique(all.begin(), all.end()), all.end());
+        reads[at(*rule, "outputs").items[0].text] = std::move(all);
+    }
+    std::vector<std::vector<std::size_t>> out;
+    for (const std::string& sid : compiled.outputs) out.push_back(reads[sid]);
+    return out;
 }
 
 // signals[sid] in Python: a source channel the pack does not declare raises KeyError there.
@@ -266,6 +289,11 @@ void Evaluator::frame(const Value& frame, const std::vector<Key>& order, std::si
     std::string ref = "/samples/" + std::to_string(index);
     std::unordered_map<std::string, double> values;
     std::unordered_set<std::string> invalid;
+    std::size_t first = diagnostics.size();
+    std::vector<Subject> subjects;  // partial mode: one per diagnostic of this frame
+    auto about = [&](Subject::Kind kind, const std::string& sid = std::string(), std::size_t position = 0) {
+        if (partial_) subjects.push_back({kind, sid, position});
+    };
     auto record = [&](const Fault& fault) { diagnostics.push_back(fault.diagnostic()); };
     try {
         authoring::keys(frame, {"timestamp", "values", "validity"}, {}, ref);
@@ -291,12 +319,18 @@ void Evaluator::frame(const Value& frame, const std::vector<Key>& order, std::si
             } catch (const Fault& fault) {
                 record(fault);
                 invalid.insert(sid);
+                // A key that is not a source channel, or a channel no rule reads, has no output to scope it to.
+                bool owned = key.is_str && sources_.count(sid) && required_.count(sid);
+                about(owned ? Subject::input : Subject::frame, sid);
             }
         }
         for (const std::string& sid : compiled_.required)
-            if (!values.count(sid) && !invalid.count(sid))
+            if (!values.count(sid) && !invalid.count(sid)) {
                 diagnostics.push_back({Code::E_MISSING_SAMPLE, ref + "/" + sid, "Required input or validity is missing."});
-        for (const Value* rule : compiled_.instructions) {
+                about(Subject::input, sid);
+            }
+        for (std::size_t position = 0; position < compiled_.instructions.size(); ++position) {
+            const Value* rule = compiled_.instructions[position];
             const std::string& output = at(*rule, "outputs").items[0].text;
             const Value& inputs = at(*rule, "inputs");
             if (std::any_of(inputs.items.begin(), inputs.items.end(), [&](const Value& s) { return !values.count(s.text); })) continue;
@@ -322,15 +356,74 @@ void Evaluator::frame(const Value& frame, const std::vector<Key>& order, std::si
                 values[output] = value;
             } catch (const Fault& fault) {
                 record(fault);
+                about(Subject::rule, std::string(), position);
             }
         }
         timestamps.push_back(ts.number);
         for (const std::string& sid : compiled_.outputs) {
             auto found = values.find(sid);
             this->values.push_back(found == values.end() ? std::nan("") : found->second);
+            if (partial_) written.push_back(found != values.end());
         }
+        if (partial_) attribute(index, first, subjects, values);
     } catch (const Fault& fault) {
         record(fault);
+    }
+}
+
+void Evaluator::attribute(std::size_t index, std::size_t first, const std::vector<Subject>& subjects,
+                          const std::unordered_map<std::string, double>& values) {
+    std::vector<Diagnostic> own(std::make_move_iterator(diagnostics.begin() + static_cast<std::ptrdiff_t>(first)),
+                                std::make_move_iterator(diagnostics.end()));
+    diagnostics.resize(first);
+    if (own.size() != subjects.size()) throw std::logic_error("partial evaluation lost track of a diagnostic");
+    if (own.empty()) return;
+    bool whole = false;
+    for (std::size_t i = 0; i < own.size(); ++i)
+        if (subjects[i].kind == Subject::frame) {
+            diagnostics.push_back(own[i]);
+            whole = true;
+        }
+    if (whole) return;  // the evaluation fails, so nothing is scoped
+    // Which of this frame's diagnostics each signal depends on, carried forward
+    // through the rules in execution order; ascending, so in reported order.
+    std::unordered_map<std::string, std::vector<std::size_t>> causes;
+    std::unordered_map<std::size_t, std::size_t> rule_cause;
+    for (std::size_t i = 0; i < own.size(); ++i) {
+        if (subjects[i].kind == Subject::input) causes[subjects[i].sid].push_back(i);
+        if (subjects[i].kind == Subject::rule) rule_cause[subjects[i].position] = i;
+    }
+    for (std::size_t position = 0; position < compiled_.instructions.size(); ++position) {
+        const Value& rule = *compiled_.instructions[position];
+        std::vector<std::size_t> all;
+        for (const Value& sid : at(rule, "inputs").items) {
+            auto found = causes.find(sid.text);
+            if (found != causes.end()) all.insert(all.end(), found->second.begin(), found->second.end());
+        }
+        auto own_cause = rule_cause.find(position);
+        if (own_cause != rule_cause.end()) all.push_back(own_cause->second);
+        if (all.empty()) continue;
+        std::sort(all.begin(), all.end());
+        all.erase(std::unique(all.begin(), all.end()), all.end());
+        causes[at(rule, "outputs").items[0].text] = std::move(all);
+    }
+    for (std::size_t j = 0; j < compiled_.outputs.size(); ++j) {
+        auto found = causes.find(compiled_.outputs[j]);
+        bool caused = found != causes.end();
+        if (caused == static_cast<bool>(values.count(compiled_.outputs[j])))
+            throw std::logic_error("partial evaluation disagrees with the rules about output " + compiled_.outputs[j]);
+        if (!caused) continue;
+        bool refused = std::any_of(found->second.begin(), found->second.end(),
+                                   [&](std::size_t i) { return own[i].code != Code::E_MISSING_SAMPLE; });
+        if (refused) {
+            Refusal r{index, j, {}};
+            for (std::size_t i : found->second) r.diagnostics.push_back(own[i]);
+            refusals.push_back(std::move(r));
+        } else {
+            Unavailable u{index, j, {}};
+            for (std::size_t i : found->second) u.inputs.push_back(subjects[i].sid);
+            unavailable.push_back(std::move(u));
+        }
     }
 }
 

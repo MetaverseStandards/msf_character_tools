@@ -30,6 +30,10 @@ struct Program {
     // checked operation refused or a value left its domain; the caller then
     // falls back to the reference path, which reports the diagnostic.
     bool run(double* values) const;
+    // Partial evaluation: `written` has one flag per slot, set for the sources
+    // present. An instruction runs only when all its inputs are written, and
+    // then sets the flag of its output; the others leave theirs as they are.
+    bool run_partial(double* values, char* written) const;
 };
 
 double piecewise_clamp(double value, double ya, double yb);

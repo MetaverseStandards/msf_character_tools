@@ -46,6 +46,12 @@ class CompiledMapping(OwnedRecord):
         for snapshot in (self.source_snapshot, self.target_snapshot):
             _check_profile(snapshot, self.pack, signals)
 
+    @property
+    def output_inputs(self):
+        """{output ID: the required inputs it reads, directly or through intermediate rules}."""
+        self._check_integrity()
+        return self._core.output_inputs()
+
     def to_dict(self):
         self._check_integrity()
         result = {"schema_version": "1.0", "pack_sha256": self.pack.sha256,
@@ -102,22 +108,54 @@ def compile_mapping(pack, source_snapshot, target_snapshot, mapping_id, allow_ap
 class EvaluatedValues(OwnedRecord):
     _handle_views = ("samples",)
     samples: tuple
+    # Partial evaluation only; None otherwise.
+    refusals: tuple | None = None
+    unavailable: tuple | None = None
     _core: object = field(default=None, init=False, repr=False, compare=False)
 
     def _check_consistency(self):
         if self._core is None or not self._core.check_view(self.samples):
             fail("E_RECORD_INTEGRITY", "/samples", "Sample views disagree with their core frames.")
+        if (self.refusals is None) != (self.unavailable is None):
+            fail("E_RECORD_INTEGRITY", "/refusals", "Refusals and unavailable outputs come together.")
 
     def to_dict(self):
         self._check_integrity()
-        return {"samples": thaw(self.samples)}
+        result = {"samples": thaw(self.samples)}
+        if self.refusals is not None:
+            result["refusals"] = [{"sample": r["sample"], "output": r["output"],
+                                   "diagnostics": [d.to_dict() for d in r["diagnostics"]]} for r in self.refusals]
+            result["unavailable"] = [{"sample": u["sample"], "output": u["output"], "inputs": list(u["inputs"])}
+                                     for u in self.unavailable]
+        return result
+
+
+def _evaluate_partial(compiled_mapping, samples):
+    core = compiled_mapping._core
+    taken = core.evaluate_partial(samples) if _native.core is not None else None
+    if taken is not None:
+        (frames, unavailable), refusals = taken, ()
+    else:
+        diagnostics, frames, refusals, unavailable = core.evaluate_exact_partial(samples)
+        if frames is None:
+            return Result(None, Report(tuple(Diagnostic(*d) for d in diagnostics), compiled_mapping.losses))
+    refusals = tuple({"sample": n, "output": output, "diagnostics": tuple(Diagnostic(*d) for d in diagnostics)}
+                     for n, output, diagnostics in refusals)
+    unavailable = tuple({"sample": n, "output": output, "inputs": inputs} for n, output, inputs in unavailable)
+    record = EvaluatedValues(frames.view(), refusals, unavailable)
+    object.__setattr__(record, "_core", frames)
+    return Result(_admit(record), Report((), compiled_mapping.losses))
 
 
 @public
-def evaluate_mapping(compiled_mapping, samples):
+def evaluate_mapping(compiled_mapping, samples, *, partial=False):
     if not isinstance(compiled_mapping, CompiledMapping) or not isinstance(samples, (tuple, list)):
         fail("E_SAMPLE_TYPE", "/", "Expected CompiledMapping and sample frame array.")
+    if type(partial) is not bool:
+        fail("E_SAMPLE_TYPE", "/", "partial must be True or False.")
     compiled_mapping._check_integrity()
+    if partial:
+        return _evaluate_partial(compiled_mapping, samples)
     core = compiled_mapping._core
     # The fast path declines (None) any sample it cannot take; MSF_TOOLS_PURE=1 skips it.
     frames = core.evaluate(samples) if _native.core is not None else None

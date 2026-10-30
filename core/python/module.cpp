@@ -69,14 +69,24 @@ bool str_keys(PyObject* dict) {
 struct Frames {
     std::size_t count = 0;
     std::vector<double> timestamps, values;  // values: count rows of len(names)
+    std::vector<char> written;  // partial evaluation: rows like values, 1 where written; empty when all are
     nb::tuple names;
     nb::object key_timestamp, key_values, key_validity;
+
+    bool has(std::size_t i, std::size_t j) const { return written.empty() || written[i * names.size() + j]; }
+
+    std::size_t row_size(std::size_t i) const {
+        std::size_t k = names.size(), n = 0;
+        for (std::size_t j = 0; j < k; ++j) n += has(i, j);
+        return n;
+    }
 
     nb::object frame(std::size_t i) const {
         std::size_t k = names.size();
         nb::object values_dict = nb::steal(PyDict_New());
         nb::object validity_dict = nb::steal(PyDict_New());
         for (std::size_t j = 0; j < k; ++j) {
+            if (!has(i, j)) continue;
             nb::object v = nb::steal(PyFloat_FromDouble(this->values[i * k + j]));
             PyDict_SetItem(values_dict.ptr(), names[j].ptr(), v.ptr());
             PyDict_SetItem(validity_dict.ptr(), names[j].ptr(), Py_True);
@@ -115,9 +125,11 @@ struct Frames {
             }
             if (!PyFloat_CheckExact(ts.ptr()) || !same_double(PyFloat_AS_DOUBLE(ts.ptr()), timestamps[i])) return false;
             if (Py_TYPE(vals.ptr()) != &PyDictProxy_Type || Py_TYPE(valid.ptr()) != &PyDictProxy_Type) return false;
-            if (static_cast<std::size_t>(PyObject_Size(vals.ptr())) != k || static_cast<std::size_t>(PyObject_Size(valid.ptr())) != k)
+            std::size_t size = row_size(i);
+            if (static_cast<std::size_t>(PyObject_Size(vals.ptr())) != size || static_cast<std::size_t>(PyObject_Size(valid.ptr())) != size)
                 return false;
             for (std::size_t j = 0; j < k; ++j) {
+                if (!has(i, j)) continue;
                 nb::object v = nb::steal(PyObject_GetItem(vals.ptr(), names[j].ptr()));
                 nb::object ok = nb::steal(PyObject_GetItem(valid.ptr(), names[j].ptr()));
                 if (!v.is_valid() || !ok.is_valid()) {
@@ -137,6 +149,7 @@ struct Frames {
         out.append(reinterpret_cast<const char*>(header), sizeof header);
         out.append(reinterpret_cast<const char*>(timestamps.data()), timestamps.size() * sizeof(double));
         out.append(reinterpret_cast<const char*>(values.data()), values.size() * sizeof(double));
+        out.append(written.data(), written.size());
         return nb::bytes(out.data(), out.size());
     }
 };
@@ -210,6 +223,8 @@ struct CompiledRules {
     nb::dict source_slots;
     nb::tuple output_names;
     nb::object instructions, required, outputs;  // the record's views
+    std::vector<std::vector<std::size_t>> inputs_of;  // msf::mapping::output_inputs
+    nb::object output_inputs;
     nb::object key_timestamp = nb::steal(PyUnicode_InternFromString("timestamp"));
     nb::object key_values = nb::steal(PyUnicode_InternFromString("values"));
     nb::object key_validity = nb::steal(PyUnicode_InternFromString("validity"));
@@ -254,7 +269,14 @@ struct CompiledRules {
     // Frames when every sample takes the fast path, else None. Only exact str
     // keys and exact containers are accepted, so no Python code runs while the
     // borrowed references below are in use.
-    nb::object evaluate(nb::handle samples) const {
+    nb::object evaluate(nb::handle samples) const { return run_fast(samples, false); }
+
+    // Partial evaluation on the fast path: (Frames, unavailable) or None. It
+    // takes samples whose inputs are each valid or absent, so every output it
+    // does not write is unavailable; anything else goes to the exact path.
+    nb::object evaluate_partial(nb::handle samples) const { return run_fast(samples, true); }
+
+    nb::object run_fast(nb::handle samples, bool partial) const {
         if (!fast) return nb::none();
         const msf::Program& program = fast->program;
         nb::object items;
@@ -269,8 +291,10 @@ struct CompiledRules {
         Frames result = frames(n);
         result.timestamps.resize(n);
         result.values.resize(n * k);
+        if (partial) result.written.resize(n * k);
         std::vector<double> slots(program.slots);
-        std::vector<char> present(sources);
+        std::vector<char> present(sources), written(partial ? program.slots : 0);
+        nb::list unavailable;
         for (std::size_t i = 0; i < n; ++i) {
             PyObject* frame = PyTuple_GET_ITEM(items.ptr(), static_cast<Py_ssize_t>(i));
             if (!PyDict_CheckExact(frame) || PyDict_GET_SIZE(frame) != 3 || !str_keys(frame)) return nb::none();
@@ -296,21 +320,75 @@ struct CompiledRules {
                 slots[slot] = d;
                 present[slot] = 1;
             }
-            for (std::size_t slot : fast->required)
-                if (!present[slot]) return nb::none();
-            if (!program.run(slots.data())) return nb::none();
+            if (!partial) {
+                for (std::size_t slot : fast->required)
+                    if (!present[slot]) return nb::none();
+                if (!program.run(slots.data())) return nb::none();
+                result.timestamps[i] = t;
+                for (std::size_t j = 0; j < k; ++j) result.values[i * k + j] = slots[fast->output_slots[j]];
+                continue;
+            }
+            std::fill(written.begin(), written.end(), 0);
+            std::copy(present.begin(), present.end(), written.begin());
+            if (!program.run_partial(slots.data(), written.data())) return nb::none();
             result.timestamps[i] = t;
-            for (std::size_t j = 0; j < k; ++j) result.values[i * k + j] = slots[fast->output_slots[j]];
+            for (std::size_t j = 0; j < k; ++j) {
+                std::size_t slot = fast->output_slots[j];
+                bool has = written[slot];
+                result.values[i * k + j] = has ? slots[slot] : std::nan("");
+                result.written[i * k + j] = has;
+                if (has) continue;
+                nb::list missing;
+                for (std::size_t position : inputs_of[j])
+                    if (!written[fast->required[position]]) missing.append(bridge::decode(compiled.required[position]));
+                unavailable.append(nb::make_tuple(i, output_names[j], nb::tuple(missing)));
+            }
         }
-        return nb::cast(std::move(result));
+        if (!partial) return nb::cast(std::move(result));
+        return nb::make_tuple(nb::cast(std::move(result)), nb::tuple(unavailable));
     }
 
     // evaluate_mapping's reference semantics for any samples: (diagnostics,
     // Frames or None).
     nb::tuple evaluate_exact(nb::handle samples) const {
+        msf::mapping::Evaluator evaluator(document().value, compiled, source_channels);
+        run_exact(samples, evaluator);
+        nb::object handle = nb::none();
+        if (evaluator.diagnostics.empty()) {
+            Frames result = frames(evaluator.timestamps.size());
+            result.timestamps = std::move(evaluator.timestamps);
+            result.values = std::move(evaluator.values);
+            handle = nb::cast(std::move(result));
+        }
+        return nb::make_tuple(diagnostics_of(evaluator.diagnostics), handle);
+    }
+
+    // Partial evaluation for any samples: (diagnostics, Frames or None,
+    // refusals, unavailable). Refusals are (sample, output, diagnostics) and
+    // unavailable outputs (sample, output, missing inputs).
+    nb::tuple evaluate_exact_partial(nb::handle samples) const {
+        msf::mapping::Evaluator evaluator(document().value, compiled, source_channels, true);
+        run_exact(samples, evaluator);
+        if (!evaluator.diagnostics.empty())
+            return nb::make_tuple(diagnostics_of(evaluator.diagnostics), nb::none(), nb::tuple(), nb::tuple());
+        Frames result = frames(evaluator.timestamps.size());
+        result.timestamps = std::move(evaluator.timestamps);
+        result.values = std::move(evaluator.values);
+        result.written = std::move(evaluator.written);
+        nb::list refusals, unavailable;
+        for (const msf::mapping::Refusal& r : evaluator.refusals)
+            refusals.append(nb::make_tuple(r.sample, output_names[r.output], diagnostics_of(r.diagnostics)));
+        for (const msf::mapping::Unavailable& u : evaluator.unavailable)
+            unavailable.append(nb::make_tuple(u.sample, output_names[u.output], strings_of(u.inputs)));
+        return nb::make_tuple(nb::tuple(), nb::cast(std::move(result)), nb::tuple(refusals), nb::tuple(unavailable));
+    }
+
+    // {output: the inputs it reads}, in output and required order.
+    nb::object output_inputs_view() const { return output_inputs; }
+
+    void run_exact(nb::handle samples, msf::mapping::Evaluator& evaluator) const {
         nb::object items = nb::steal(PySequence_Tuple(samples.ptr()));
         if (!items.is_valid()) throw nb::python_error();
-        msf::mapping::Evaluator evaluator(document().value, compiled, source_channels);
         Py_ssize_t n = PyTuple_GET_SIZE(items.ptr());
         for (Py_ssize_t i = 0; i < n; ++i) {
             PyObject* frame = PyTuple_GET_ITEM(items.ptr(), i);
@@ -324,14 +402,6 @@ struct CompiledRules {
                 throw nb::python_error();
             }
         }
-        nb::object handle = nb::none();
-        if (evaluator.diagnostics.empty()) {
-            Frames result = frames(evaluator.timestamps.size());
-            result.timestamps = std::move(evaluator.timestamps);
-            result.values = std::move(evaluator.values);
-            handle = nb::cast(std::move(result));
-        }
-        return nb::make_tuple(diagnostics_of(evaluator.diagnostics), handle);
     }
 
     // set(frame["values"]) | set(frame["validity"]) in Python's iteration
@@ -406,6 +476,15 @@ nb::tuple compile_mapping(nb::handle pack, nb::handle mapping_id, bool allow_app
     rules.required = strings_of(compiled.required);
     rules.outputs = strings_of(compiled.outputs);
     rules.output_names = nb::borrow<nb::tuple>(rules.outputs);
+    rules.inputs_of = msf::mapping::output_inputs(compiled);
+    nb::dict reads;
+    nb::tuple required = nb::borrow<nb::tuple>(rules.required);
+    for (std::size_t j = 0; j < compiled.outputs.size(); ++j) {
+        nb::list sids;
+        for (std::size_t position : rules.inputs_of[j]) sids.append(required[position]);
+        reads[rules.output_names[j]] = nb::tuple(sids);
+    }
+    rules.output_inputs = nb::steal(PyDictProxy_New(reads.ptr()));
     rules.compiled = std::move(compiled);
     return nb::make_tuple(diagnostics, nb::tuple(losses), nb::cast(std::move(rules)));
 }
@@ -425,6 +504,9 @@ NB_MODULE(_core, m) {
         .def("compiled_from", &CompiledRules::compiled_from)
         .def("evaluate", &CompiledRules::evaluate)
         .def("evaluate_exact", &CompiledRules::evaluate_exact)
+        .def("evaluate_partial", &CompiledRules::evaluate_partial)
+        .def("evaluate_exact_partial", &CompiledRules::evaluate_exact_partial)
+        .def("output_inputs", &CompiledRules::output_inputs_view)
         .def("__msf_state__", &CompiledRules::state);
     m.def("compile_mapping", &compile_mapping, nb::arg("pack"), nb::arg("mapping_id").none(), nb::arg("allow_approximation"),
           nb::arg("source").none(), nb::arg("target").none());

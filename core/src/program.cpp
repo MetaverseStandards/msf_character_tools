@@ -33,33 +33,46 @@ static bool piecewise(const Instruction& ins, double x, double& out) {
     return true;
 }
 
-bool Program::run(double* values) const {
-    for (const Instruction& ins : instructions) {
-        double value = 0.0;
-        switch (ins.op) {
-            case Op::identity:
-                value = values[ins.inputs[0]];
-                break;
-            case Op::affine: {
-                double scaled;
-                if (!product(ins.scale, values[ins.inputs[0]], scaled) || !add(scaled, ins.offset, value)) return false;
-                break;
-            }
-            case Op::weighted_sum: {
-                double total = 0.0;
-                for (std::size_t k = 0; k < ins.inputs.size(); ++k) {
-                    double term;
-                    if (!product(ins.weights[k], values[ins.inputs[k]], term) || !add(total, term, total)) return false;
-                }
-                value = total;
-                break;
-            }
-            case Op::piecewise_linear:
-                if (!piecewise(ins, values[ins.inputs[0]], value)) return false;
-                break;
+static bool step(const Instruction& ins, double* values) {
+    double value = 0.0;
+    switch (ins.op) {
+        case Op::identity:
+            value = values[ins.inputs[0]];
+            break;
+        case Op::affine: {
+            double scaled;
+            if (!product(ins.scale, values[ins.inputs[0]], scaled) || !add(scaled, ins.offset, value)) return false;
+            break;
         }
-        if (!ins.output_domain.contains(value)) return false;
-        values[ins.output] = value;
+        case Op::weighted_sum: {
+            double total = 0.0;
+            for (std::size_t k = 0; k < ins.inputs.size(); ++k) {
+                double term;
+                if (!product(ins.weights[k], values[ins.inputs[k]], term) || !add(total, term, total)) return false;
+            }
+            value = total;
+            break;
+        }
+        case Op::piecewise_linear:
+            if (!piecewise(ins, values[ins.inputs[0]], value)) return false;
+            break;
+    }
+    if (!ins.output_domain.contains(value)) return false;
+    values[ins.output] = value;
+    return true;
+}
+
+bool Program::run(double* values) const {
+    for (const Instruction& ins : instructions)
+        if (!step(ins, values)) return false;
+    return true;
+}
+
+bool Program::run_partial(double* values, char* written) const {
+    for (const Instruction& ins : instructions) {
+        if (!std::all_of(ins.inputs.begin(), ins.inputs.end(), [&](std::size_t slot) { return written[slot]; })) continue;
+        if (!step(ins, values)) return false;
+        written[ins.output] = 1;
     }
     return true;
 }
