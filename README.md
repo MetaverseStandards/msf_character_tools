@@ -45,7 +45,7 @@ from msf_character_tools import (
 
 These six are the main operations. `msf_character_tools.__all__` has 29 public names in all: the six operations, plus helpers (such as `load_authoring` and `LocalResolver`) and the result and record types.
 
-Words used in this documentation: a *mapping* is one rule (one entry of a map's `rules`). A *map* is a named group of rules: one `[[mappings]]` entry, selected by `mapping_id`. `compile_mapping` compiles one map, and `evaluate_mapping` runs the compiled map on samples.
+Words used in this documentation: a *mapping* is one rule (one entry of a map's `rules`). A *map* is a named group of rules: one `[[mappings]]` entry, selected by `mapping_id`. `compile_mapping` compiles one map, and `evaluate_mapping` runs the compiled map on samples. With `partial=True`, a bad or missing input stops only the outputs that depend on it (see [partial evaluation](docs/reference.md#partial-evaluation)).
 
 Every operation returns a frozen `Result(value, report)`. `.ok` tells you if the operation succeeded. When there is an error, `value` is always `None`. `.report.to_dict()` gives all the diagnostics collected and all the declared losses. `compile_pack` accepts only validated authoring. The [reference](docs/reference.md) gives all six signatures, the helper APIs, the types, the byte formats and the geometry conventions. Portable [JSON schemas](schemas/README.md) describe the version 1 wire types. Validation at run time also checks references and numeric constraints.
 

@@ -18,7 +18,7 @@ The core is compiled with `-ffp-contract=off` and never with `-ffast-math`, so i
 
 Two paths exist twice:
 - `parse_json` and `canonical_json` use the core. For input the core declines, they fall back to Python's `json`. Malformed JSON is an example: Python reports its exact errors.
-- `evaluate_mapping` uses a fast path. For samples the fast path declines, it falls back to the core's exact path.
+- `evaluate_mapping` uses a fast path, in whole-map and in partial mode. For samples the fast path declines, it falls back to the core's exact path. In partial mode the fast path takes only samples whose inputs are each valid or absent.
 
 The fallbacks otherwise see only rare inputs. `MSF_TOOLS_PURE=1` sends every input down the fallbacks, and `scripts/ci_local.sh` runs the public suite that way.
 
@@ -41,7 +41,7 @@ Every built package contains `msf_character_tools/_build_info.json`:
 
 ```json
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "commit": "<40 lowercase hex digits>"
 }
 ```

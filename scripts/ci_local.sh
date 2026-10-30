@@ -165,7 +165,7 @@ if [ $gate -eq 1 ] && [ -x "$py312" ]; then
     [ -x "$py" ] || continue
     start=$(python3 -c 'import time; print(time.time())')
     output=$(MSF_GATE=1 suites "$py" '' 'test_core_*.py')
-    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-96ac4be} goldens and authoring, 10^6 hypot vectors per arity; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples, 10^4 glTF assets, 2x10^4 each of node paths, matrices, influence sets and GLB scenes; $(seconds "$start") s)" $? "$output"
+    tier "Gate tier, Python $version (10^7 floats vs repr, JSON and Unicode fuzzing, RCEF ${MSF_RCEF_COMMIT:-96ac4be} goldens and authoring, 10^6 hypot vectors per arity, 5000 random maps in partial evaluation; vs the oracle: 10^5 math3d cases, 2x10^4 authoring documents, 600 fragment directories, 2x10^4 mappings with samples, 10^4 glTF assets, 2x10^4 each of node paths, matrices, influence sets and GLB scenes; $(seconds "$start") s)" $? "$output"
   done
 else
   lines+=("- Gate tier: SKIPPED (scripts/ci_local.sh --gate)")

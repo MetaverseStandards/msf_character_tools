@@ -42,6 +42,7 @@ The last two are project checks, not promises of universal equivalence.
   - glTF and GLB inspection, accessors, sampling and geometry (`test_core_snapshot.py`);
   - the source adapters' path grammar, transforms, influences and GLB writer (`test_core_sources.py`);
   - in the corpus tier, every ufbx corpus file through the FBX adapter;
+- partial evaluation against whole-map evaluation, on fixed and random maps, on the fast and the exact path (`test_core_partial.py`);
 - JSON against the Python path, bit for bit (`test_core_json.py`);
 - the source adapters' worker;
 - the ufbx shim, through the core's test hooks;
@@ -87,6 +88,7 @@ Environment variables name the inputs that are outside the repository. A tier wh
 - wider JSON and Unicode fuzzing;
 - 10^6 vectors per arity against `math.hypot`;
 - 10^5 `math3d` cases;
+- partial evaluation against whole-map evaluation: 5000 random maps, and 2000 draws of the random documents that the oracle tests use;
 - against the oracle: 10^4 glTF assets, and 2x10^4 each of node paths, matrices, influence sets and GLB scenes;
 - every JSON file in RCEF at `MSF_RCEF_COMMIT` (default 96ac4be), read from `MSF_RCEF_ROOT` with Git.
 

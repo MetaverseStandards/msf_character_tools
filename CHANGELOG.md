@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (unreleased)
+
+### Added
+- Partial evaluation: `evaluate_mapping(compiled, samples, partial=True)`. It computes each output of a frame when every input and rule that the output depends on is valid. A bad input or a failed rule refuses only the outputs that depend on it. A refused output keeps the diagnostics that whole-map evaluation reports for those inputs and rules, with the same codes, refs and messages. An output whose only problem is missing inputs is "not available", with the missing inputs and no diagnostic. `EvaluatedValues` gets `refusals` and `unavailable`, and `.to_dict()` lists them. Faults that no output can own (the frame's structure, the timestamp, unknown channels, and source channels that the map does not read) still fail the whole evaluation. See "Partial evaluation" in `docs/reference.md`.
+- `CompiledMapping.output_inputs`: for each output, the inputs that it reads, directly or through intermediate rules.
+
+### Unchanged
+- Whole-map evaluation, the default, is the same as in 0.5.0: results, reports and bytes. In whole-map mode, `EvaluatedValues.refusals` and `.unavailable` are `None`, and `.to_dict()` gives only `samples`. No diagnostic code is new. `tests/public` does not change.
 
 ### Fixed
 - `scripts/build_release.sh` and `scripts/check_release.sh` accept a tag as the commit argument. Before, they used the tag object hash in place of the commit, so `check_release.sh v0.5.0` failed the build-record check. A name that is not a commit now stops both scripts with an error.

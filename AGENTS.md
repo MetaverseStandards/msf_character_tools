@@ -39,6 +39,7 @@ python -m pip install --require-hashes -r req.txt
 - `report.diagnostics` holds `Diagnostic(code, severity, ref, message, remediation)`. `report.losses` holds the declared losses (`Loss(category, effect, reason, refs, ...)`). `report.to_dict()` gives both.
 - `canonical_json`, `survey_csv`, `coverage` and record `.to_dict()` / `.to_bytes()` raise instead.
 - Every diagnostic code is listed in [schemas/diagnostics.toml](schemas/diagnostics.toml).
+- `evaluate_mapping(compiled, samples, partial=True)` refuses only the outputs that depend on a bad input. Its Result is ok even when outputs are refused: read `value.refusals` and `value.unavailable`. See "Partial evaluation" in [docs/reference.md](docs/reference.md).
 
 ### Typical calls
 

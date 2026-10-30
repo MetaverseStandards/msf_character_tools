@@ -227,7 +227,8 @@ ufbx and the `msf-ufbx` shim are compiled into the C++ core, so nothing extra ne
 ```python
 compile_mapping(pack, source_snapshot, target_snapshot, mapping_id,
                 allow_approximation=False) -> Result[CompiledMapping]
-evaluate_mapping(compiled_mapping, samples) -> Result[EvaluatedValues]
+evaluate_mapping(compiled_mapping, samples, *, partial=False) -> Result[EvaluatedValues]
+CompiledMapping.output_inputs -> immutable {output_id: (input_id, ...)}
 ```
 
 `compile_mapping` compiles one map: the `[[mappings]]` entry named by `mapping_id`. `evaluate_mapping` runs the compiled map (`CompiledMapping`) on samples.
@@ -311,6 +312,42 @@ assert result.value.to_dict()["samples"][0]["values"]["output.wink"] == -0.5
 ```
 
 Samples are an array of objects with exactly the keys `{timestamp,values,validity}`. The timestamp is finite, nonnegative seconds, and not a bool. Values are keyed by source channel ID and typed by that channel. Every supplied value has an explicit boolean validity. A required input that is missing or invalid fails, even if its numeric value equals the neutral value. Values are checked before and after each operation. Frames are independent and keep the input order. There is no temporal smoothing and no hidden resampling. `.to_dict()` returns `{samples:[{timestamp,values:{output_id:value},validity:{output_id:true}}]}`. If any frame fails, the whole Result has no evaluated value.
+
+### Partial evaluation
+
+`partial=True` scopes each refusal to the outputs that depend on the bad input. Use it to evaluate one large map, for example all of one expression set, when some inputs of a frame can be bad or absent. The default, `partial=False`, does not change: it is whole-map evaluation as above.
+
+`CompiledMapping.output_inputs` maps each of `output_ids` to the inputs that it reads, directly or through intermediate rules. The keys are in `output_ids` order, and each tuple is in `required_inputs` order. Partial evaluation scopes refusals with the same dependencies.
+
+In partial mode, each output of each frame has one of three outcomes:
+
+- **Written.** Every input and rule that the output depends on is valid. Its value is bit-identical to the value that whole-map evaluation gives with the same inputs. It is in the frame's `values` and `validity`, as before.
+- **Refused.** An input that the output depends on is bad, or a rule that it depends on fails (`E_DOMAIN`, `E_NONFINITE`). The output is not in the frame. The refusal holds the diagnostics that whole-map evaluation reports for those inputs and rules: the same codes, refs, messages and order. A bad input is one that is supplied but fails: `E_INVALID_SAMPLE`, `E_DOMAIN`, `E_TYPE`, `E_NONFINITE`, or `E_VALIDITY` (a value without validity, or validity without a value). If the output also has missing inputs, their `E_MISSING_SAMPLE` diagnostics are included too.
+- **Not available.** Only missing inputs stop the output: inputs that are absent from both `values` and `validity`. The output is not in the frame. This is not a refusal. It records the missing inputs and no diagnostic. A missing input does not get a neutral value: no value is computed from it.
+
+Some faults have no output to scope them to. These still fail the whole evaluation, with the same diagnostics as whole-map evaluation: a frame that is not an object with exactly `{timestamp,values,validity}`, a bad timestamp, `values` or `validity` that are not objects, a key that is not a source channel (`E_SAMPLE_REFERENCE`), and a bad value for a source channel that the map does not read. Supply only the map's `required_inputs` to avoid the last case. When the evaluation fails, the report holds only these diagnostics.
+
+In partial mode, `EvaluatedValues` also has `refusals` and `unavailable`. In whole-map mode both are `None`. Each is a tuple, ordered by sample and then by `output_ids`:
+
+- `refusals`: `{"sample": n, "output": output_id, "diagnostics": (Diagnostic, ...)}`.
+- `unavailable`: `{"sample": n, "output": output_id, "inputs": (input_id, ...)}`, with the missing inputs in `required_inputs` order.
+
+`sample` is the index of the frame in `samples`. A successful partial Result has no diagnostics in its report, so `Result.ok` is true even when outputs are refused. Read `refusals` and `unavailable` to find them. `.to_dict()` adds `refusals` and `unavailable` lists, with each diagnostic as a dict:
+
+```python
+result = evaluate_mapping(compiled, [
+    {"timestamp": 0, "values": {"a": 0.25, "c": 0.75}, "validity": {"a": False, "c": True}},
+    {"timestamp": 1, "values": {"c": 0.5}, "validity": {"c": True}},
+], partial=True)
+result.value.to_dict()
+# {"samples": [{"timestamp": 0.0, "values": {"o2": 0.5}, "validity": {"o2": True}},
+#              {"timestamp": 1.0, "values": {"o2": 0.0}, "validity": {"o2": True}}],
+#  "refusals": [{"sample": 0, "output": "o1", "diagnostics": [
+#      {"code": "E_INVALID_SAMPLE", "severity": "error", "ref": "/samples/0/a", ...}]}],
+#  "unavailable": [{"sample": 1, "output": "o1", "inputs": ["a"]}]}
+```
+
+Here `o1` reads `a` and `o2` reads `c`. To chain maps, pass the written values of one map to the next. An output of the first map that is refused or not available is absent from the next map's input, so the next map lists it as not available. The caller keeps the first map's refusals if it must tell the two apart.
 
 ## Independent geometry helpers
 
